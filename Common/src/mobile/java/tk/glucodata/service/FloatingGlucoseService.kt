@@ -93,6 +93,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         glucoseRepository.refreshSensorSerial()
 
         setupOverlay()
+        // Exported: SystemUI, not the system, sends USER_PRESENT, so a non-exported
+        // receiver never gets it. All three actions are protected broadcasts.
         androidx.core.content.ContextCompat.registerReceiver(
             this,
             screenStateReceiver,
@@ -101,7 +103,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 addAction(Intent.ACTION_SCREEN_ON)
                 addAction(Intent.ACTION_USER_PRESENT)
             },
-            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+            androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
         )
         observeSettings()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -507,18 +509,22 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
     }
 
-    /** An accessibility overlay also draws over the lock screen; hide the pill there. */
-    private fun updateLockScreenVisibility() {
+    /**
+     * An accessibility overlay also draws over the lock screen; hide the pill there.
+     * [unlocked] trusts USER_PRESENT: the keyguard state can still read locked when it arrives.
+     */
+    private fun updateLockScreenVisibility(unlocked: Boolean = false) {
         val root = overlayRoot ?: return
         val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
         val overStatusBar = layoutParams.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        root.visibility = if (overStatusBar && keyguard.isKeyguardLocked) View.GONE else View.VISIBLE
+        val hide = overStatusBar && !unlocked && keyguard.isKeyguardLocked
+        root.visibility = if (hide) View.GONE else View.VISIBLE
     }
 
     private val screenStateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) closeDetails()
-            updateLockScreenVisibility()
+            updateLockScreenVisibility(unlocked = intent?.action == Intent.ACTION_USER_PRESENT)
         }
     }
 
