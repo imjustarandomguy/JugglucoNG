@@ -993,6 +993,13 @@ public class Applic extends Application implements androidx.work.Configuration.P
             // Driver-owned one-time handoff. This must run after native storage initialization
             // and before SensorBluetooth creates callbacks for the active native sensor list.
             tk.glucodata.drivers.sibionics.SibionicsLegacyMigration.migrateActiveSensors(this);
+            // Same constraint: a follower record no enabled follower writes to (one an earlier
+            // version left behind) must be ended before it is offered a Bluetooth callback or
+            // chosen as the current sensor below. The watch keeps the records the phone serves.
+            if (!isWearable) {
+                tk.glucodata.drivers.nightscout.NightscoutFollowerRegistry.INSTANCE
+                        .endInactiveFollowerRecords(this);
+            }
 
             // Preserve an explicit non-active selection across startup. Historical sensors
             // are still valid dashboard targets even if they are not in activeSensors().

@@ -226,4 +226,89 @@ class NightscoutFollowerRegistryTests {
     fun matchesSensorId_mismatch_returnsFalse() {
         assertFalse(NightscoutFollowerRegistry.matchesSensorId("NSF-ABC123", "NSF-DEF456"))
     }
+
+    // ---------- native follower records ----------
+
+    // Native lists a 16-character record without its first five characters, so the follower's
+    // record shows up as a name that reads like a Libre serial.
+    private val nativeFullNames = mapOf(
+        "073E464C8CB" to "NSF-3073E464C8CB",
+        "0M00ABCDEF1" to "E007-0M00ABCDEF1",
+    )
+
+    private fun fullName(name: String): String? = nativeFullNames[name]
+
+    @Test
+    fun followerRecordName_resolvesNativeShortAlias() {
+        assertEquals("NSF-3073E464C8CB", NightscoutFollowerRegistry.followerRecordName("073E464C8CB", ::fullName))
+        assertEquals("NSF-3073E464C8CB", NightscoutFollowerRegistry.followerRecordName(" NSF-3073E464C8CB ") { null })
+    }
+
+    @Test
+    fun followerRecordName_ignoresOtherSensors() {
+        assertNull(NightscoutFollowerRegistry.followerRecordName("0M00ABCDEF1", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName("UNKNOWN0001", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName(" ", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName(null, ::fullName))
+    }
+
+    @Test
+    fun followerRecordName_findsEveryDerivedIdByItsShortAlias() {
+        val id = NightscoutFollowerRegistry.deriveSensorId("https://example.com")
+        val shortAlias = id.drop(5)
+        assertEquals(id, NightscoutFollowerRegistry.followerRecordName(shortAlias) { if (it == shortAlias) id else null })
+    }
+
+    @Test
+    fun inactiveFollowerRecords_endsTheRecordOfAStoppedFollower() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("0M00ABCDEF1", "073E464C8CB"),
+                enabledSensorId = null,
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_keepsTheEnabledFollower() {
+        assertTrue(
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("0M00ABCDEF1", "073E464C8CB"),
+                enabledSensorId = "nsf-3073e464c8cb",
+                fullName = ::fullName,
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_endsTheRecordOfAPreviousServer() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("073E464C8CB", "NSF-0123456789AB"),
+                enabledSensorId = "NSF-0123456789AB",
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_listsARecordOnceWhateverItIsCalled() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("073E464C8CB", null, "nsf-3073e464c8cb"),
+                enabledSensorId = null,
+                fullName = ::fullName,
+            ).map { it.uppercase() },
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_withoutActiveSensorsEndsNothing() {
+        assertTrue(NightscoutFollowerRegistry.inactiveFollowerRecords(null, null, ::fullName).isEmpty())
+        assertTrue(NightscoutFollowerRegistry.inactiveFollowerRecords(emptyArray<String>(), null, ::fullName).isEmpty())
+    }
 }
