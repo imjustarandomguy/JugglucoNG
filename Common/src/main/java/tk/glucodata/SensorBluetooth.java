@@ -685,7 +685,7 @@ public class SensorBluetooth {
                         continue;
                     }
                 }
-                cb.constatstatusstr = "Searching for sensors";
+                cb.constatstatusstr = SuperGattCallback.SEARCHING_STATUS;
             }
         }
         Applic.updatescreen();
