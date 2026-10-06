@@ -99,4 +99,22 @@ class WearToggleSyncTests {
         val future = "v:${WearProtocol.VERSION + 1}\np:prediction=true\n".toByteArray()
         assertTrue(WearToggleSync.decode(future).isEmpty())
     }
+
+    @Test
+    fun thePhonesReplyIsObservable() {
+        // The watch's switches redraw from `state`. When the reply only reached
+        // a plain field, a flipped switch kept showing the state from before
+        // the tap until something unrelated recomposed the screen.
+        val reply = listOf(toggle(WearToggleSync.SCOPE_EXCHANGE, ExchangeToggles.ID_GADGETBRIDGE, true))
+        WearToggleSync.onState(WearToggleSync.encode(reply))
+        assertEquals(reply, WearToggleSync.state.value)
+        assertEquals(
+            true,
+            WearToggleSync.knownEnabled(
+                WearToggleSync.state.value,
+                WearToggleSync.SCOPE_EXCHANGE,
+                ExchangeToggles.ID_GADGETBRIDGE,
+            ),
+        )
+    }
 }
