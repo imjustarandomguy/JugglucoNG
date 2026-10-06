@@ -3373,4 +3373,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_reorder">Réorganiser les aliments</string>
     <string name="food_move_up">Monter</string>
     <string name="food_move_down">Descendre</string>
+    <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
+    <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage. Certains téléphones (ex. Samsung) l\'affichent en couleur, d\'autres toujours en blanc.</string>
 </resources>

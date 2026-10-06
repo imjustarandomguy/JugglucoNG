@@ -3493,4 +3493,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_reorder">Изменить порядок</string>
     <string name="food_move_up">Переместить выше</string>
     <string name="food_move_down">Переместить ниже</string>
+    <string name="status_bar_icon_colored_title">Цветной значок в строке состояния</string>
+    <string name="status_bar_icon_colored_desc">Рисует значение в строке состояния цветом диапазона. Некоторые телефоны (например, Samsung) показывают его цветным, другие — всегда белым.</string>
 </resources>

@@ -3551,4 +3551,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="food_reorder">Dib u kala hagaaji cuntada</string>
     <string name="food_move_up">Kor u dhaqaaji</string>
     <string name="food_move_down">Hoos u dhaqaaji</string>
+    <string name="status_bar_icon_colored_title">Astaanta baararka xaaladda oo midab leh</string>
+    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa. Taleefannada qaar (tusaale Samsung) waxay muujiyaan midab, kuwa kalena had iyo jeer caddaan.</string>
 </resources>
