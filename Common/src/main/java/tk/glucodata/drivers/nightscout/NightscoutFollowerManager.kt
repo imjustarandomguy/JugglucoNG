@@ -292,7 +292,10 @@ class NightscoutFollowerManager(
     }
 
     override fun terminateManagedSensor(wipeData: Boolean) {
-        stop = true
+        // Set under the lock a poll writes under: once this returns, a poll that was already
+        // fetching cannot store a reading any more, so the caller can end the native record
+        // without the poll bringing it back a moment later.
+        publishGate.exclusive { stop = true }
         cancelPendingHandlerWork()
         mainHandler.removeCallbacks(probeRunnable)
         NightscoutFollowerDeviceStatus.clear()
@@ -580,7 +583,9 @@ class NightscoutFollowerManager(
             return
         }
         if (!fetched.historyImported) {
-            importHistory(readings)
+            // Through the gate too: history stored after the follower was switched off would
+            // bring back the native record that switching it off ended.
+            publishGate.publishIfCurrent(current) { importHistory(readings) }
         }
         val published = publishGate.publishIfCurrent(current) {
             publishLatest(readings)
@@ -657,6 +662,9 @@ class NightscoutFollowerManager(
             val result = NightscoutFollowerHistoryPaging.consumePages(
                 lowerBoundMs = null,
                 fetchPage = { beforeExclusiveMs ->
+                    // A first import pages through the server's whole history; a follower
+                    // switched off meanwhile must not go on downloading it.
+                    check(!stop) { "Nightscout follower stopped" }
                     fetchReadingsPage(lowerBoundMs = null, beforeExclusiveMs = beforeExclusiveMs)
                 },
                 consumePage = { page ->
@@ -921,6 +929,9 @@ internal class NightscoutFollowerPublishGate {
             publish()
             true
         }
+
+    /** Runs [block] with no publication under way; one that waited checks currency after it. */
+    fun exclusive(block: () -> Unit) = synchronized(lock, block)
 }
 
 internal object NightscoutFollowerJournalEndpoints {
