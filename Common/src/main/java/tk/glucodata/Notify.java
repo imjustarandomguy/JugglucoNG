@@ -127,6 +127,11 @@ public class Notify {
         }
     }
 
+    /** Initialises Notify if needed, which creates its notification channels. */
+    public static void ensureNotificationChannels(Context context) {
+        init(context);
+    }
+
     public static String glucoseformat = null;
     public static String pureglucoseformat = null;
     static public String unitlabel = "mg/dL";
@@ -612,7 +617,8 @@ public class Notify {
     public static final String CHANNEL_MISSED_READING = "MISSED_READING";
     public static final String CHANNEL_SENSOR_EXPIRY = "SENSOR_EXPIRY";
     // private static final String LOSSALARM = "LossofSensorAlarm";
-    private static String GLUCOSENOTIFICATION = "glucoseNotification";
+    public static final String GLUCOSE_CHANNEL_ID = "glucoseNotification";
+    private static String GLUCOSENOTIFICATION = GLUCOSE_CHANNEL_ID;
 
     private static String alertChannelForKind(int kind) {
         switch (kind) {
@@ -637,7 +643,7 @@ public class Notify {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
 
             // Determine Channel ID (Standard)
-            String targetChannelId = "glucoseNotification";
+            String targetChannelId = GLUCOSE_CHANNEL_ID;
             GLUCOSENOTIFICATION = targetChannelId;
 
             try {
@@ -834,8 +840,15 @@ public class Notify {
         }
     }
 
-    static private final int glucosenotificationid = 81431;
+    public static final int GLUCOSE_NOTIFICATION_ID = 81431;
+    static private final int glucosenotificationid = GLUCOSE_NOTIFICATION_ID;
     static private final int glucosealarmid = 81432;
+
+    /** Whether keeprunning is running and so holds the glucose notification as its foreground notification. */
+    public static boolean keeprunningHoldsGlucoseNotification() {
+        return keeprunning.theservice != null;
+    }
+
     static boolean alertwatch = false;
     static private boolean showalways = Natives.getshowalways();
 
