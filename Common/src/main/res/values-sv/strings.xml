@@ -2878,4 +2878,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d post</item>
         <item quantity="other">%d poster</item>
     </plurals>
+    <string name="floating_tap_details">Detaljer vid tryck</string>
+    <string name="floating_tap_details_desc">Tryck visar diagram och detaljer, långt tryck öppnar appen</string>
 </resources>

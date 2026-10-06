@@ -2929,4 +2929,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d записей</item>
         <item quantity="other">%d записи</item>
     </plurals>
+    <string name="floating_tap_details">Подробности по нажатию</string>
+    <string name="floating_tap_details_desc">Нажатие показывает график и подробности, долгое нажатие открывает приложение</string>
 </resources>

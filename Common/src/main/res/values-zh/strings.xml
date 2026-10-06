@@ -2893,4 +2893,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d 条记录</item>
         <item quantity="other">%d 条记录</item>
     </plurals>
+    <string name="floating_tap_details">点按显示详情</string>
+    <string name="floating_tap_details_desc">点按显示图表和详情，长按打开应用</string>
 </resources>

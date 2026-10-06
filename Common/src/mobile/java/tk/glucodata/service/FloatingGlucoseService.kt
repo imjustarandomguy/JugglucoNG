@@ -35,12 +35,18 @@ import kotlinx.coroutines.launch
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.GlucoseRepository
 import tk.glucodata.data.settings.FloatingSettingsRepository
+import tk.glucodata.ui.overlay.FloatingDetailsCard
+import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
 import tk.glucodata.Natives
 
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private companion object {
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
+        /** How long the details card stays open on its own. */
+        private const val DETAILS_TIMEOUT_MS = 10_000L
+        /** A tap within this of the card closing on an outside touch is that same touch. */
+        private const val DETAILS_REOPEN_GUARD_MS = 400L
     }
 
     enum class CutoutEdge {
@@ -66,7 +72,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private lateinit var layoutParams: WindowManager.LayoutParams
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val outsideTouches = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    // The details card has a window of its own. Growing the pill's window to
+    // hold it re-centred the pill over the card (pushing it off screen near an
+    // edge) and lagged while the window resized.
+    private var detailsRoot: View? = null
+    private var detailsClosedByOutsideTouchAt = 0L
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val closeDetailsRunnable = Runnable { closeDetails() }
 
     private lateinit var settingsRepository: FloatingSettingsRepository
     private val glucoseRepository = GlucoseRepository()
@@ -131,10 +144,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private fun setupOverlay() {
         if (composeView != null) return
 
-        val root = CutoutAwareContainer(
-            this,
-            onOutsideTouch = { outsideTouches.tryEmit(Unit) },
-        ) { v, insets ->
+        val root = CutoutAwareContainer(this) { v, insets ->
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 cutoutData.value = resolveCutoutData(v, insets.displayCutout)
                 if (dynamicIslandEnabled) {
@@ -161,7 +171,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
-                    outsideTouches = outsideTouches,
+                    onToggleDetails = { toggleDetails(it) },
                 )
             }
         }
@@ -172,12 +182,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            // Touches elsewhere still go to the app below; this only tells the
-            // overlay about them, so an open details card can close.
-            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT
         )
         
@@ -211,9 +218,140 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
     }
     
+    private fun toggleDetails(request: FloatingDetailsRequest) {
+        if (detailsRoot != null) {
+            closeDetails()
+            return
+        }
+        // A tap on the pill while the card is open reaches the card first, as
+        // a touch outside it, and has closed it already: leave it closed.
+        if (android.os.SystemClock.uptimeMillis() - detailsClosedByOutsideTouchAt < DETAILS_REOPEN_GUARD_MS) return
+        openDetails(request)
+    }
+
+    /**
+     * Opens the card next to the pill, on whichever side keeps it on screen:
+     * below the pill in the top half of the screen and above it in the bottom
+     * half, lined up with the pill's left edge in the left half and its right
+     * edge in the right half, and centred under the camera for the island.
+     */
+    private fun openDetails(request: FloatingDetailsRequest) {
+        val wm = windowManager ?: return
+        val anchor = overlayRoot ?: return
+        val location = IntArray(2)
+        anchor.getLocationOnScreen(location)
+        val pillLeft = location[0]
+        val pillTop = location[1]
+        val pillRight = pillLeft + anchor.width
+        val pillBottom = pillTop + anchor.height
+        val screen = screenSize()
+        val density = resources.displayMetrics.density
+        val gap = (6 * density).toInt()
+        val margin = (8 * density).toInt()
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                // Touches elsewhere still reach the app below; the card only
+                // hears about them, to close.
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT
+        )
+        if (android.os.Build.VERSION.SDK_INT >= 28) {
+            params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
+        val below = (pillTop + pillBottom) / 2 < screen.y / 2
+        params.y = if (below) pillBottom + gap else screen.y - pillTop + gap
+        val pillCentreX = (pillLeft + pillRight) / 2
+        val horizontal = when {
+            dynamicIslandEnabled && cutoutData.value.edge.let { it == CutoutEdge.TOP || it == CutoutEdge.NONE } -> {
+                params.x = pillCentreX - screen.x / 2
+                Gravity.CENTER_HORIZONTAL
+            }
+            pillCentreX < screen.x / 2 -> {
+                params.x = maxOf(margin, pillLeft)
+                Gravity.START
+            }
+            else -> {
+                params.x = maxOf(margin, screen.x - pillRight)
+                Gravity.END
+            }
+        }
+        params.gravity = (if (below) Gravity.TOP else Gravity.BOTTOM) or horizontal
+
+        val root = OutsideTouchContainer(this) {
+            detailsClosedByOutsideTouchAt = android.os.SystemClock.uptimeMillis()
+            closeDetails()
+        }.apply {
+            setViewTreeLifecycleOwner(this@FloatingGlucoseService)
+            setViewTreeViewModelStoreOwner(this@FloatingGlucoseService)
+            setViewTreeSavedStateRegistryOwner(this@FloatingGlucoseService)
+        }
+        val card = ComposeView(this).apply {
+            setContent {
+                FloatingDetailsCard(
+                    request = request,
+                    isDark = androidx.compose.foundation.isSystemInDarkTheme(),
+                    onOpenApp = {
+                        closeDetails()
+                        openApp()
+                    },
+                )
+            }
+        }
+        root.addView(
+            card,
+            FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+        )
+        try {
+            wm.addView(root, params)
+            detailsRoot = root
+            mainHandler.postDelayed(closeDetailsRunnable, DETAILS_TIMEOUT_MS)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun closeDetails() {
+        mainHandler.removeCallbacks(closeDetailsRunnable)
+        val root = detailsRoot ?: return
+        detailsRoot = null
+        try {
+            windowManager?.removeView(root)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun openApp() {
+        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            startActivity(intent)
+        }
+    }
+
+    /** Full display size in pixels, which the overlay windows are laid out against. */
+    @Suppress("DEPRECATION")
+    private fun screenSize(): android.graphics.Point {
+        val wm = windowManager ?: return android.graphics.Point(0, 0)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val bounds = wm.currentWindowMetrics.bounds
+            return android.graphics.Point(bounds.width(), bounds.height())
+        }
+        val metrics = android.util.DisplayMetrics()
+        wm.defaultDisplay.getRealMetrics(metrics)
+        return android.graphics.Point(metrics.widthPixels, metrics.heightPixels)
+    }
+
     private fun updateViewPosition(xDelta: Int, yDelta: Int) {
         if (overlayRoot == null || windowManager == null) return
-        
+        // The card was placed against the pill where it was; moving the pill leaves it behind.
+        closeDetails()
+
         layoutParams.x += xDelta
         layoutParams.y += yDelta
         keepFreePillTouchable()
@@ -387,6 +525,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        closeDetails()
         overlayRoot?.post {
             overlayRoot?.requestApplyInsets()
             applyOverlayPlacement()
@@ -405,14 +544,19 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      */
     private class CutoutAwareContainer(
         context: Context,
-        private val onOutsideTouch: () -> Unit,
         private val onInsets: (View, WindowInsets) -> Unit
     ) : FrameLayout(context) {
         override fun dispatchApplyWindowInsets(insets: WindowInsets): WindowInsets {
             onInsets(this, insets)
             return super.dispatchApplyWindowInsets(insets)
         }
+    }
 
+    /** Root of the details card's window: reports touches that land outside it. */
+    private class OutsideTouchContainer(
+        context: Context,
+        private val onOutsideTouch: () -> Unit
+    ) : FrameLayout(context) {
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
             if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
                 onOutsideTouch()
@@ -423,6 +567,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     override fun onDestroy() {
+        closeDetails()
         // The id is shared with keeprunning's glucose notification; detach it while keeprunning still holds it.
         val held = tk.glucodata.Notify.keeprunningHoldsGlucoseNotification()
         stopForeground(if (held) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)

@@ -58,8 +58,14 @@ import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
 
-/** How long the details card stays open on its own. */
-private const val DETAILS_TIMEOUT_MS = 10_000L
+/** The reading a details card is opened for. */
+data class FloatingDetailsRequest(
+    val point: GlucosePoint,
+    val sensorId: String?,
+    val isMmol: Boolean,
+    val viewMode: Int,
+    val displayGlucose: Float,
+)
 
 @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -69,25 +75,18 @@ fun FloatingGlucoseOverlay(
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
-    /** A touch landed outside the overlay window; closes the details card. */
-    outsideTouches: Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
+    /**
+     * Tapping the value opens or closes a card with what the glucose
+     * notification shows (time, Δ, chart, IOB), in a window of its own so this
+     * one never changes size; a long press opens the app, as a tap used to.
+     * Null keeps the old behaviour: a tap opens the app.
+     */
+    onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
 ) {
     val context = LocalContext.current
 
-    // Tapping the value opens a card with what the glucose notification shows
-    // (time, Δ, chart, IOB); a long press opens the app, as a tap used to.
-    var showDetails by remember { mutableStateOf(false) }
-    LaunchedEffect(showDetails) {
-        if (showDetails) {
-            kotlinx.coroutines.delay(DETAILS_TIMEOUT_MS)
-            showDetails = false
-        }
-    }
-    LaunchedEffect(outsideTouches) {
-        outsideTouches.collect { showDetails = false }
-    }
-
     // Settings State
+    val tapShowsDetails by repository.tapShowsDetails.collectAsState(initial = true)
     val isTransparent by repository.isTransparent.collectAsState(initial = false)
     val showSecondary by repository.showSecondary.collectAsState(initial = false)
     val fontSource by repository.fontSource.collectAsState(initial = "APP")
@@ -279,21 +278,21 @@ fun FloatingGlucoseOverlay(
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
-    val openApp: () -> Unit = {
-        showDetails = false
-        launchIntent?.let { context.startActivity(it) }
-    }
-    val detailsCard: @Composable () -> Unit = {
-        if (glucosePoint != null) {
-            FloatingDetailsCard(
-                point = glucosePoint,
-                sensorId = currentSensorId,
-                isMmol = unitInt == 1,
-                viewMode = viewMode,
-                displayGlucose = currentSnapshot?.displayValues?.primaryValue ?: glucosePoint.value,
-                isDark = isDarkTheme,
-                onOpenApp = openApp,
+    val openApp: () -> Unit = { launchIntent?.let { context.startActivity(it) } }
+    val onPillTap: () -> Unit = {
+        val toggle = onToggleDetails?.takeIf { tapShowsDetails }
+        if (toggle != null && glucosePoint != null) {
+            toggle(
+                FloatingDetailsRequest(
+                    point = glucosePoint,
+                    sensorId = currentSensorId,
+                    isMmol = unitInt == 1,
+                    viewMode = viewMode,
+                    displayGlucose = currentSnapshot?.displayValues?.primaryValue ?: glucosePoint.value,
+                )
             )
+        } else {
+            openApp()
         }
     }
 
@@ -414,7 +413,7 @@ fun FloatingGlucoseOverlay(
                 interactionSource = overlayInteractionSource,
                 indication = overlayIndication,
                 onLongClick = openApp,
-                onClick = { showDetails = !showDetails },
+                onClick = onPillTap,
             )
         CutoutOffsetLayout(
             edge = cutoutEdge,
@@ -423,8 +422,6 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
         ) {
-          // The card opens away from the camera, so the pill stays where it was.
-          DetailsAround(edge = cutoutEdge, expanded = showDetails, details = detailsCard) {
             if (isVerticalIsland) {
                 AsymmetricCenteringColumn(
                     modifier = pillModifier,
@@ -492,10 +489,8 @@ fun FloatingGlucoseOverlay(
                     }
                 }
             }
-          }
         }
     } else {
-      DetailsAround(edge = CutoutEdge.TOP, expanded = showDetails, details = detailsCard) {
         // ORIGINAL FLOATING LAYOUT (Unified Pill)
         Surface(
             color = finalBgColor,
@@ -508,7 +503,7 @@ fun FloatingGlucoseOverlay(
                     interactionSource = overlayInteractionSource,
                     indication = overlayIndication,
                     onLongClick = openApp,
-                    onClick = { showDetails = !showDetails },
+                    onClick = onPillTap,
                 )
         ) {
             Row(
@@ -528,35 +523,6 @@ fun FloatingGlucoseOverlay(
                 }
             }
         }
-      }
-    }
-}
-
-/**
- * Places the details card on the side of the pill away from the screen edge
- * the overlay is docked to, so opening it never moves the pill.
- */
-@Composable
-private fun DetailsAround(
-    edge: CutoutEdge,
-    expanded: Boolean,
-    details: @Composable () -> Unit,
-    pill: @Composable () -> Unit,
-) {
-    val card: @Composable () -> Unit = {
-        androidx.compose.animation.AnimatedVisibility(
-            visible = expanded,
-            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandIn(expandFrom = Alignment.Center),
-            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkOut(shrinkTowards = Alignment.Center),
-        ) {
-            Box(Modifier.padding(6.dp)) { details() }
-        }
-    }
-    when (edge) {
-        CutoutEdge.LEFT -> Row(verticalAlignment = Alignment.CenterVertically) { pill(); card() }
-        CutoutEdge.RIGHT -> Row(verticalAlignment = Alignment.CenterVertically) { card(); pill() }
-        CutoutEdge.BOTTOM -> Column(horizontalAlignment = Alignment.CenterHorizontally) { card(); pill() }
-        else -> Column(horizontalAlignment = Alignment.CenterHorizontally) { pill(); card() }
     }
 }
 
@@ -566,15 +532,16 @@ private fun DetailsAround(
  * one). Tapping it opens the app.
  */
 @Composable
-private fun FloatingDetailsCard(
-    point: GlucosePoint,
-    sensorId: String?,
-    isMmol: Boolean,
-    viewMode: Int,
-    displayGlucose: Float,
+fun FloatingDetailsCard(
+    request: FloatingDetailsRequest,
     isDark: Boolean,
     onOpenApp: () -> Unit,
 ) {
+    val point = request.point
+    val sensorId = request.sensorId
+    val isMmol = request.isMmol
+    val viewMode = request.viewMode
+    val displayGlucose = request.displayGlucose
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val cardWidth = 260.dp

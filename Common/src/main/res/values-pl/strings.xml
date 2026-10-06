@@ -2920,4 +2920,6 @@
         <item quantity="many">%d wpisów</item>
         <item quantity="other">%d wpisu</item>
     </plurals>
+    <string name="floating_tap_details">Szczegóły po dotknięciu</string>
+    <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły, przytrzymanie otwiera aplikację</string>
 </resources>

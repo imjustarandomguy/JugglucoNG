@@ -15,6 +15,7 @@ class FloatingSettingsRepository(context: Context) {
     // Keys
     companion object {
         const val KEY_ENABLED = "floating_glucose_enabled"
+        const val KEY_TAP_DETAILS = "floating_tap_details" // true = tap shows details, long press opens the app
         const val KEY_TRANSPARENT = "floating_transparent" // true = transparent, false = filled
         const val KEY_SHOW_SECONDARY = "floating_show_secondary"
         const val KEY_FONT_SOURCE = "floating_font_source" // "APP" or "SYSTEM"
@@ -46,6 +47,7 @@ class FloatingSettingsRepository(context: Context) {
     
     // Implementation: Flow that emits on preference change
     val isEnabled: Flow<Boolean> = prefFlow(KEY_ENABLED, false)
+    val tapShowsDetails: Flow<Boolean> = prefFlow(KEY_TAP_DETAILS, true)
     val isTransparent: Flow<Boolean> = prefFlow(KEY_TRANSPARENT, false)
     val showSecondary: Flow<Boolean> = prefFlow(KEY_SHOW_SECONDARY, false)
     val fontSource: Flow<String> = prefFlow(KEY_FONT_SOURCE, "APP")
@@ -63,6 +65,7 @@ class FloatingSettingsRepository(context: Context) {
 
 
     fun setEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+    fun setTapShowsDetails(show: Boolean) = prefs.edit().putBoolean(KEY_TAP_DETAILS, show).apply()
     fun setTransparent(transparent: Boolean) = prefs.edit().putBoolean(KEY_TRANSPARENT, transparent).apply()
     fun setDynamicIslandEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND, enabled).apply()
     fun setIslandVerticalOffset(offset: Float) = prefs.edit().putFloat(KEY_ISLAND_VERTICAL_OFFSET, offset).apply()

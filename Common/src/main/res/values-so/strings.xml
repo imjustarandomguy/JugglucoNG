@@ -3063,4 +3063,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="one">%d qoraal</item>
         <item quantity="other">%d qoraal</item>
     </plurals>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
 </resources>

@@ -2879,4 +2879,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entrada</item>
         <item quantity="other">%d entradas</item>
     </plurals>
+    <string name="floating_tap_details">Detalhes ao tocar</string>
+    <string name="floating_tap_details_desc">Tocar mostra o gráfico e os detalhes; manter premido abre a app</string>
 </resources>

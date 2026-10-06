@@ -2906,4 +2906,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="one">%d kayıt</item>
         <item quantity="other">%d kayıt</item>
     </plurals>
+    <string name="floating_tap_details">Dokununca ayrıntılar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir, uzun basma uygulamayı açar</string>
 </resources>

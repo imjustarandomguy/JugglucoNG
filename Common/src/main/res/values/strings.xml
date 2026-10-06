@@ -3130,4 +3130,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entry</item>
         <item quantity="other">%d entries</item>
     </plurals>
+    <string name="floating_tap_details">Details on tap</string>
+    <string name="floating_tap_details_desc">Tap shows the chart and details; long press opens the app</string>
 </resources>

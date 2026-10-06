@@ -2979,4 +2979,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">%d бичлэг</item>
         <item quantity="other">%d бичлэг</item>
     </plurals>
+    <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
+    <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна; удаан дарахад програмыг нээнэ</string>
 </resources>

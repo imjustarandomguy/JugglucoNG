@@ -2868,4 +2868,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d voce</item>
         <item quantity="other">%d voci</item>
     </plurals>
+    <string name="floating_tap_details">Dettagli al tocco</string>
+    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli, un tocco prolungato apre l\'app</string>
 </resources>

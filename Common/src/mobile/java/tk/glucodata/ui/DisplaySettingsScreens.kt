@@ -485,6 +485,7 @@ fun FloatingGlucoseSettingsScreen(
     val fontSize by repository.fontSize.collectAsState(initial = FloatingSettingsRepository.DEFAULT_FONT_SIZE)
     val fontWeight by repository.fontWeight.collectAsState(initial = "REGULAR")
     val showArrow by repository.showArrow.collectAsState(initial = true)
+    val tapShowsDetails by repository.tapShowsDetails.collectAsState(initial = true)
     val cornerRadius by repository.cornerRadius.collectAsState(initial = 28f)
     val opacity by repository.backgroundOpacity.collectAsState(initial = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsState(initial = false)
@@ -529,6 +530,16 @@ fun FloatingGlucoseSettingsScreen(
                 modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
             )
         }
+
+        Spacer(Modifier.height(8.dp))
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_tap_details),
+            subtitle = stringResource(R.string.floating_tap_details_desc),
+            checked = tapShowsDetails,
+            onCheckedChange = { repository.setTapShowsDetails(it) },
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel(

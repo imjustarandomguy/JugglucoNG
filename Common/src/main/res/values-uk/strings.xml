@@ -2958,4 +2958,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d записів</item>
         <item quantity="other">%d запису</item>
     </plurals>
+    <string name="floating_tap_details">Подробиці за натисканням</string>
+    <string name="floating_tap_details_desc">Натискання показує графік і подробиці, довге натискання відкриває застосунок</string>
 </resources>

@@ -2884,4 +2884,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entrée</item>
         <item quantity="other">%d entrées</item>
     </plurals>
+    <string name="floating_tap_details">Détails au toucher</string>
+    <string name="floating_tap_details_desc">Un appui affiche le graphique et les détails, un appui long ouvre l\'application</string>
 </resources>
