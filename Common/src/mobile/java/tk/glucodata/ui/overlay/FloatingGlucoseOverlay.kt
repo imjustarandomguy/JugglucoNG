@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
@@ -64,6 +65,7 @@ import tk.glucodata.data.calibration.CalibrationManager
 import tk.glucodata.ui.getDisplayValues
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.DisplayDataState
+import tk.glucodata.GlucoseValueTone
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
@@ -324,24 +326,51 @@ fun FloatingGlucoseOverlay(
         }
     }
 
+    val displayValues = displayPoint?.let { point ->
+        val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
+        currentSnapshot?.displayValues ?: run {
+            val isRawModeForCal = viewMode == 1 || viewMode == 3
+            val hasCalibration = !CalibrationManager.shouldOverwriteSensorValues() &&
+                CalibrationManager.hasActiveCalibration(isRawModeForCal)
+            val calibratedValue = if (hasCalibration) {
+                val baseValue = if (isRawModeForCal) point.rawValue else point.value
+                if (baseValue.isFinite() && baseValue > 0.1f) {
+                    CalibrationManager.getCalibratedValue(baseValue, point.timestamp, isRawModeForCal)
+                } else {
+                    null
+                }
+            } else null
+            getDisplayValues(point, viewMode, unit, calibratedValue)
+        }
+    }
+
+    // The value and arrow follow the app-wide "colour value by range" setting,
+    // as the dashboard hero and the notification do, and only while the
+    // reading is current. A filled pill is dark whatever the theme, so it
+    // takes the dark-theme shades.
+    val isFreshReading = glucosePoint != null &&
+        System.currentTimeMillis() - glucosePoint.timestamp <= Notify.glucosetimeout
+    val valueColor = if (isFreshReading && displayValues != null && GlucoseValueTone.valueRangeColorsEnabled()) {
+        Color(
+            GlucoseValueTone.valueColorArgb(
+                value = displayValues.primaryValue,
+                isDark = !isTransparent || isDarkTheme,
+                isMmol = unitInt == 1,
+                targetLow = runCatching { Natives.targetlow() }.getOrDefault(Float.NaN),
+                targetHigh = runCatching { Natives.targethigh() }.getOrDefault(Float.NaN),
+                veryLowThreshold = runCatching { Natives.alarmverylow() }.getOrDefault(Float.NaN),
+                veryHighThreshold = runCatching { Natives.alarmveryhigh() }.getOrDefault(Float.NaN),
+                fallbackArgb = finalTextColor.toArgb(),
+                enabled = true,
+            )
+        )
+    } else {
+        finalTextColor
+    }
+
     val valueContent: @Composable () -> Unit = {
-        if (displayPoint != null) {
-            val point = displayPoint
-            val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
-            val dvs = currentSnapshot?.displayValues ?: run {
-                val isRawModeForCal = viewMode == 1 || viewMode == 3
-                val hasCalibration = !CalibrationManager.shouldOverwriteSensorValues() &&
-                    CalibrationManager.hasActiveCalibration(isRawModeForCal)
-                val calibratedValue = if (hasCalibration) {
-                    val baseValue = if (isRawModeForCal) point.rawValue else point.value
-                    if (baseValue.isFinite() && baseValue > 0.1f) {
-                        CalibrationManager.getCalibratedValue(baseValue, point.timestamp, isRawModeForCal)
-                    } else {
-                        null
-                    }
-                } else null
-                getDisplayValues(point, viewMode, unit, calibratedValue)
-            }
+        if (displayValues != null) {
+            val dvs = displayValues
             val secondaryText = dvs.secondaryStr ?: SecondarySensorDisplay.fallback(
                 dvs, currentSensorId, peerReadings, freshnessNow
             )?.primaryStr
@@ -353,7 +382,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = finalTextColor,
+                        textColor = valueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -381,7 +410,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = finalTextColor,
+                        textColor = valueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -421,7 +450,7 @@ fun FloatingGlucoseOverlay(
             TrendIndicator(
                 trendResult = trendResult,
                 modifier = Modifier.size(if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize),
-                color = finalTextColor,
+                color = valueColor,
                 outlineColor = arrowOutlineColor,
                 shadowColor = arrowShadowColor
             )
@@ -553,7 +582,7 @@ fun FloatingGlucoseOverlay(
                     TrendIndicator(
                         trendResult,
                         Modifier.size(arrowSize),
-                        finalTextColor,
+                        valueColor,
                         outlineColor = arrowOutlineColor,
                         shadowColor = arrowShadowColor
                     )
