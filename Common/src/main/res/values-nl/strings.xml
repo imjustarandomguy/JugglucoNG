@@ -2998,5 +2998,5 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="nightscout_api_help">Gebruik een API-geheim voor v1 of een Nightscout-toegangstoken voor v3.</string>
     <string name="nightscout_iob_help">eIOB en COB worden in het veld jugglucong van devicestatus verstuurd, los van de standaard-IOB.</string>
     <string name="status_bar_icon_colored_title">Gekleurd statusbalkpictogram</string>
-    <string name="status_bar_icon_colored_desc">Tekent de waarde in de statusbalk in de kleur van het bereik. Sommige telefoons (bijv. Samsung) tonen hem in kleur, andere altijd wit.</string>
+    <string name="status_bar_icon_colored_desc">Tekent de waarde in de statusbalk in de kleur van het bereik.</string>
 </resources>
