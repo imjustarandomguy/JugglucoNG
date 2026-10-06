@@ -40,6 +40,9 @@ import tk.glucodata.Natives
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private companion object {
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
+        // Notify.glucosenotificationid and Notify's GLUCOSENOTIFICATION channel.
+        private const val GLUCOSE_NOTIFICATION_ID = 81431
+        private const val GLUCOSE_CHANNEL_ID = "glucoseNotification"
     }
 
     enum class CutoutEdge {
@@ -83,22 +86,30 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         
-        // Satisfy Foreground Service requirement immediately
-        startForeground(81431, createForegroundNotification())
+        // Satisfy Foreground Service requirement immediately. The id is the
+        // glucose notification's, so both services share one notification;
+        // put the glucose notification back over this placeholder at once.
+        startForeground(GLUCOSE_NOTIFICATION_ID, createForegroundNotification())
+        tk.glucodata.Notify.showoldglucose()
     }
-    
+
     private fun createForegroundNotification(): android.app.Notification {
-        val channelId = "glucoseNotification"
-        val channelName = "JugglucoNG Service"
-        
+        // The glucose notification's own channel, which Notify creates at
+        // startup. This used to recreate it as "JugglucoNG Service", renaming
+        // the channel in the system settings: a user turning off what looked
+        // like a service notification silenced the glucose notification too,
+        // for good, since the app cannot switch a blocked channel back on.
+        // Only create it here if Notify has not yet, under Notify's own name.
+        val channelId = GLUCOSE_CHANNEL_ID
+
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val chan = android.app.NotificationChannel(channelId, channelName, android.app.NotificationManager.IMPORTANCE_HIGH)
-            chan.lockscreenVisibility = android.app.Notification.VISIBILITY_PRIVATE
-            chan.setShowBadge(true) // Standard behavior
-            chan.description = "Glucose Levels"
-            
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            manager.createNotificationChannel(chan)
+            if (manager.getNotificationChannel(channelId) == null) {
+                val chan = android.app.NotificationChannel(channelId, channelId, android.app.NotificationManager.IMPORTANCE_HIGH)
+                chan.setSound(null, null)
+                chan.description = getString(tk.glucodata.R.string.notification_description)
+                manager.createNotificationChannel(chan)
+            }
         }
         
         val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
@@ -367,6 +378,16 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     override fun onDestroy() {
+        // Leave the shared notification in place: it is the glucose
+        // notification, which keeprunning still holds. Removing it with this
+        // service made turning the overlay off take the glucose notification
+        // away until the next reading reposted it.
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_DETACH)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(false)
+        }
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
         serviceScope.cancel()
