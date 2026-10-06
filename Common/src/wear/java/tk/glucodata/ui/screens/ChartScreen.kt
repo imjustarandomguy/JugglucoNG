@@ -618,9 +618,7 @@ internal fun WearChart(
         Modifier
     } else {
         Modifier
-            // Tells the window's swipe-to-dismiss that sideways drags here pan
-            // the chart. Without it the system takes them as a dismiss swipe,
-            // since the pan detector below exposes no scroll semantics.
+            // Reports horizontal scroll so the window's swipe-to-dismiss leaves sideways pans to the chart.
             .semantics {
                 horizontalScrollAxisRange = ScrollAxisRange(value = { 0.5f }, maxValue = { 1f })
             }
