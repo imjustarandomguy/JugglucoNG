@@ -336,16 +336,18 @@ object WearSync2 {
 
 
     /**
-     * Canonical storage name, so an alias cannot create a parallel record.
-     *
-     * A record this device made under the sensor's short alias wins, even over
-     * one under the full name: the mirrored selection names the sensor by that
-     * alias, which native resolves to the alias-named record first, so that is
-     * the one every screen and complication reads.
+     * Canonical storage name, so an alias cannot create a parallel record. A
+     * record made under the sensor's short alias is used when it exists, unless
+     * the screens show the full-named one.
      */
     private fun existingSensorNameFor(serial: String): String? {
-        val canonical = SensorIdentity.canonicalSensorId(serial)
-        return SensorIdentity.shortNamedNativeRecord(canonical ?: serial) ?: canonical
+        val canonical = SensorIdentity.canonicalSensorId(serial) ?: return null
+        val alias = SensorIdentity.shortNamedNativeRecord(canonical) ?: return canonical
+        val shown = runCatching { WearSensorSelectionSync.primary() }.getOrNull()
+            ?.let { WearSensorSelectionSync.localName(it) }
+        val showsOne = shown != null &&
+            (shown.equals(canonical, ignoreCase = true) || shown.equals(alias, ignoreCase = true))
+        return if (showsOne) shown else alias
     }
 
     private fun sendCalibration(serial: String) {
