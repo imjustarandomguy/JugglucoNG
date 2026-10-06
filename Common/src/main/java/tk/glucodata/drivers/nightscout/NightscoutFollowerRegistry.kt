@@ -4,6 +4,7 @@ import android.content.Context
 import java.net.HttpURLConnection
 import java.security.MessageDigest
 import java.util.Locale
+import tk.glucodata.Log
 import tk.glucodata.ManagedCurrentSensor
 import tk.glucodata.Natives
 import tk.glucodata.SensorBluetooth
@@ -13,6 +14,7 @@ import tk.glucodata.drivers.ManagedBluetoothSensorDriver
 import tk.glucodata.drivers.ManagedSensorUiSignals
 
 object NightscoutFollowerRegistry {
+    private const val TAG = "NightscoutFollower"
     private const val PREFS_NAME = "tk.glucodata_preferences"
     private const val PREF_ENABLED = "nightscout_follower_enabled"
     private const val PREF_URL = "nightscout_follower_url"
@@ -195,13 +197,90 @@ object NightscoutFollowerRegistry {
         ManagedCurrentSensor.clearIfMatches(sensorId)
         saveConfig(context, enabled = false, url = loadConfig(context).url, secret = loadConfig(context).secret)
         SensorBluetooth.mygatts()
-            .firstOrNull { SensorIdentity.matches(it.SerialNumber, sensorId) }
-            ?.let { callback ->
+            .filter { SensorIdentity.matches(it.SerialNumber, sensorId) }
+            .forEach { callback ->
                 if (callback is ManagedBluetoothSensorDriver) {
                     callback.terminateManagedSensor(wipeData = false)
                 }
                 SensorBluetooth.sensorEnded(callback.SerialNumber)
             }
+        endInactiveFollowerRecords(context)
+    }
+
+    /**
+     * Ends the native record of every follower that is not the enabled one, the way a finished
+     * sensor ends: its readings stay, but [Natives.activeSensors] stops listing it. While listed,
+     * a stopped follower's record was still served to the watch, and the next roster rebuild gave
+     * it a Libre callback that scanned for a sensor that does not exist. Enabling the follower
+     * again reactivates the record with its next reading.
+     *
+     * Runs when the follower stops, and at startup for records an earlier version left active.
+     */
+    fun endInactiveFollowerRecords(context: Context) {
+        val config = loadConfig(context)
+        val active = runCatching { Natives.activeSensors() }
+            .onFailure { Log.stack(TAG, "endInactiveFollowerRecords(activeSensors)", it) }
+            .getOrNull() ?: return
+        val inactive = inactiveFollowerRecords(
+            activeNames = active,
+            enabledSensorId = config.sensorId.takeIf { config.isUsable },
+            fullName = Natives::resolveFullSensorName,
+        )
+        if (inactive.isEmpty()) return
+        inactive.forEach(::endNativeRecord)
+        ManagedSensorUiSignals.markDeviceListDirty()
+    }
+
+    /**
+     * The follower records among [activeNames], as [Natives.activeSensors] lists them, that the
+     * enabled follower ([enabledSensorId], null when none is) does not write to. Native lists a
+     * 16-character record without its first five characters, which hides the NSF- prefix, so
+     * each name is looked up as the record's full name first. Returns full names, each once.
+     */
+    internal fun inactiveFollowerRecords(
+        activeNames: Array<out String?>?,
+        enabledSensorId: String?,
+        fullName: (String) -> String?,
+    ): List<String> =
+        activeNames.orEmpty()
+            .asSequence()
+            .mapNotNull { name -> followerRecordName(name, fullName) }
+            .filterNot { matchesSensorId(it, enabledSensorId) }
+            .distinctBy { it.uppercase(Locale.US) }
+            .toList()
+
+    /** The full follower id of native record [name] (full or short), or null for any other sensor. */
+    internal fun followerRecordName(name: String?, fullName: (String) -> String?): String? {
+        val trimmed = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (isFollowerSensorId(trimmed)) return trimmed
+        return fullName(trimmed)?.trim()?.takeIf { isFollowerSensorId(it) }
+    }
+
+    private fun endNativeRecord(sensorId: String) {
+        // finishSensor() works on a stream, which carries the record's exact list index; the
+        // stream is only borrowed for that.
+        val dataptr = runCatching { Natives.getdataptr(sensorId) }.getOrDefault(0L)
+        if (dataptr == 0L) {
+            Log.w(TAG, "No native record to end for $sensorId")
+            return
+        }
+        try {
+            Natives.finishSensor(dataptr)
+            Log.i(TAG, "Ended native record of inactive follower $sensorId")
+        } catch (t: Throwable) {
+            Log.stack(TAG, "endNativeRecord($sensorId)", t)
+            return
+        } finally {
+            runCatching { Natives.freedataptr(dataptr) }
+        }
+        runCatching {
+            ManagedCurrentSensor.clearIfMatches(sensorId)
+            if (SensorIdentity.matches(Natives.lastsensorname(), sensorId)) {
+                SensorBluetooth.setCurrentSensorSelection(
+                    SensorBluetooth.resolveReplacementSensorSerial(sensorId) ?: ""
+                )
+            }
+        }.onFailure { Log.stack(TAG, "endNativeRecord($sensorId) current sensor", it) }
     }
 
     fun connectSensor(context: Context, sensorId: String) {

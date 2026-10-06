@@ -88,6 +88,9 @@ object ManagedSensorIdentityRegistry {
     fun usesNativeDirectStreamShell(sensorId: String?): Boolean =
         orderedAdapters(sensorId, Applic.app).any { it.usesNativeDirectStreamShell(sensorId) }
 
+    fun isCloudNativeMirror(sensorId: String?): Boolean =
+        all.any { it.isCloudNativeMirror(sensorId) }
+
     fun hasNativeSensorBacking(sensorId: String?): Boolean? =
         orderedAdapters(sensorId, Applic.app)
             .mapNotNull { it.hasNativeSensorBacking(sensorId) }
