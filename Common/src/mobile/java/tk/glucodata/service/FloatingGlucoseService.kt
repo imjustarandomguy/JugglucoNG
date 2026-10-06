@@ -40,9 +40,6 @@ import tk.glucodata.Natives
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private companion object {
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
-        // Notify.glucosenotificationid and Notify's GLUCOSENOTIFICATION channel.
-        private const val GLUCOSE_NOTIFICATION_ID = 81431
-        private const val GLUCOSE_CHANNEL_ID = "glucoseNotification"
     }
 
     enum class CutoutEdge {
@@ -86,37 +83,16 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
         
-        // Satisfy Foreground Service requirement immediately. The id is the
-        // glucose notification's, so both services share one notification;
-        // put the glucose notification back over this placeholder at once.
-        startForeground(GLUCOSE_NOTIFICATION_ID, createForegroundNotification())
+        // Satisfy Foreground Service requirement immediately
+        // Same id as the glucose notification, so both services share one; repost it over the placeholder.
+        startForeground(tk.glucodata.Notify.GLUCOSE_NOTIFICATION_ID, createForegroundNotification())
         tk.glucodata.Notify.showoldglucose()
     }
 
     private fun createForegroundNotification(): android.app.Notification {
-        // The glucose notification's own channel, which Notify creates at
-        // startup. This used to recreate it as "JugglucoNG Service", renaming
-        // the channel in the system settings: a user turning off what looked
-        // like a service notification silenced the glucose notification too,
-        // for good, since the app cannot switch a blocked channel back on.
-        // Only create it here if Notify has not yet, under Notify's own name.
-        val channelId = GLUCOSE_CHANNEL_ID
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-            if (manager.getNotificationChannel(channelId) == null) {
-                val chan = android.app.NotificationChannel(channelId, channelId, android.app.NotificationManager.IMPORTANCE_HIGH)
-                chan.setSound(null, null)
-                chan.description = getString(tk.glucodata.R.string.notification_description)
-                manager.createNotificationChannel(chan)
-            }
-        }
-        
-        val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            android.app.Notification.Builder(this, channelId)
-        } else {
-            android.app.Notification.Builder(this)
-        }
+        // Notify's glucose channel, unchanged: another name here would relabel it in system settings.
+        tk.glucodata.Notify.ensureNotificationChannels(applicationContext)
+        val builder = android.app.Notification.Builder(this, tk.glucodata.Notify.GLUCOSE_CHANNEL_ID)
         
         val prefs = getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
         val hideIcon = prefs.getBoolean("notification_hide_status_icon", false)
@@ -378,16 +354,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     override fun onDestroy() {
-        // Leave the shared notification in place: it is the glucose
-        // notification, which keeprunning still holds. Removing it with this
-        // service made turning the overlay off take the glucose notification
-        // away until the next reading reposted it.
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-            stopForeground(STOP_FOREGROUND_DETACH)
-        } else {
-            @Suppress("DEPRECATION")
-            stopForeground(false)
-        }
+        // The id is shared with keeprunning's glucose notification; detach it while keeprunning still holds it.
+        val held = tk.glucodata.Notify.keeprunningHoldsGlucoseNotification()
+        stopForeground(if (held) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
         serviceScope.cancel()
