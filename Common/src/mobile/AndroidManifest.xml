@@ -150,6 +150,7 @@
         <!-- Lets the floating glucose be drawn above the status bar. -->
         <service
             android:name=".service.FloatingAccessibilityService"
+            android:enabled="false"
             android:exported="true"
             android:label="@string/floating_accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
