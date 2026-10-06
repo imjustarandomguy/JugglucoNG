@@ -75,4 +75,21 @@ class NightscoutUploaderWiringTests {
                 Regex("""nowms\s*=\s*elapsedRealtimeMilliseconds\(\)""").containsMatchIn(text),
         )
     }
+
+    /**
+     * "Upload only on Wi-Fi" is a promise that nothing goes out over mobile data, so the
+     * pass asks before its first request of any kind: glucose, treatments, device status.
+     */
+    @Test
+    fun aPassAsksForItsNetworkBeforeSendingAnything() {
+        val text = uploader()
+        val thread = text.substring(text.indexOf("static void uploaderthread()"))
+        val gate = thread.indexOf("if(!uploadNetworkAllowed())")
+        assertTrue("the uploader thread no longer asks uploadNetworkAllowed()", gate >= 0)
+        for (request in listOf("uploadCGM3(", "uploadCGM(", "uploadJournalTreatmentsViaJava(", "uploadDeviceStatus();")) {
+            val at = thread.indexOf(request)
+            assertTrue("$request is not in the uploader thread any more, so this test is vacuous", at >= 0)
+            assertTrue("$request comes before the network is asked", at > gate)
+        }
+    }
 }
