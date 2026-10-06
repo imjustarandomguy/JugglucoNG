@@ -69,10 +69,13 @@ class ConnectModeLeverTests {
         // files are listed because the 2026-09-09 CT5 trace did measure it — see the next test
         // for what that override is still held to. Libre 2's fresh direct connections follow the
         // same-sensor classic Juggluco recovery trace reported in issue #519.
+        // DexGattCallback is listed because a bonded G7 was measured: between its five-minute
+        // sessions every direct connect timed out (status 147).
         val measured = setOf(
             "AnytimeBleManager.kt",
             "AnytimeConnectRetryPolicy.kt",
             "AnytimeConnectRetryPolicyTests.kt",
+            "DexGattCallback.java",
             "Libre2GattCallback.java",
         )
         val overriders = sources("Common/src")
@@ -111,6 +114,33 @@ class ConnectModeLeverTests {
                 "direct connect decide it; AnytimeConnectModeState is that one place",
             2,
             Regex("directConnectUnreachable = (true|false)").findAll(policy).count(),
+        )
+    }
+
+    @Test
+    fun theDexcomOverrideStaysGatedOnABond() {
+        // The measurement covers a known, bonded sensor. Before bonding the stack may not know
+        // the sensor's address type, so pairing must keep the user's setting (direct by default).
+        val text = File(repoRoot(), "Common/src/dex/java/tk/glucodata/DexGattCallback.java")
+            .readText().replace(Regex("\\s+"), "")
+        val signature = "booleanuseAutoConnect(){"
+        val start = text.indexOf(signature)
+        assertTrue("DexGattCallback must override useAutoConnect()", start >= 0)
+        val open = start + signature.length - 1
+        var end = open
+        var depth = 0
+        do {
+            if (text[end] == '{') depth++ else if (text[end] == '}') depth--
+            end++
+        } while (depth > 0 && end < text.length)
+        val body = text.substring(open + 1, end - 1)
+        assertTrue(
+            "the Dexcom override must start from the application-wide setting",
+            body.contains("super.useAutoConnect()"),
+        )
+        assertTrue(
+            "the Dexcom override may only switch modes for a known, bonded sensor",
+            body.contains("known") && body.contains("BOND_BONDED"),
         )
     }
 

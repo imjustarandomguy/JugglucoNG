@@ -179,6 +179,27 @@ private void releaselock() {
    } 
 private int triedinvain=0;
 
+/**
+ * A known, bonded G7 reconnects with autoConnect. It is connectable only around its
+ * five-minute session, so a direct connect issued in between times out (status 147)
+ * and is retried; a background connect lets the controller wait for the next
+ * advertisement with the CPU asleep. If it never fires, the loss-of-signal
+ * reconnect re-arms it. Before bonding the stack may not know the sensor's address
+ * type, so pairing keeps direct connects and scans.
+ */
+@SuppressLint("MissingPermission")
+@Override
+protected boolean useAutoConnect() {
+    if(super.useAutoConnect())
+        return true;
+    final var device=mActiveBluetoothDevice;
+    try {
+        return known&&!removedBond&&device!=null&&device.getBondState()==BOND_BONDED;
+    } catch(Throwable th) {
+        return false;
+    }
+}
+
 private boolean connected=false;
 private int connectionTimeouts=0;
     @SuppressLint("MissingPermission")
@@ -300,6 +321,13 @@ private int connectionTimeouts=0;
                             } else {
                                 sensorbluetooth.connectToActiveDevice(this, stillwait);
                             }
+                        }
+                        else if(useAutoConnect()) {
+                            // A background connect waits for the next advertisement
+                            // itself: no alarm to wake for, no direct connect to time out.
+                            cancelalarm();
+                            {if(doLog) {Log.i(LOG_ID, "autoConnect: wait for the next session");};};
+                            sensorbluetooth.connectToActiveDevice(this, 0);
                         }
                         else if(getalarmclock()) {
                             //long stillwait=justdata?(6700-alreadywaited):0;
