@@ -405,9 +405,7 @@ fun JournalScreen(
                     null
                 )
             },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp)
+            modifier = Modifier.matchParentSize()
         )
     }
 }
