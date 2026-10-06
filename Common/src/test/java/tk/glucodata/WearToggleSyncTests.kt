@@ -102,9 +102,7 @@ class WearToggleSyncTests {
 
     @Test
     fun thePhonesReplyIsObservable() {
-        // The watch's switches redraw from `state`. When the reply only reached
-        // a plain field, a flipped switch kept showing the state from before
-        // the tap until something unrelated recomposed the screen.
+        // onState must publish the reply to state, which the switches render from.
         val reply = listOf(toggle(WearToggleSync.SCOPE_EXCHANGE, ExchangeToggles.ID_GADGETBRIDGE, true))
         WearToggleSync.onState(WearToggleSync.encode(reply))
         assertEquals(reply, WearToggleSync.state.value)
