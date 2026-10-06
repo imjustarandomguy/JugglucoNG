@@ -1381,6 +1381,12 @@ public class Natives {
 
         public static native boolean dexKnownSensor(long dataptr);
 
+        /** {full record name, scanned code, Bluetooth name or "", start in seconds} of a G7, else null. */
+        public static native String[] dexHandoff(String sensor);
+
+        /** Makes this device's record for a G7 one its Dexcom driver can connect with. */
+        public static native boolean dexAdoptSensor(String sensor, String code, long startSec, String deviceName);
+
         public static native long[] activeSensorPtrs();
 
         public static native String namefromSensorptr(long sensorptr);

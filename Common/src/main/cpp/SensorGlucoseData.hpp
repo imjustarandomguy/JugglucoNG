@@ -1596,6 +1596,30 @@ bool libreviewable() const {
     return true;
   }
 
+  // Makes a record that held a G7's synced readings, in 1-minute slots, the
+  // record its Dexcom driver writes: the header mkdatabaseDex would write and
+  // 5-minute slots from the sensor's start. The old slots mean nothing in that
+  // layout, so they are cleared; the caller syncs them again.
+  void becomeDexcom(std::string_view code, uint32_t sensorstart) {
+    rebaseDirectStreamWindow(sensorstart);
+    auto *info = getinfo();
+    info->lastscantime = sensorstart;
+    info->starthistory = 0;
+    info->endhistory = 0;
+    info->scancount = 0;
+    info->startid = 0;
+    info->interval = interval5;
+    info->dexcom = true;
+    info->days = maxdaysDex;
+    info->warmup = 30;
+    info->wearduration = 14400;
+    info->lastLifeCountReceived = 1;
+    info->lastHistoricLifeCountReceivedPos = 0;
+    info->healthconnectiter = 0;
+    info->siIdlen = std::min(code.size(), sizeof(info->siId));
+    memcpy(info->siId, code.data(), info->siIdlen);
+  }
+
 #endif
   /*
 bool bluetoothfirst() const {
