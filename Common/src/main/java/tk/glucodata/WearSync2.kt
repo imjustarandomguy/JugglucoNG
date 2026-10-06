@@ -417,6 +417,27 @@ object WearSync2 {
     // ---- watch side ----
 
     /**
+     * The phone handed this watch a G7 to read itself: make the record the
+     * watch keeps for it, the one its screens show, a Dexcom record its driver
+     * can connect with. Runs on the sync thread so no chunk is written while the
+     * record changes layout; the deep sync that follows the handoff refills it.
+     */
+    @JvmStatic
+    fun adoptDexcomSensor(serial: String, code: String, startSec: Long, deviceName: String?) {
+        executor.execute {
+            runCatching {
+                val local = existingSensorNameFor(serial) ?: serial
+                if (Natives.dexAdoptSensor(local, code, startSec, deviceName)) {
+                    Log.i(LOG_ID, "G7 $serial adopted as Dexcom record $local")
+                    SensorBluetooth.updateDevices()
+                } else {
+                    Log.e(LOG_ID, "could not adopt G7 $serial as $local")
+                }
+            }.onFailure { Log.stack(LOG_ID, "adoptDexcomSensor", it) }
+        }
+    }
+
+    /**
      * Ask the phone for what we are missing. [deep] asks for the whole horizon
      * (app open, empty store); the routine path only asks for the tail, so a
      * fortnight of readings is not re-sent — and re-decoded — every few
