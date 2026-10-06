@@ -84,8 +84,26 @@ object SensorIdentity {
     }
 
     /**
-     * The native record named after [sensorId]'s short alias (the name minus its
-     * five-character prefix, see sensoren.hpp shortsensorname_view), or null.
+     * [sensorId]'s short alias (the name minus its five-character prefix, see
+     * sensoren.hpp shortsensorname_view), or null when it has none. Native
+     * treats both names as the same sensor.
+     */
+    @JvmStatic
+    fun nativeAlias(sensorId: String?): String? {
+        if (runCatching { isManagedCanonicalSensorId(sensorId) }.getOrDefault(false)) return null
+        return aliasOf(sensorId)
+    }
+
+    /** [nativeAlias] without the managed-driver check. */
+    internal fun aliasOf(sensorId: String?): String? {
+        val raw = normalized(sensorId) ?: return null
+        // "X-" names have no alias; "SIBI:" and the like are managed ids.
+        if (raw.length <= 11 || raw.startsWith("X-") || raw.contains(':')) return null
+        return raw.substring(NATIVE_PREFIX_LENGTH)
+    }
+
+    /**
+     * The native record named after [sensorId]'s [nativeAlias], or null.
      * Native resolves an alias to a full-named record but not the reverse, so a
      * record created under the alias has to be looked up explicitly.
      */
@@ -99,10 +117,7 @@ object SensorIdentity {
 
     /** [shortNamedNativeRecord] with the native lookup passed in. */
     internal fun shortNamedRecord(sensorId: String?, fullNameOf: (String) -> String?): String? {
-        val raw = normalized(sensorId) ?: return null
-        // "X-" names have no alias; "SIBI:" and the like are managed ids.
-        if (raw.length <= 11 || raw.startsWith("X-") || raw.contains(':')) return null
-        val alias = raw.substring(NATIVE_PREFIX_LENGTH)
+        val alias = aliasOf(sensorId) ?: return null
         // Only a record named after the alias itself: one named by the full
         // name answers to the alias too, and that one is [raw]'s own.
         return fullNameOf(alias)?.trim()?.takeIf { it.equals(alias, ignoreCase = true) }

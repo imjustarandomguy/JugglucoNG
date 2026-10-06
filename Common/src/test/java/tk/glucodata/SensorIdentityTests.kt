@@ -263,4 +263,12 @@ class SensorIdentityTests {
         assertNull(SensorIdentity.shortNamedRecord(null, anything))
     }
 
+    @Test
+    fun aliasOf_dropsTheFiveCharacterPrefix() {
+        assertEquals(alias, SensorIdentity.aliasOf(fullName))
+        assertNull(SensorIdentity.aliasOf(alias))
+        assertNull(SensorIdentity.aliasOf("X-1234567890123"))
+        assertNull(SensorIdentity.aliasOf("SIBI:P225043JMV"))
+    }
+
 }
