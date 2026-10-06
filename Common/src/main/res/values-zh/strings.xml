@@ -2894,10 +2894,10 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d 条记录</item>
     </plurals>
     <string name="floating_tap_details">点按显示详情</string>
-    <string name="floating_tap_details_desc">点按显示图表和详情，长按打开应用</string>
+    <string name="floating_tap_details_desc">点按显示图表和详情</string>
     <string name="floating_above_status_bar">显示在状态栏之上</string>
-    <string name="floating_above_status_bar_desc">也可在状态栏上点按和拖动</string>
+    <string name="floating_above_status_bar_desc">在状态栏之上也可点按</string>
     <string name="floating_accessibility_service_off">请在无障碍设置中开启“%1$s”</string>
     <string name="floating_accessibility_service_label">JugglucoNG 悬浮血糖</string>
-    <string name="floating_accessibility_service_desc">让悬浮血糖可在状态栏之上点按。不读取屏幕内容。</string>
+    <string name="floating_accessibility_service_desc">让悬浮血糖可在状态栏之上点按。不读取屏幕。</string>
 </resources>

@@ -2995,10 +2995,10 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
         <item quantity="other">%d Einträge</item>
     </plurals>
     <string name="floating_tap_details">Details beim Antippen</string>
-    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details, langes Drücken öffnet die App</string>
+    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details</string>
     <string name="floating_above_status_bar">Über der Statusleiste</string>
-    <string name="floating_above_status_bar_desc">Auch über der Statusleiste antippen und verschieben</string>
-    <string name="floating_accessibility_service_off">Aktiviere „%1$s“ in den Bedienungshilfen</string>
+    <string name="floating_above_status_bar_desc">Bleibt über der Statusleiste antippbar</string>
+    <string name="floating_accessibility_service_off">Aktivieren Sie „%1$s“ in den Bedienungshilfen</string>
     <string name="floating_accessibility_service_label">JugglucoNG schwebender Glukosewert</string>
-    <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest nichts vom Bildschirm.</string>
+    <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest den Bildschirm nicht.</string>
 </resources>

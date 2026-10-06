@@ -2921,10 +2921,10 @@
         <item quantity="other">%d wpisu</item>
     </plurals>
     <string name="floating_tap_details">Szczegóły po dotknięciu</string>
-    <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły, przytrzymanie otwiera aplikację</string>
+    <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły</string>
     <string name="floating_above_status_bar">Nad paskiem stanu</string>
-    <string name="floating_above_status_bar_desc">Dotykaj i przeciągaj także nad paskiem stanu</string>
+    <string name="floating_above_status_bar_desc">Można dotykać także nad paskiem stanu</string>
     <string name="floating_accessibility_service_off">Włącz „%1$s” w ustawieniach ułatwień dostępu</string>
     <string name="floating_accessibility_service_label">JugglucoNG pływająca glukoza</string>
-    <string name="floating_accessibility_service_desc">Pozwala dotykać pływającej glukozy nad paskiem stanu. Niczego nie odczytuje z ekranu.</string>
+    <string name="floating_accessibility_service_desc">Pozwala dotykać pływającej glukozy nad paskiem stanu. Nie odczytuje ekranu.</string>
 </resources>

@@ -644,15 +644,22 @@ fun FloatingGlucoseSettingsScreen(
                 title = stringResource(R.string.floating_tap_details),
                 subtitle = stringResource(R.string.floating_tap_details_desc),
                 checked = tapShowsDetails,
-                onCheckedChange = { repository.setTapShowsDetails(it) },
+                onCheckedChange = {
+                    repository.setTapShowsDetails(it)
+                    tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && aboveStatusBar)
+                },
                 position = CardPosition.TOP
             )
+            // Drawn over the status bar so the details can be opened from there.
             SettingsSwitchItem(
                 title = stringResource(R.string.floating_above_status_bar),
                 subtitle = stringResource(R.string.floating_above_status_bar_desc),
                 checked = aboveStatusBar && tapShowsDetails,
                 enabled = tapShowsDetails,
-                onCheckedChange = { repository.setAboveStatusBar(it) },
+                onCheckedChange = {
+                    repository.setAboveStatusBar(it)
+                    tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && tapShowsDetails)
+                },
                 position = CardPosition.BOTTOM
             )
         }

@@ -2922,10 +2922,10 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
         <item quantity="other">%d items</item>
     </plurals>
     <string name="floating_tap_details">Details bij tikken</string>
-    <string name="floating_tap_details_desc">Tikken toont de grafiek en details, lang drukken opent de app</string>
+    <string name="floating_tap_details_desc">Tikken toont de grafiek en details</string>
     <string name="floating_above_status_bar">Boven de statusbalk</string>
-    <string name="floating_above_status_bar_desc">Ook boven de statusbalk aantikken en verslepen</string>
+    <string name="floating_above_status_bar_desc">Blijft aantikbaar boven de statusbalk</string>
     <string name="floating_accessibility_service_off">Zet ‘%1$s’ aan in de toegankelijkheidsinstellingen</string>
     <string name="floating_accessibility_service_label">JugglucoNG zwevende glucose</string>
-    <string name="floating_accessibility_service_desc">Maakt de zwevende glucose boven de statusbalk aantikbaar. Leest niets van het scherm.</string>
+    <string name="floating_accessibility_service_desc">Maakt de zwevende glucose boven de statusbalk aantikbaar. Leest het scherm niet.</string>
 </resources>

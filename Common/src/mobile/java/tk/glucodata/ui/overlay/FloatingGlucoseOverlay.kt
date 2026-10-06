@@ -60,6 +60,9 @@ import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
 
 /** The reading a details card is opened for. */
+/** Width of the details card; the service places its window by it. */
+internal val FloatingDetailsCardWidth = 260.dp
+
 data class FloatingDetailsRequest(
     val point: GlucosePoint,
     val sensorId: String?,
@@ -78,6 +81,8 @@ fun FloatingGlucoseOverlay(
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
     /** Opens or closes the details card on a tap ("Details on tap"); otherwise a tap opens the app. */
     onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
+    /** Opens the app (a tap with "Details on tap" off, or a long press on the island). */
+    onOpenApp: () -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -271,10 +276,6 @@ fun FloatingGlucoseOverlay(
     val sideSecondarySpacing = (fontSize * 0.08f).coerceIn(1f, 4f).dp
     val sideSecondaryFontSize = fontSize * 0.58f
 
-    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-    }
-    val openApp: () -> Unit = { launchIntent?.let { context.startActivity(it) } }
     val onPillTap: () -> Unit = {
         val toggle = onToggleDetails?.takeIf { tapShowsDetails }
         if (toggle != null && glucosePoint != null) {
@@ -288,7 +289,7 @@ fun FloatingGlucoseOverlay(
                 )
             )
         } else {
-            openApp()
+            onOpenApp()
         }
     }
 
@@ -408,7 +409,7 @@ fun FloatingGlucoseOverlay(
             .combinedClickable(
                 interactionSource = overlayInteractionSource,
                 indication = null,
-                onLongClick = openApp,
+                onLongClick = onOpenApp,
                 onClick = onPillTap,
             )
         CutoutOffsetLayout(
@@ -504,7 +505,7 @@ fun FloatingGlucoseOverlay(
                 .combinedClickable(
                     interactionSource = overlayInteractionSource,
                     indication = overlayIndication,
-                    onLongClick = openApp,
+                    // No long press: holding the free pill is how a drag starts.
                     onClick = onPillTap,
                 )
         ) {
@@ -546,12 +547,12 @@ fun FloatingDetailsCard(
     val displayGlucose = request.displayGlucose
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val cardWidth = 260.dp
+    val cardWidth = FloatingDetailsCardWidth
     val chartHeight = 110.dp
     val chartWidthPx = with(density) { (cardWidth - 24.dp).roundToPx() }
     val chartHeightPx = with(density) { chartHeight.roundToPx() }
     val details by produceState<tk.glucodata.FloatingDetailsSource.Details?>(null, point.timestamp, sensorId, viewMode, isDark) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             tk.glucodata.FloatingDetailsSource.load(
                 context, sensorId, isMmol, viewMode, chartWidthPx, chartHeightPx, isDark, displayGlucose,
             )

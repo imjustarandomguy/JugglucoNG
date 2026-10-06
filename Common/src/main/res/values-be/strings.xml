@@ -2954,10 +2954,10 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d запісу</item>
     </plurals>
     <string name="floating_tap_details">Падрабязнасці па націску</string>
-    <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці; доўгі націск адкрывае праграму</string>
+    <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці</string>
     <string name="floating_above_status_bar">Над радком стану</string>
-    <string name="floating_above_status_bar_desc">Націскайце і перацягвайце яго і над радком стану</string>
+    <string name="floating_above_status_bar_desc">Можна націскаць і над радком стану</string>
     <string name="floating_accessibility_service_off">Уключыце «%1$s» у наладах спецыяльных магчымасцей</string>
     <string name="floating_accessibility_service_label">JugglucoNG плаваючая глюкоза</string>
-    <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Нічога не чытае з экрана.</string>
+    <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Не чытае экран.</string>
 </resources>

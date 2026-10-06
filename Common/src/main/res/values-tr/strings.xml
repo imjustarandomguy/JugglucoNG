@@ -2907,10 +2907,10 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="other">%d kayıt</item>
     </plurals>
     <string name="floating_tap_details">Dokununca ayrıntılar</string>
-    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir, uzun basma uygulamayı açar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir</string>
     <string name="floating_above_status_bar">Durum çubuğunun üstünde</string>
-    <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunup sürükleyin</string>
+    <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunulabilir</string>
     <string name="floating_accessibility_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın</string>
-    <string name="floating_accessibility_service_label">JugglucoNG yüzen glukoz</string>
-    <string name="floating_accessibility_service_desc">Yüzen glukozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekrandan hiçbir şey okumaz.</string>
+    <string name="floating_accessibility_service_label">JugglucoNG yüzen glikoz</string>
+    <string name="floating_accessibility_service_desc">Yüzen glikozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekranı okumaz.</string>
 </resources>

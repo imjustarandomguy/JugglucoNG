@@ -3064,10 +3064,10 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="other">%d qoraal</item>
     </plurals>
     <string name="floating_tap_details">Faahfaahin marka la taabto</string>
-    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta</string>
     <string name="floating_above_status_bar">Korka baararka xaaladda</string>
-    <string name="floating_above_status_bar_desc">Sidoo kale ku taabo oo jiid korka baararka xaaladda</string>
+    <string name="floating_above_status_bar_desc">Weli waa la taaban karaa korka baararka xaaladda</string>
     <string name="floating_accessibility_service_off">Shid “%1$s” ee goobaha gelitaanka</string>
     <string name="floating_accessibility_service_label">JugglucoNG gulukoos sabaynaya</string>
-    <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Waxba kama akhriso shaashadda.</string>
+    <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Ma akhriyo shaashadda.</string>
 </resources>

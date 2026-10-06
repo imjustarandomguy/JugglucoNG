@@ -4,9 +4,9 @@ import android.content.Context
 import android.graphics.Bitmap
 
 /**
- * What the floating glucose's details card shows when it is tapped: the glucose
- * notification's chart, Δ and IOB/COB line, built from the same history and
- * helpers so the card says what the notification would.
+ * What the floating glucose's details card shows: a chart, the Δ and the IOB/COB
+ * line, from the same history and helpers as the glucose notification (the chart
+ * without prediction or other sensors).
  */
 object FloatingDetailsSource {
     private const val PREFS = "tk.glucodata_preferences"

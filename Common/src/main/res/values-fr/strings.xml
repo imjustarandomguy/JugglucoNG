@@ -2885,10 +2885,10 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d entrées</item>
     </plurals>
     <string name="floating_tap_details">Détails au toucher</string>
-    <string name="floating_tap_details_desc">Un appui affiche le graphique et les détails, un appui long ouvre l\'application</string>
+    <string name="floating_tap_details_desc">Un appui affiche le graphique et les détails</string>
     <string name="floating_above_status_bar">Au-dessus de la barre d\'état</string>
-    <string name="floating_above_status_bar_desc">Toucher et déplacer aussi sur la barre d\'état</string>
+    <string name="floating_above_status_bar_desc">Reste touchable au-dessus de la barre d\'état</string>
     <string name="floating_accessibility_service_off">Activez « %1$s » dans les paramètres d\'accessibilité</string>
-    <string name="floating_accessibility_service_label">JugglucoNG glycémie flottante</string>
-    <string name="floating_accessibility_service_desc">Permet de toucher la glycémie flottante au-dessus de la barre d\'état. Ne lit rien à l\'écran.</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glucose flottant</string>
+    <string name="floating_accessibility_service_desc">Permet de toucher le glucose flottant au-dessus de la barre d\'état. Ne lit pas l\'écran.</string>
 </resources>

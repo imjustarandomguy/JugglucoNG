@@ -31,11 +31,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.GlucoseRepository
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.overlay.FloatingDetailsCard
+import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
 import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
 import tk.glucodata.Natives
@@ -45,8 +48,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
         /** How long the details card stays open on its own. */
         private const val DETAILS_TIMEOUT_MS = 10_000L
-        /** A tap within this of the card closing on an outside touch is that same touch. */
-        private const val DETAILS_REOPEN_GUARD_MS = 400L
     }
 
     enum class CutoutEdge {
@@ -92,6 +93,16 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         glucoseRepository.refreshSensorSerial()
 
         setupOverlay()
+        androidx.core.content.ContextCompat.registerReceiver(
+            this,
+            screenStateReceiver,
+            android.content.IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+                addAction(Intent.ACTION_USER_PRESENT)
+            },
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         observeSettings()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -134,8 +145,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     )
     private val cutoutData = kotlinx.coroutines.flow.MutableStateFlow(CutoutData(0.dp, CutoutEdge.NONE))
     private var dynamicIslandEnabled = false
-    private var tapShowsDetails = true
-    private var aboveStatusBar = false
     // The app's WindowManager or FloatingAccessibilityService's; see attachToHost.
     private var hostWindowManager: WindowManager? = null
     private var freeformX = 0
@@ -174,6 +183,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
                     onToggleDetails = { toggleDetails(it) },
+                    onOpenApp = {
+                        closeDetails()
+                        openApp()
+                    },
                 )
             }
         }
@@ -210,15 +223,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             )
         )
 
-        try {
-            windowManager?.addView(root, layoutParams)
-            hostWindowManager = windowManager
-            root.requestApplyInsets()
-            // Place again once the pill has its size, for the edge limits.
-            root.doOnLayout { applyOverlayPlacement() }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // attachToHost adds it once the settings are known. Placed again once
+        // it has its size, for the edge limits.
+        root.doOnLayout { applyOverlayPlacement() }
     }
     
     private fun toggleDetails(request: FloatingDetailsRequest) {
@@ -226,8 +233,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             closeDetails()
             return
         }
-        // That tap already closed the card as an outside touch.
-        if (android.os.SystemClock.uptimeMillis() - detailsClosedByOutsideTouchAt < DETAILS_REOPEN_GUARD_MS) return
+        // A pill tap this soon after an outside touch closed the card is that same touch.
+        val sinceClosed = android.os.SystemClock.uptimeMillis() - detailsClosedByOutsideTouchAt
+        if (sinceClosed < android.view.ViewConfiguration.getLongPressTimeout()) return
         openDetails(request)
     }
 
@@ -266,11 +274,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-        val islandEdge = if (dynamicIslandEnabled) {
-            cutoutData.value.edge.takeIf { it != CutoutEdge.NONE } ?: CutoutEdge.TOP
-        } else {
-            null
-        }
+        val cardWidth = (FloatingDetailsCardWidth.value * density).toInt()
+        // Left edge for a card centred on, or aligned with, the pill, kept on screen.
+        fun cardLeft(left: Int) = left.coerceIn(margin, maxOf(margin, screen.x - cardWidth - margin))
+        val islandEdge = if (dynamicIslandEnabled) currentIslandEdge() else null
         when (islandEdge) {
             CutoutEdge.LEFT -> {
                 params.gravity = Gravity.START or Gravity.CENTER_VERTICAL
@@ -283,21 +290,20 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 params.y = pillCentreY - screen.y / 2
             }
             CutoutEdge.BOTTOM -> {
-                params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                params.x = pillCentreX - screen.x / 2
+                params.gravity = Gravity.BOTTOM or Gravity.START
+                params.x = cardLeft(pillCentreX - cardWidth / 2)
                 params.y = screen.y - pillTop + gap
             }
             CutoutEdge.TOP, CutoutEdge.NONE -> {
-                params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                params.x = pillCentreX - screen.x / 2
+                params.gravity = Gravity.TOP or Gravity.START
+                params.x = cardLeft(pillCentreX - cardWidth / 2)
                 params.y = pillBottom + gap
             }
             null -> {
                 val below = pillCentreY < screen.y / 2
                 val alignStart = pillCentreX < screen.x / 2
-                params.gravity = (if (below) Gravity.TOP else Gravity.BOTTOM) or
-                    (if (alignStart) Gravity.START else Gravity.END)
-                params.x = maxOf(margin, if (alignStart) pillLeft else screen.x - pillRight)
+                params.gravity = (if (below) Gravity.TOP else Gravity.BOTTOM) or Gravity.START
+                params.x = cardLeft(if (alignStart) pillLeft else pillRight - cardWidth)
                 params.y = if (below) pillBottom + gap else screen.y - pillTop + gap
             }
         }
@@ -442,68 +448,77 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
         
         serviceScope.launch {
-            settingsRepository.isDynamicIslandEnabled.collectLatest { isIsland ->
-                dynamicIslandEnabled = isIsland
-                attachToHost()
-                applyOverlayPlacement()
-            }
-        }
-
-        serviceScope.launch {
-            settingsRepository.tapShowsDetails.collectLatest { enabled ->
-                tapShowsDetails = enabled
-                attachToHost()
-                applyOverlayPlacement()
-            }
-        }
-
-        serviceScope.launch {
-            settingsRepository.isAboveStatusBar.collectLatest { enabled ->
-                aboveStatusBar = enabled
-                attachToHost()
-                applyOverlayPlacement()
-            }
-        }
-
-        serviceScope.launch {
-            FloatingAccessibilityService.windowManager.collectLatest {
-                attachToHost()
+            combine(
+                settingsRepository.isDynamicIslandEnabled,
+                settingsRepository.tapShowsDetails,
+                settingsRepository.isAboveStatusBar,
+                FloatingAccessibilityService.windowManager,
+            ) { island, tapShowsDetails, aboveStatusBar, accessibilityWm ->
+                // "Over the status bar" is there to open the details card from the status bar.
+                val wanted = tapShowsDetails && aboveStatusBar
+                FloatingAccessibilityService.setAvailable(this@FloatingGlucoseService, wanted)
+                island to (if (wanted && accessibilityWm != null) accessibilityWm else windowManager)
+            }.distinctUntilChanged().collect { (island, host) ->
+                dynamicIslandEnabled = island
+                attachToHost(host)
                 applyOverlayPlacement()
             }
         }
     }
 
     /**
-     * Attaches the pill as an accessibility overlay when "Over the status bar"
-     * is on and its service is running, otherwise as an app overlay. App
-     * overlays sit under the status bar window, so touches there never reach them.
+     * Attaches the pill through [host]: FloatingAccessibilityService's
+     * WindowManager to draw it over the status bar (app overlays sit under the
+     * status bar window, which takes every touch in its strip), else the app's.
      */
-    private fun attachToHost() {
+    private fun attachToHost(host: WindowManager?) {
         val root = overlayRoot ?: return
-        val accessibilityWm = FloatingAccessibilityService.windowManager.value
-        val useAccessibility = tapShowsDetails && aboveStatusBar && accessibilityWm != null
-        val target = (if (useAccessibility) accessibilityWm else windowManager) ?: return
-        if (target === hostWindowManager) return
+        val app = windowManager ?: return
+        if (host == null || host === hostWindowManager) return
         closeDetails()
         hostWindowManager?.let { old ->
             try {
                 old.removeViewImmediate(root)
             } catch (e: Exception) {
-                // The system has already removed it if the accessibility service stopped.
+                // Not attached; nothing to remove.
             }
         }
         hostWindowManager = null
-        layoutParams.type = if (useAccessibility) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else {
+        if (!addOverlay(host, root) && host !== app) addOverlay(app, root)
+        updateLockScreenVisibility()
+    }
+
+    private fun addOverlay(host: WindowManager, root: View): Boolean {
+        layoutParams.type = if (host === windowManager) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
         }
-        try {
-            target.addView(root, layoutParams)
-            hostWindowManager = target
+        // addView stamps the host's window token into the params; clear the previous host's.
+        layoutParams.token = null
+        return try {
+            host.addView(root, layoutParams)
+            hostWindowManager = host
             root.requestApplyInsets()
+            true
         } catch (e: Exception) {
             e.printStackTrace()
+            false
+        }
+    }
+
+    /** An accessibility overlay also draws over the lock screen; hide the pill there. */
+    private fun updateLockScreenVisibility() {
+        val root = overlayRoot ?: return
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        val overStatusBar = layoutParams.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        root.visibility = if (overStatusBar && keyguard.isKeyguardLocked) View.GONE else View.VISIBLE
+    }
+
+    private val screenStateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) closeDetails()
+            updateLockScreenVisibility()
         }
     }
 
@@ -529,6 +544,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         )
     }
 
+    /** The edge the island is docked to: the cutout's, or the rotation's on a screen without one. */
+    private fun currentIslandEdge(): CutoutEdge =
+        cutoutData.value.edge.takeIf { it != CutoutEdge.NONE } ?: resolveIslandEdge()
+
     @Suppress("DEPRECATION")
     private fun resolveIslandEdge(anchorView: View? = composeView): CutoutEdge {
         val rotation = anchorView?.display?.rotation
@@ -548,8 +567,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         if (overlayRoot == null || windowManager == null) return
 
         if (dynamicIslandEnabled) {
-            val islandEdge = cutoutData.value.edge.takeIf { it != CutoutEdge.NONE }
-                ?: resolveIslandEdge()
+            val islandEdge = currentIslandEdge()
             when (islandEdge) {
                 CutoutEdge.LEFT -> {
                     layoutParams.gravity = Gravity.START or Gravity.CENTER_VERTICAL
@@ -634,6 +652,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     override fun onDestroy() {
+        unregisterReceiver(screenStateReceiver)
         closeDetails()
         // The id is shared with keeprunning's glucose notification; detach it while keeprunning still holds it.
         val held = tk.glucodata.Notify.keeprunningHoldsGlucoseNotification()

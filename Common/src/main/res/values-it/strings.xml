@@ -2869,10 +2869,10 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d voci</item>
     </plurals>
     <string name="floating_tap_details">Dettagli al tocco</string>
-    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli, un tocco prolungato apre l\'app</string>
+    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli</string>
     <string name="floating_above_status_bar">Sopra la barra di stato</string>
-    <string name="floating_above_status_bar_desc">Toccalo e spostalo anche sulla barra di stato</string>
+    <string name="floating_above_status_bar_desc">Resta toccabile sopra la barra di stato</string>
     <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>
     <string name="floating_accessibility_service_label">JugglucoNG glicemia fluttuante</string>
-    <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge nulla dallo schermo.</string>
+    <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
 </resources>
