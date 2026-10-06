@@ -167,21 +167,13 @@ object WearToggleSync {
 
     private val received = MutableStateFlow<List<Toggle>>(emptyList())
 
-    /**
-     * The last state the phone sent, observable so the watch's switches redraw
-     * when its answer lands. A plain field left them showing the state from
-     * before the tap: the reply only requested a status refresh, which does not
-     * recompose the screens.
-     */
+    /** The last state the phone sent; screens collect it so a switch redraws when the phone answers. */
     val state: StateFlow<List<Toggle>> = received.asStateFlow()
 
     @JvmStatic
     fun known(scope: String): List<Toggle> = received.value.filter { it.scope == scope }
 
-    @JvmStatic
-    fun knownEnabled(scope: String, id: String): Boolean? = knownEnabled(received.value, scope, id)
-
-    /** [knownEnabled] against a snapshot of [state], for screens that observe it. */
+    /** Whether the phone reported [id] in [scope] as enabled, or null if it has not reported it. */
     @JvmStatic
     fun knownEnabled(toggles: List<Toggle>, scope: String, id: String): Boolean? =
         toggles.firstOrNull { it.scope == scope && it.id == id }?.enabled
@@ -192,8 +184,7 @@ object WearToggleSync {
         val toggles = decode(data)
         if (toggles.isEmpty()) return
         // Alerts fire on the watch too, and the display preferences are read
-        // there, so both have to be written locally from the reply — before
-        // publishing it, so a screen redrawn by the new state reads them.
+        // there, so both are written locally, before the state is published.
         apply(toggles.filter { it.scope == SCOPE_ALERT || it.scope == SCOPE_PREF })
         received.value = toggles
         UiRefreshBus.requestStatusRefresh()
