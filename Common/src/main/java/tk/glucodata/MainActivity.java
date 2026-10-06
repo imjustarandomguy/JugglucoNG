@@ -936,6 +936,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                     } else
                         tryHealth = 0;
                 }
+                // The journal's Health Connect activity import, while its switch is on.
+                var healthImport = HealthConnectAccess.get();
+                if (healthImport != null) healthImport.onForeground(this);
             }
             var am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
             List list;

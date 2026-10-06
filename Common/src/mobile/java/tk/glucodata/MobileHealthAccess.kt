@@ -10,6 +10,14 @@ object MobileHealthConnect : HealthConnect {
         HealthConnection.init(activity)
     }
 
+    override fun exportSwitchedOn(activity: MainActivity) {
+        HealthConnection.glucoseSwitchedOn(activity)
+    }
+
+    override fun onForeground(activity: MainActivity) {
+        HealthConnection.onForeground(activity)
+    }
+
     override fun stop() {
         HealthConnection.stop()
     }

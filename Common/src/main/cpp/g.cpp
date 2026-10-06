@@ -529,14 +529,19 @@ fromjava(healthConnectfromSensorptr)(JNIEnv *env, jclass cl, jlong sensorptr) {
   LOGGER("healthConnectfromSensorptr=%x\n", res);
   return res;
 }
-extern "C" JNIEXPORT void JNICALL fromjava(healthConnectWritten)(
-    JNIEnv *env, jclass cl, jlong sensorptr, jint pos) {
+// Moves the export cursor from `from` past what was just sent. A reading that
+// filled a slot below the cursor meanwhile (healthConnectSlotFilled) has moved
+// it back, and then it stays there: false, and the next export starts there.
+extern "C" JNIEXPORT jboolean JNICALL fromjava(healthConnectWritten)(
+    JNIEnv *env, jclass cl, jlong sensorptr, jint from, jint pos) {
   if (!sensorptr) {
-    return;
+    return false;
   }
-  reinterpret_cast<SensorGlucoseData *>(sensorptr)
-      ->getinfo()
-      ->healthconnectiter = pos;
+  auto *info = reinterpret_cast<SensorGlucoseData *>(sensorptr)->getinfo();
+  uint16_t expected = static_cast<uint16_t>(from);
+  return __atomic_compare_exchange_n(&info->healthconnectiter, &expected,
+                                     static_cast<uint16_t>(pos), false,
+                                     __ATOMIC_RELAXED, __ATOMIC_RELAXED);
 }
 extern "C" JNIEXPORT jlong JNICALL fromjava(getSensorStartmsec)(JNIEnv *env,
                                                                 jclass cl,
