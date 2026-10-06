@@ -67,7 +67,9 @@ object WearSync2 {
         val now = System.currentTimeMillis()
         val last = lastPushMs.get()
         if (now - last < PUSH_THROTTLE_MS || !lastPushMs.compareAndSet(last, now)) return
-        executor.execute { runCatching { serveSince(tailStartSec()) }.onFailure { Log.stack(LOG_ID, "pushTail", it) } }
+        executor.execute {
+            runCatching { serveSince(tailStartSec(), routine = true) }.onFailure { Log.stack(LOG_ID, "pushTail", it) }
+        }
     }
 
     /** Tell the watch a sensor was removed on the phone. */
@@ -174,7 +176,7 @@ object WearSync2 {
         }
     }
 
-    /** Handle an incoming request from the watch. */
+    /** Handle an incoming request from the other device. */
     @JvmStatic
     fun onRequest(data: ByteArray?) {
         val fromSec = runCatching {
@@ -248,11 +250,20 @@ object WearSync2 {
         return out.take(MAX_SERVED_SENSORS)
     }
 
-    private fun serveSince(fromSec: Long) {
+    /**
+     * [routine]: the push after a reading, skipped for a sensor both devices read,
+     * where it would be stored as nothing; one that misses a reading asks for it.
+     */
+    private fun serveSince(fromSec: Long, routine: Boolean = false) {
         if (!wearCompanionEnabled()) return
         val serials = serveSerials()
         if (serials.isEmpty()) return
-        serials.forEach { serial -> serveSensorSince(serial, fromSec) }
+        serials.forEach { serial ->
+            if (routine && SensorOwnershipRuntime.bothRead(serial)) return@forEach
+            // The watch serves only what it reads itself; the rest came from the phone.
+            if (Applic.isWearable && !SensorOwnershipRuntime.readsLocally(serial)) return@forEach
+            serveSensorSince(serial, fromSec)
+        }
     }
 
     private fun serveSensorSince(serial: String, fromSec: Long) {
