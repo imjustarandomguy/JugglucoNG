@@ -109,6 +109,7 @@ fun FloatingGlucoseOverlay(
     val verticalOffset by repository.islandVerticalOffset.collectAsState(initial = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
+    val isMirrored by repository.isMirrored.collectAsState(initial = false)
 
     // Metrics State (from Service WindowInsets)
     val cutoutData by cutoutDataFlow.collectAsState(initial = CutoutData(0.dp, CutoutEdge.NONE))
@@ -450,9 +451,15 @@ fun FloatingGlucoseOverlay(
         }
     }
     
+    // Mirrored puts the arrow first and the value second. On an island that
+    // moves the value to the right of (or below) the camera, and with the
+    // arrow hidden leaves it there on its own, clear of the notification icons.
+    val firstContent = if (isMirrored) arrowContent else valueContent
+    val secondContent = if (isMirrored) valueContent else arrowContent
+
     // ROOT LAYOUT CHANGE: Use Column just for Vertical Offset Spacer if Island
     // We don't use 'Surface' as root for Island anymore, because we want split layout.
-    
+
     // ROOT LAYOUT: Column for vertical offset spacer
     if (isDynamicIsland) {
         // Clip and click the pill itself, not the offset wrapper: the wrapper is
@@ -497,7 +504,7 @@ fun FloatingGlucoseOverlay(
                             bottom = sideIslandSplitPadding
                         )
                     ) {
-                        valueContent()
+                        firstContent()
                     }
                     Box(
                         modifier = Modifier.padding(
@@ -507,7 +514,7 @@ fun FloatingGlucoseOverlay(
                             bottom = sideIslandVerticalPadding + sideIslandSplitPadding
                         )
                     ) {
-                        arrowContent()
+                        secondContent()
                     }
                 }
             } else {
@@ -533,7 +540,7 @@ fun FloatingGlucoseOverlay(
                             bottom = pillVerticalPadding
                         )
                     ) {
-                        valueContent()
+                        firstContent()
                     }
                     Box(
                         modifier = Modifier.padding(
@@ -542,7 +549,7 @@ fun FloatingGlucoseOverlay(
                             bottom = pillVerticalPadding
                         )
                     ) {
-                        arrowContent()
+                        secondContent()
                     }
                 }
             }
@@ -568,16 +575,11 @@ fun FloatingGlucoseOverlay(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(inlineSpacing)
             ) {
+                // No placeholder for a hidden arrow here: spacedBy would add a gap for it.
+                val hasArrow = showArrow && glucosePoint != null
+                if (isMirrored && hasArrow) arrowContent()
                 valueContent()
-                if (showArrow && displayPoint != null) {
-                    TrendIndicator(
-                        trendResult,
-                        Modifier.size(arrowSize),
-                        valueColor,
-                        outlineColor = arrowOutlineColor,
-                        shadowColor = arrowShadowColor
-                    )
-                }
+                if (!isMirrored && hasArrow) arrowContent()
             }
         }
     }

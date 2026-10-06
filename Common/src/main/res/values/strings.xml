@@ -3137,4 +3137,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_off">Turn on “%1$s” in Accessibility settings</string>
     <string name="floating_accessibility_service_label">JugglucoNG floating glucose</string>
     <string name="floating_accessibility_service_desc">Lets the floating glucose be tapped over the status bar. Does not read the screen.</string>
+    <string name="floating_mirrored">Mirror layout</string>
+    <string name="floating_mirrored_desc">Arrow first, then the value (right of the camera in Dynamic Island mode)</string>
 </resources>

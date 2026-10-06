@@ -32,6 +32,7 @@ class FloatingSettingsRepository(context: Context) {
         const val KEY_ISLAND_GAP = "floating_island_gap"
         const val KEY_NOTIFICATION_DOT = "floating_notification_dot"
         const val KEY_SUBTLE_OUTLINE = "floating_subtle_outline"
+        const val KEY_MIRRORED = "floating_mirrored" // true = arrow first, value second
 
         const val DEFAULT_FONT_SIZE = 14f
         const val DEFAULT_BACKGROUND_OPACITY = 1.0f
@@ -63,6 +64,7 @@ class FloatingSettingsRepository(context: Context) {
     val islandGap: Flow<Float> = prefFlow(KEY_ISLAND_GAP, 0f) // 0 implies auto/default
     val showNotificationDot: Flow<Boolean> = prefFlow(KEY_NOTIFICATION_DOT, true)
     val useSubtleOutline: Flow<Boolean> = prefFlow(KEY_SUBTLE_OUTLINE, false)
+    val isMirrored: Flow<Boolean> = prefFlow(KEY_MIRRORED, false)
     /** The app-wide "colour value by range" setting. */
     val valueRangeColors: Flow<Boolean> = prefFlow(tk.glucodata.GlucoseValueTone.PREF_VALUE_RANGE_COLORS, false)
 
@@ -77,6 +79,7 @@ class FloatingSettingsRepository(context: Context) {
     fun setIslandGap(gap: Float) = prefs.edit().putFloat(KEY_ISLAND_GAP, gap).apply()
     fun setShowNotificationDot(show: Boolean) = prefs.edit().putBoolean(KEY_NOTIFICATION_DOT, show).apply()
     fun setUseSubtleOutline(use: Boolean) = prefs.edit().putBoolean(KEY_SUBTLE_OUTLINE, use).apply()
+    fun setMirrored(mirrored: Boolean) = prefs.edit().putBoolean(KEY_MIRRORED, mirrored).apply()
     fun setShowSecondary(show: Boolean) = prefs.edit().putBoolean(KEY_SHOW_SECONDARY, show).apply()
     fun setFontSource(source: String) = prefs.edit().putString(KEY_FONT_SOURCE, source).apply()
     fun setFontSize(size: Float) = prefs.edit().putFloat(KEY_FONT_SIZE, size).apply()

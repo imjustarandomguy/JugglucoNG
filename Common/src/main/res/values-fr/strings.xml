@@ -2891,4 +2891,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_off">Activez « %1$s » dans les paramètres d\'accessibilité</string>
     <string name="floating_accessibility_service_label">JugglucoNG glucose flottant</string>
     <string name="floating_accessibility_service_desc">Permet de toucher le glucose flottant au-dessus de la barre d\'état. Ne lit pas l\'écran.</string>
+    <string name="floating_mirrored">Disposition inversée</string>
+    <string name="floating_mirrored_desc">Flèche d\'abord, puis la valeur (à droite de la caméra en mode Dynamic Island)</string>
 </resources>

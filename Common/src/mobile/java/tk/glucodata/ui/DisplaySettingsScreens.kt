@@ -497,6 +497,7 @@ fun FloatingGlucoseSettingsScreen(
     val aboveStatusBar by repository.isAboveStatusBar.collectAsState(initial = false)
     val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsState().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
+    val isMirrored by repository.isMirrored.collectAsState(initial = false)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -681,6 +682,16 @@ fun FloatingGlucoseSettingsScreen(
                     }
             )
         }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_mirrored),
+            subtitle = stringResource(R.string.floating_mirrored_desc),
+            checked = isMirrored,
+            onCheckedChange = { repository.setMirrored(it) },
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel(

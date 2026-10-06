@@ -2875,4 +2875,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>
     <string name="floating_accessibility_service_label">JugglucoNG glicemia fluttuante</string>
     <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
+    <string name="floating_mirrored">Layout speculare</string>
+    <string name="floating_mirrored_desc">Prima la freccia, poi il valore (a destra della fotocamera in modalità Dynamic Island)</string>
 </resources>

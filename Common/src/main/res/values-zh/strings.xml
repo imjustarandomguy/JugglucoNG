@@ -2900,4 +2900,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_off">请在无障碍设置中开启“%1$s”</string>
     <string name="floating_accessibility_service_label">JugglucoNG 悬浮血糖</string>
     <string name="floating_accessibility_service_desc">让悬浮血糖可在状态栏之上点按。不读取屏幕。</string>
+    <string name="floating_mirrored">镜像布局</string>
+    <string name="floating_mirrored_desc">先显示箭头，再显示数值（灵动岛模式下数值位于摄像头右侧）</string>
 </resources>

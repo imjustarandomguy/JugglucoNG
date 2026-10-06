@@ -2885,4 +2885,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_off">Slå på ”%1$s” i tillgänglighetsinställningarna</string>
     <string name="floating_accessibility_service_label">JugglucoNG flytande glukosvärde</string>
     <string name="floating_accessibility_service_desc">Gör det flytande glukosvärdet tryckbart över statusfältet. Läser inte skärmen.</string>
+    <string name="floating_mirrored">Spegla layout</string>
+    <string name="floating_mirrored_desc">Pilen först, sedan värdet (till höger om kameran i Dynamic Island-läge)</string>
 </resources>
