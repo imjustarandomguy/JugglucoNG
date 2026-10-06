@@ -42,6 +42,9 @@ public    void handlealarm() {
             view.postInvalidate();
             }
         tk.glucodata.glucosecomplication.WearComplicationValue.updateall();
+        // This alarm is the watch's tick once readings stop: it takes the ongoing
+        // activity's value down when it is no longer current.
+        Notify.scheduleOngoingStatusRefresh();
 
         long wastime = SuperGattCallback.lastfoundL;
         if(wastime==0L) {
