@@ -1038,8 +1038,9 @@ public class SensorBluetooth {
             ;
         }
         ;
+        // Bluetooth stops or the list is rebuilt: no sensor is being dropped.
         for (int i = 0; i < gattcallbacks.size(); i++) {
-            gattcallbacks.get(i).free();
+            gattcallbacks.get(i).stopTransport();
         }
         gattcallbacks.clear();
         Natives.setmaxsensors(0);
