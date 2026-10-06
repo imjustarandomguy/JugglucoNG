@@ -316,6 +316,27 @@ object SensorOwnershipRuntime {
     }
 
     /**
+     * Whether both devices are reading [serial] right now, each over its own
+     * channel: then neither needs the other's readings, except one it missed.
+     */
+    @JvmStatic
+    fun bothRead(serial: String?): Boolean {
+        val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
+        if (findGatt(target)?.readsAlongside() != true || !readsLocally(target)) return false
+        return peerReadsCurrently(target)
+    }
+
+    /** Whether the peer reads any sensor itself, so it can be asked for a reading this device missed. */
+    @JvmStatic
+    fun peerReadsAny(): Boolean =
+        peerSerials.values.any { serial -> peerReadsCurrently(serial) }
+
+    private fun peerReadsCurrently(serial: String): Boolean {
+        val peer = peerReportFor(serial) ?: return false
+        return peer.owns && System.currentTimeMillis() - peer.receivedAtMs <= PEER_SILENT_AFTER_MS
+    }
+
+    /**
      * True when this device deliberately let a sensor go to the other one.
      *
      * Distinct from simply having no connection: a driver that briefly drops out
