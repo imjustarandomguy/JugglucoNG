@@ -230,4 +230,37 @@ class SensorIdentityTests {
         assertTrue(SensorIdentity.matches("sensor-alpha", ""))
     }
 
+    // A G7's native name is 16 characters; native also finds its record by the
+    // last 11 (the name without its five-character prefix).
+    private val fullName = "1234567890123456"
+    private val alias = "67890123456"
+
+    @Test
+    fun shortNamedRecord_findsTheRecordNamedAfterTheAlias() {
+        val records = mapOf(alias to alias)
+        assertEquals(alias, SensorIdentity.shortNamedRecord(fullName) { records[it] })
+    }
+
+    @Test
+    fun shortNamedRecord_ignoresTheFullNamedRecordTheAliasAlsoFinds() {
+        // Native answers the alias with the full-named record: that is the
+        // sensor's own record, not a short-named one.
+        val records = mapOf(alias to fullName)
+        assertNull(SensorIdentity.shortNamedRecord(fullName) { records[it] })
+    }
+
+    @Test
+    fun shortNamedRecord_nullWithoutAnyRecord() {
+        assertNull(SensorIdentity.shortNamedRecord(fullName) { null })
+    }
+
+    @Test
+    fun shortNamedRecord_leavesNamesWithoutAnAliasAlone() {
+        val anything: (String) -> String? = { it }
+        assertNull(SensorIdentity.shortNamedRecord(alias, anything))
+        assertNull(SensorIdentity.shortNamedRecord("X-1234567890123", anything))
+        assertNull(SensorIdentity.shortNamedRecord("SIBI:P225043JMV", anything))
+        assertNull(SensorIdentity.shortNamedRecord(null, anything))
+    }
+
 }

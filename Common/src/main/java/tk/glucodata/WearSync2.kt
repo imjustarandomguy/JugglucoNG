@@ -335,9 +335,18 @@ object WearSync2 {
     }
 
 
-    /** Canonical storage name, so an alias cannot create a parallel record. */
-    private fun existingSensorNameFor(serial: String): String? =
-        SensorIdentity.canonicalSensorId(serial)
+    /**
+     * Canonical storage name, so an alias cannot create a parallel record.
+     *
+     * A record this device made under the sensor's short alias wins, even over
+     * one under the full name: the mirrored selection names the sensor by that
+     * alias, which native resolves to the alias-named record first, so that is
+     * the one every screen and complication reads.
+     */
+    private fun existingSensorNameFor(serial: String): String? {
+        val canonical = SensorIdentity.canonicalSensorId(serial)
+        return SensorIdentity.shortNamedNativeRecord(canonical ?: serial) ?: canonical
+    }
 
     private fun sendCalibration(serial: String) {
         // Never publish "no calibration" off the back of a failed load: the watch
@@ -500,7 +509,10 @@ object WearSync2 {
                         // Native scale contract (g.cpp addGlucoseStreamInternal):
                         // glucose param = mgdl/10 (native ×10), raw param = plain
                         // mgdl. Triples carry mgdl*10.
+                        val isNew = runCatching { Natives.getSensorIndex(serial) < 0 }.getOrDefault(false)
                         Natives.ensureSensorShell(serial, (t - 3600L).coerceAtLeast(1L))
+                        // Lookups made before this record existed were cached as unknown.
+                        if (isNew) SensorIdentity.invalidateCaches()
                     }
                     val rawMgdl = if (raw10 > 0) raw10 / 10f else 0f
                     nativeSecs[written] = t
