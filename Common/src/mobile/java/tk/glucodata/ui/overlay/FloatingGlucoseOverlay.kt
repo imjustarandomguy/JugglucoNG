@@ -6,6 +6,7 @@ import android.graphics.Typeface // Added for Google Sans
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
@@ -56,16 +58,34 @@ import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+/** How long the details card stays open on its own. */
+private const val DETAILS_TIMEOUT_MS = 10_000L
+
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FloatingGlucoseOverlay(
     repository: FloatingSettingsRepository,
     historyFlow: Flow<List<GlucosePoint>>,
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
-    cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>
+    cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
+    /** A touch landed outside the overlay window; closes the details card. */
+    outsideTouches: Flow<Unit> = kotlinx.coroutines.flow.emptyFlow(),
 ) {
     val context = LocalContext.current
+
+    // Tapping the value opens a card with what the glucose notification shows
+    // (time, Δ, chart, IOB); a long press opens the app, as a tap used to.
+    var showDetails by remember { mutableStateOf(false) }
+    LaunchedEffect(showDetails) {
+        if (showDetails) {
+            kotlinx.coroutines.delay(DETAILS_TIMEOUT_MS)
+            showDetails = false
+        }
+    }
+    LaunchedEffect(outsideTouches) {
+        outsideTouches.collect { showDetails = false }
+    }
 
     // Settings State
     val isTransparent by repository.isTransparent.collectAsState(initial = false)
@@ -259,6 +279,23 @@ fun FloatingGlucoseOverlay(
     val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
     }
+    val openApp: () -> Unit = {
+        showDetails = false
+        launchIntent?.let { context.startActivity(it) }
+    }
+    val detailsCard: @Composable () -> Unit = {
+        if (glucosePoint != null) {
+            FloatingDetailsCard(
+                point = glucosePoint,
+                sensorId = currentSensorId,
+                isMmol = unitInt == 1,
+                viewMode = viewMode,
+                displayGlucose = currentSnapshot?.displayValues?.primaryValue ?: glucosePoint.value,
+                isDark = isDarkTheme,
+                onOpenApp = openApp,
+            )
+        }
+    }
 
     val valueContent: @Composable () -> Unit = {
         if (displayPoint != null) {
@@ -373,10 +410,12 @@ fun FloatingGlucoseOverlay(
         // from the pill's own Surface and its arc cut into the bottom corners.
         val pillModifier = Modifier
             .clip(finalShape)
-            .clickable(
+            .combinedClickable(
                 interactionSource = overlayInteractionSource,
-                indication = overlayIndication
-            ) { launchIntent?.let { context.startActivity(it) } }
+                indication = overlayIndication,
+                onLongClick = openApp,
+                onClick = { showDetails = !showDetails },
+            )
         CutoutOffsetLayout(
             edge = cutoutEdge,
             offset = verticalOffset.dp,
@@ -384,6 +423,8 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
         ) {
+          // The card opens away from the camera, so the pill stays where it was.
+          DetailsAround(edge = cutoutEdge, expanded = showDetails, details = detailsCard) {
             if (isVerticalIsland) {
                 AsymmetricCenteringColumn(
                     modifier = pillModifier,
@@ -451,8 +492,10 @@ fun FloatingGlucoseOverlay(
                     }
                 }
             }
+          }
         }
     } else {
+      DetailsAround(edge = CutoutEdge.TOP, expanded = showDetails, details = detailsCard) {
         // ORIGINAL FLOATING LAYOUT (Unified Pill)
         Surface(
             color = finalBgColor,
@@ -461,10 +504,12 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
-                .clickable(
+                .combinedClickable(
                     interactionSource = overlayInteractionSource,
-                    indication = overlayIndication
-                ) { launchIntent?.let { context.startActivity(it) } }
+                    indication = overlayIndication,
+                    onLongClick = openApp,
+                    onClick = { showDetails = !showDetails },
+                )
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = pillHorizontalPadding, vertical = pillVerticalPadding),
@@ -482,6 +527,103 @@ fun FloatingGlucoseOverlay(
                     )
                 }
             }
+        }
+      }
+    }
+}
+
+/**
+ * Places the details card on the side of the pill away from the screen edge
+ * the overlay is docked to, so opening it never moves the pill.
+ */
+@Composable
+private fun DetailsAround(
+    edge: CutoutEdge,
+    expanded: Boolean,
+    details: @Composable () -> Unit,
+    pill: @Composable () -> Unit,
+) {
+    val card: @Composable () -> Unit = {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = expanded,
+            enter = androidx.compose.animation.fadeIn() + androidx.compose.animation.expandIn(expandFrom = Alignment.Center),
+            exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkOut(shrinkTowards = Alignment.Center),
+        ) {
+            Box(Modifier.padding(6.dp)) { details() }
+        }
+    }
+    when (edge) {
+        CutoutEdge.LEFT -> Row(verticalAlignment = Alignment.CenterVertically) { pill(); card() }
+        CutoutEdge.RIGHT -> Row(verticalAlignment = Alignment.CenterVertically) { card(); pill() }
+        CutoutEdge.BOTTOM -> Column(horizontalAlignment = Alignment.CenterHorizontally) { card(); pill() }
+        else -> Column(horizontalAlignment = Alignment.CenterHorizontally) { pill(); card() }
+    }
+}
+
+/**
+ * What the glucose notification shows, for the reading on the pill: its time
+ * and age, the Δ, the chart and the IOB/COB line (when the notification shows
+ * one). Tapping it opens the app.
+ */
+@Composable
+private fun FloatingDetailsCard(
+    point: GlucosePoint,
+    sensorId: String?,
+    isMmol: Boolean,
+    viewMode: Int,
+    displayGlucose: Float,
+    isDark: Boolean,
+    onOpenApp: () -> Unit,
+) {
+    val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val cardWidth = 260.dp
+    val chartHeight = 110.dp
+    val chartWidthPx = with(density) { (cardWidth - 24.dp).roundToPx() }
+    val chartHeightPx = with(density) { chartHeight.roundToPx() }
+    val details by produceState<tk.glucodata.FloatingDetailsSource.Details?>(null, point.timestamp, sensorId, viewMode, isDark) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            tk.glucodata.FloatingDetailsSource.load(
+                context, sensorId, isMmol, viewMode, chartWidthPx, chartHeightPx, isDark, displayGlucose,
+            )
+        }
+    }
+    val background = if (isDark) Color(0xF2202124) else Color(0xF2F6F4F1)
+    val textColor = if (isDark) Color.White else Color(0xFF27231F)
+    val minutes = ((System.currentTimeMillis() - point.timestamp) / 60_000L).coerceAtLeast(0L)
+    val time = remember(point.timestamp) {
+        android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(point.timestamp))
+    }
+    val header = buildList {
+        add(time)
+        add(context.getString(tk.glucodata.R.string.minutes_short_format, minutes.toInt()))
+        details?.delta?.takeIf { it.isNotEmpty() }?.let { add("Δ $it") }
+    }.joinToString(" · ")
+
+    Surface(
+        color = background,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .width(cardWidth)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onOpenApp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(header, color = textColor, fontSize = 14.sp)
+            val chart = details?.chart
+            if (chart != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = chart.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(chartHeight),
+                )
+            } else {
+                Spacer(Modifier.fillMaxWidth().height(chartHeight))
+            }
+            details?.iobLine?.let { Text(it, color = textColor.copy(alpha = 0.8f), fontSize = 13.sp) }
         }
     }
 }

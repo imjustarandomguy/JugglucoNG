@@ -66,6 +66,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private lateinit var layoutParams: WindowManager.LayoutParams
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val outsideTouches = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     private lateinit var settingsRepository: FloatingSettingsRepository
     private val glucoseRepository = GlucoseRepository()
@@ -130,7 +131,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private fun setupOverlay() {
         if (composeView != null) return
 
-        val root = CutoutAwareContainer(this) { v, insets ->
+        val root = CutoutAwareContainer(
+            this,
+            onOutsideTouch = { outsideTouches.tryEmit(Unit) },
+        ) { v, insets ->
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 cutoutData.value = resolveCutoutData(v, insets.displayCutout)
                 if (dynamicIslandEnabled) {
@@ -156,7 +160,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     ),
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
-                    cutoutDataFlow = cutoutData
+                    cutoutDataFlow = cutoutData,
+                    outsideTouches = outsideTouches,
                 )
             }
         }
@@ -167,9 +172,12 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or 
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or 
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+            // Touches elsewhere still go to the app below; this only tells the
+            // overlay about them, so an open details card can close.
+            WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
         
@@ -397,11 +405,20 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      */
     private class CutoutAwareContainer(
         context: Context,
+        private val onOutsideTouch: () -> Unit,
         private val onInsets: (View, WindowInsets) -> Unit
     ) : FrameLayout(context) {
         override fun dispatchApplyWindowInsets(insets: WindowInsets): WindowInsets {
             onInsets(this, insets)
             return super.dispatchApplyWindowInsets(insets)
+        }
+
+        override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
+                onOutsideTouch()
+                return false
+            }
+            return super.dispatchTouchEvent(event)
         }
     }
 
