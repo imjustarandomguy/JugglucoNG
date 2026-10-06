@@ -14,7 +14,14 @@ package tk.glucodata
  * shared call site is behind `!isWearable` or an SDK check anyway.
  */
 interface HealthConnect {
+    /** The app started with the export switch on; asks for a missing permission once per process. */
     fun start(activity: MainActivity)
+
+    /** The user just turned the export switch on: asks for its permission if it is missing. */
+    fun exportSwitchedOn(activity: MainActivity)
+
+    /** The app came to the foreground: runs the journal's activity import if it is on and due. */
+    fun onForeground(activity: MainActivity)
     fun stop()
 
     /**
