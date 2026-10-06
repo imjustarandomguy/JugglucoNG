@@ -2907,5 +2907,5 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="other">%d kayıt</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Renkli durum çubuğu simgesi</string>
-    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer.</string>
+    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer</string>
 </resources>

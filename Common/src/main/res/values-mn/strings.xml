@@ -2980,5 +2980,5 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="other">%d бичлэг</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Өнгөт төлөвийн мөрийн дүрс</string>
-    <string name="status_bar_icon_colored_desc">Төлөвийн мөр дэх утгыг хязгаарын өнгөөр зурна.</string>
+    <string name="status_bar_icon_colored_desc">Төлөвийн мөр дэх утгыг хязгаарын өнгөөр зурна</string>
 </resources>

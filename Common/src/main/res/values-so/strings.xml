@@ -3064,5 +3064,5 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="other">%d qoraal</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Astaanta baararka xaaladda oo midab leh</string>
-    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa.</string>
+    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa</string>
 </resources>

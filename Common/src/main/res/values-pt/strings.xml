@@ -2880,5 +2880,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d entradas</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
-    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa.</string>
+    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa</string>
 </resources>
