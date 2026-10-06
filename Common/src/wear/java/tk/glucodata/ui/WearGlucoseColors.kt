@@ -3,8 +3,8 @@ package tk.glucodata.ui
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import tk.glucodata.GlucoseRangeColors
+import tk.glucodata.GlucoseRanges
 import tk.glucodata.GlucoseValueTone
-import tk.glucodata.Natives
 
 /**
  * The watch's glucose colours, resolved exactly as the phone resolves them.
@@ -27,11 +27,11 @@ import tk.glucodata.Natives
 object WearGlucoseColors {
     private const val DARK = true
 
-    /** Thresholds as native holds them, already in the display unit. */
-    private fun targetLow(): Float = runCatching { Natives.targetlow() }.getOrDefault(Float.NaN)
-    private fun targetHigh(): Float = runCatching { Natives.targethigh() }.getOrDefault(Float.NaN)
-    private fun veryLow(): Float = runCatching { Natives.alarmverylow() }.getOrDefault(Float.NaN)
-    private fun veryHigh(): Float = runCatching { Natives.alarmveryhigh() }.getOrDefault(Float.NaN)
+    /**
+     * Where the bands are cut, in the display unit: the phone's ranges, which
+     * arrive with its colour scheme, rather than this watch's own settings.
+     */
+    private fun ranges(isMmol: Boolean): GlucoseRanges.Ranges = GlucoseRanges.current(isMmol)
 
     /** True when the phone has value range colouring switched on. */
     fun valueRangeColorsEnabled(): Boolean = GlucoseValueTone.valueRangeColorsEnabled()
@@ -42,15 +42,16 @@ object WearGlucoseColors {
      */
     fun valueColor(value: Float?, isMmol: Boolean, neutral: Color): Color {
         if (!valueRangeColorsEnabled()) return neutral
+        val ranges = ranges(isMmol)
         return Color(
             GlucoseValueTone.valueColorArgb(
                 value = value,
                 isDark = DARK,
                 isMmol = isMmol,
-                targetLow = targetLow(),
-                targetHigh = targetHigh(),
-                veryLowThreshold = veryLow(),
-                veryHighThreshold = veryHigh(),
+                targetLow = ranges.targetLow,
+                targetHigh = ranges.targetHigh,
+                veryLowThreshold = ranges.veryLow,
+                veryHighThreshold = ranges.veryHigh,
                 fallbackArgb = neutral.toArgb(),
                 enabled = true,
             )
@@ -61,17 +62,19 @@ object WearGlucoseColors {
      * The faint band tint the hero blends over its background when the reading
      * is out of range, or null when it is in range and should stay neutral.
      */
-    fun heroTint(value: Float?, isMmol: Boolean, isFresh: Boolean): Pair<Color, Float>? =
-        GlucoseValueTone.heroTone(
+    fun heroTint(value: Float?, isMmol: Boolean, isFresh: Boolean): Pair<Color, Float>? {
+        val ranges = ranges(isMmol)
+        return GlucoseValueTone.heroTone(
             value = value,
             isDark = DARK,
             isMmol = isMmol,
-            targetLow = targetLow(),
-            targetHigh = targetHigh(),
-            veryLowThreshold = veryLow(),
-            veryHighThreshold = veryHigh(),
+            targetLow = ranges.targetLow,
+            targetHigh = ranges.targetHigh,
+            veryLowThreshold = ranges.veryLow,
+            veryHighThreshold = ranges.veryHigh,
             isFreshData = isFresh,
         )?.let { tone -> Color(tone.tintArgb) to tone.blendFraction }
+    }
 
     /**
      * The band colour for an out-of-range value, or null while it is in range.
@@ -85,12 +88,15 @@ object WearGlucoseColors {
      * Band colour for chart traces, which the phone colours by range whatever
      * the value-colour setting says. [neutral] covers the in-range stretch.
      */
-    fun bandColor(value: Float, isMmol: Boolean, neutral: Color): Color = Color(
-        runCatching {
-            GlucoseRangeColors.colorForValue(
-                value, targetLow(), targetHigh(), veryLow(), veryHigh(),
-                neutral.toArgb(), DARK, isMmol,
-            )
-        }.getOrDefault(neutral.toArgb())
-    )
+    fun bandColor(value: Float, isMmol: Boolean, neutral: Color): Color {
+        val ranges = ranges(isMmol)
+        return Color(
+            runCatching {
+                GlucoseRangeColors.colorForValue(
+                    value, ranges.targetLow, ranges.targetHigh, ranges.veryLow, ranges.veryHigh,
+                    neutral.toArgb(), DARK, isMmol,
+                )
+            }.getOrDefault(neutral.toArgb())
+        )
+    }
 }
