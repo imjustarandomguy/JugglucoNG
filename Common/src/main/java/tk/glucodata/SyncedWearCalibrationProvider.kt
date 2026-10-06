@@ -84,6 +84,12 @@ object SyncedWearCalibrationProvider : CalibrationProvider {
         return mode(current, isRawMode).anchorsMgdl.isNotEmpty()
     }
 
+    /** As the phone last said; enabled until it has said anything. */
+    override fun isEnabledForMode(isRawMode: Boolean, sensorId: String?): Boolean {
+        val current = matchingPayload(sensorId) ?: return true
+        return !(if (isRawMode) current.rawDisabled else current.autoDisabled)
+    }
+
     /**
      * Corrects a reading with the phone's anchors and settings, using the same
      * computation the phone runs.

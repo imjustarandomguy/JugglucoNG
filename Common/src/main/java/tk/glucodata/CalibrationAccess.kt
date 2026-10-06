@@ -83,6 +83,13 @@ object CalibrationAccess {
             .onFailure { Log.stack(TAG, "addCalibration failed", it) }
             .getOrNull() ?: false
 
+    /** Whether calibration is switched on for this lane of the sensor; true when unknown. */
+    @JvmStatic
+    fun isEnabledForMode(isRawMode: Boolean, sensorId: String? = null): Boolean =
+        runCatching { provider?.isEnabledForMode(isRawMode, sensorId) }
+            .onFailure { Log.stack(TAG, "isEnabledForMode failed", it) }
+            .getOrNull() ?: true
+
     @JvmStatic
     fun hasActiveCalibration(isRawMode: Boolean, sensorId: String? = null): Boolean =
         runCatching { provider?.hasActiveCalibration(isRawMode, sensorId) }
