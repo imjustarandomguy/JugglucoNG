@@ -27,9 +27,9 @@ import tk.glucodata.R
 @Composable
 fun ReadingActionChooser(
     hasCalibration: Boolean,
+    canCalibrate: Boolean = true,
     onAddJournal: () -> Unit,
     onCalibrate: () -> Unit,
-    canCalibrate: Boolean = true,
 ) {
     ScreenScaffold(timeText = { TimeText() }) {
         Column(

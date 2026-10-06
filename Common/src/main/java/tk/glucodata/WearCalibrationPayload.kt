@@ -49,9 +49,8 @@ data class WearCalibrationPayload(
     /** Unit in which the phone fitted [tuning], expressed as mg/dL per unit. */
     val sourceUnitMgdlPerUnit: Double = 1.0,
     /**
-     * The user switched calibration off for the auto lane of this sensor. The
-     * anchors are then empty, which alone reads the same as "no calibration
-     * yet", so the watch kept offering to calibrate.
+     * Calibration is switched off for the auto lane. Needed because empty
+     * anchors also mean "not calibrated yet".
      */
     val autoDisabled: Boolean = false,
     /** As [autoDisabled], for the raw lane. */

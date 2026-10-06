@@ -48,12 +48,14 @@ private fun calibrateRouteFor(point: tk.glucodata.GlucosePoint): String {
 /**
  * With the journal enabled a reading tap offers the same two choices the phone
  * does; with it off it calibrates directly, against that reading's timeframe.
- * Callers only make readings tappable when one of the two is available
- * ([tk.glucodata.ui.screens.ReadingActions.readingTapAvailable]).
+ * Callers make readings tappable only when calibration or the journal is available.
  */
 private fun readingTapRouteFor(point: tk.glucodata.GlucosePoint): String {
     if (!tk.glucodata.ui.screens.ReadingActions.journalAvailable()) {
         return calibrateRouteFor(point)
+    }
+    if (!tk.glucodata.ui.screens.ReadingActions.calibrationAvailable()) {
+        return "${WearRoutes.JOURNAL_ENTRY}?insulin=1&reading=${point.timestamp}"
     }
     val action = tk.glucodata.ui.screens.ReadingActions.resolve(point.timestamp)
     val sensorMgdl = if (tk.glucodata.Applic.unit == 1) point.value * 18.0182f else point.value
