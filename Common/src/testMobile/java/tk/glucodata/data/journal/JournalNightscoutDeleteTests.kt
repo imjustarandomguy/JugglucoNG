@@ -212,4 +212,55 @@ class JournalNightscoutDeleteTests {
             assertTrue(tombstoneDeleteUrl(base, tombstoneId, useV3 = false).contains("find%5Bidentifier%5D=$uuid"))
         }
     }
+
+    // -- under API v3 -----------------------------------------------------------
+
+    /** As a v3 read serves a document: under its identifier, without the _id. */
+    private fun servedByV3(identifier: String): JSONObject =
+        JSONObject().put("identifier", identifier).put("eventType", "Note")
+
+    private val ownV1Upload = JournalPendingDeleteEntity(entryId = 0x1a7, nsRemoteId = objectId, deletedAt = 0L)
+
+    @Test
+    fun aV3ReadStillServesAnOwnV1UploadWaitingForItsDelete() {
+        // The tombstone holds the _id, which v3 leaves out. Read as gone, the tombstone went, and
+        // a delete that had failed let the document be received back.
+        val names = JournalTreatmentUploader.v3NamesOfV1Documents(listOf(ownV1Upload))
+        val body = JSONArray().put(servedByV3("jng-j-1a7")).toString()
+
+        assertEquals(setOf(objectId), servedRemoteIds(body, setOf(objectId), names))
+        assertEquals(objectId, JournalTreatmentUploader.v1DocumentServedByV3(servedByV3("jng-j-1a7"), names))
+    }
+
+    @Test
+    fun aDocumentServedWithItsIdIsNotTakenForAnotherByTheRowId() {
+        // Another install's document under the same row id, as v1 serves it: its own _id says so.
+        val names = JournalTreatmentUploader.v3NamesOfV1Documents(listOf(ownV1Upload))
+        val theirs = document("65a1b2c3d4e5f60718293a4c", "jng-j-1a7")
+
+        assertNull(JournalTreatmentUploader.v1DocumentServedByV3(theirs, names))
+        assertEquals(emptySet<String>(), servedRemoteIds(JSONArray().put(theirs).toString(), setOf(objectId), names))
+    }
+
+    @Test
+    fun aTombstoneHoldingAnIdentifierNeedsNoOtherName() {
+        val received = JournalPendingDeleteEntity(entryId = 0x1a7, nsRemoteId = uuid, deletedAt = 0L)
+
+        assertTrue(JournalTreatmentUploader.v3NamesOfV1Documents(listOf(received)).isEmpty())
+    }
+
+    /** It is resolved to an _id before any delete, on v3 too, where it would take whichever. */
+    @Test
+    fun theUndatedIdentifierIsExactlyWhatTheV1PathWrites() {
+        for (entryId in listOf(0L, 0x1a7L, Long.MAX_VALUE)) {
+            assertTrue(JournalTreatmentUploader.isUndatedOwnIdentifier(JournalTreatmentUploader.v1Identifier(entryId)))
+        }
+        assertFalse(
+            JournalTreatmentUploader.isUndatedOwnIdentifier(
+                JournalTreatmentUploader.datedIdentifier(0x1a7L, 1_700_000_000_000L)
+            )
+        )
+        assertFalse(JournalTreatmentUploader.isUndatedOwnIdentifier("jng-j-"))
+        assertFalse(JournalTreatmentUploader.isUndatedOwnIdentifier(objectId))
+    }
 }

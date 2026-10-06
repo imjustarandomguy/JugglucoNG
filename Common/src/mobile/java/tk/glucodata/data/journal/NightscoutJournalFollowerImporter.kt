@@ -34,10 +34,12 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
         repository.ensureDefaultInsulinPresets()
         val presets = repository.getInsulinPresetsSnapshot()
         val journalDao = HistoryDatabase.getInstance(Applic.app).journalDao()
-        val pendingDeleteRemoteIds = journalDao
-            .getPendingNightscoutDeletes()
+        val pendingDeletes = journalDao.getPendingNightscoutDeletes()
+        val pendingDeleteRemoteIds = pendingDeletes
             .mapNotNull { it.nsRemoteId.trim().takeIf(String::isNotBlank) }
             .toSet()
+        // The same documents as a v3 read serves those sent over v1, without the _id.
+        val pendingDeleteV3Names = JournalTreatmentUploader.v3NamesOfV1Documents(pendingDeletes)
         // Remote IDs this device itself uploaded to Nightscout. Re-importing them
         // would duplicate the local rows they came from, so these — and only these
         // — are skipped. Therapy uploaded by other JugglucoNG devices, or fetched by
@@ -66,6 +68,7 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
                 continue
             }
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, pendingDeleteRemoteIds)) continue
+            if (JournalTreatmentUploader.v1DocumentServedByV3(treatment, pendingDeleteV3Names) != null) continue
             val parsed = JournalTreatmentTransfer.parseTreatment(
                 context = context,
                 treatment = treatment,
