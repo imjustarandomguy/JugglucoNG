@@ -193,10 +193,13 @@ fun FloatingGlucoseOverlay(
     // Same estimator, window and raw/smoothed choice as every other arrow; the
     // overlay used to omit useRaw, so in raw view modes it regressed over the
     // smoothed series and tilted differently from the hero it floats next to.
-    val trendResult = remember(sensorHistory, viewMode, unitInt, currentSnapshot) {
+    // Over the same points too: the stored history plus the live reading Room
+    // may not hold yet, newest-anchored, as the dashboard and notification use.
+    val trendResult = remember(sensorHistory, viewMode, unitInt, currentSnapshot, currentSensorId) {
         if (sensorHistory.isNotEmpty()) {
+            val stored = sensorHistory.map { tk.glucodata.GlucosePoint(it.timestamp, it.value, it.rawValue) }
             TrendEngine.calculateTrend(
-                sensorHistory,
+                tk.glucodata.DisplayTrendSource.resolveTrendPoints(stored, currentSnapshot, currentSensorId),
                 useRaw = (viewMode == 1 || viewMode == 3),
                 isMmol = (unitInt == 1)
             )
