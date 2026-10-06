@@ -803,7 +803,7 @@ public static void  config(MainActivity act, View settingsview) {
     var clear=getbutton(act,R.string.resenddata);
     clear.setOnClickListener(v->  askclearupload(act));
     var wake=getbutton(act,act.getString(R.string.sendnow));
-    wake.setOnClickListener(v-> Natives.wakeuploader());
+    wake.setOnClickListener(v-> Natives.wakeuploadernow());
     Button help;
     CheckBox treatments=getcheckbox(act,R.string.sendamounts,Natives.getpostTreatments());
     if(!isWearable) {

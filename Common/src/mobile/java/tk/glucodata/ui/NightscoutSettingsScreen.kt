@@ -831,7 +831,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
                     Button(
                         onClick = {
                             persistSettings()
-                            Natives.wakeuploader()
+                            Natives.wakeuploadernow()
                             refreshStatus()
                             Toast.makeText(context, context.getString(R.string.sending_now), Toast.LENGTH_SHORT).show()
                         },
