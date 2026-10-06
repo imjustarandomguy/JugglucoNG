@@ -1092,6 +1092,24 @@ public class Notify {
         return fallbackStatus;
     }
 
+    /**
+     * As above, but quiet about passive link states ("Searching for sensors",
+     * "Connecting…") while the reading on show is fresh. A sensor that links
+     * up only for a few seconds per reading, like the Dexcom G7, spends almost
+     * all its time disconnected, and any rescan in between stamped "Searching"
+     * on a sensor that was delivering on schedule. Once the reading is older
+     * than {@link #glucosetimeout} the status shows again.
+     */
+    private static String resolveNotificationStatusText(String activeSensorSerial, String fallbackStatus,
+            long readingTimeMillis) {
+        final String status = resolveNotificationStatusText(activeSensorSerial, fallbackStatus);
+        if (readingTimeMillis > 0L
+                && System.currentTimeMillis() - readingTimeMillis < glucosetimeout
+                && ManagedSensorStatusPolicy.isPassiveSummaryStatus(status))
+            return "";
+        return status;
+    }
+
     private static CurrentDisplaySource.Snapshot resolveNotificationCurrentSnapshot() {
         return resolveNotificationCurrentSnapshot(resolveNotificationSensorSerial());
     }
@@ -4126,7 +4144,8 @@ public class Notify {
                 ? NotificationChartDrawer.drawArrow(Applic.app, rate, isMmol, arrowColor, arrowSize)
                 : null;
 
-        String sensorStatusText = resolveNotificationStatusText(activeSensorSerial, statusText);
+        String sensorStatusText = resolveNotificationStatusText(activeSensorSerial, statusText,
+                fallbackDisplay != null ? fallbackDisplay.getTimeMillis() : 0L);
 
         // The status line carries the journal IOB/eIOB/COB (when enabled) and
         // the sensor status (gated by its own pref). IOB goes first — the

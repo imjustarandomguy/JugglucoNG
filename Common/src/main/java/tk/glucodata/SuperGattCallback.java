@@ -209,6 +209,12 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // sensors the slot stayed 0 and both checks read every session as if no reading
         // had ever arrived.
         charcha[0] = sampleTimeMs;
+        // SensorBluetooth.scanStarter stamps "Searching for sensors" on any
+        // callback without an open GATT, which for a sensor that disconnects
+        // between readings (Dexcom G7) is most of the time, and nothing else
+        // cleared it. A reading has just arrived, so it is no longer true.
+        if ("Searching for sensors".equals(constatstatusstr))
+            constatstatusstr = "";
         // A reading imported over Clone is published through this same callback,
         // so accepting one is not proof this device read the sensor. Only a GATT
         // this process actually connected is, and without that check a mirrored
