@@ -1586,6 +1586,9 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Isticmaal Nightscout v3 API</string>
     <string name="nightscout_use_v3_api_desc">Soo rarista gulukoosku waxay u baahan tahay api:entries:create iyo api:entries:update.</string>
+    <string name="nightscout_wifi_only">Ku soo rar oo keliya Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Wuxuu joojiyaa soo rarista inta xogta mobilka la isticmaalayo.</string>
+    <string name="nightscout_status_wifi_waiting">Sugaya Wi-Fi</string>
     <string name="nightscout_follow_desc">Ka samee dareemaha akhriska-kaliya ee URL-kan Nightscout.</string>
     <string name="nightscout_follow_url_required">Geli URL Nightscout marka hore</string>
     <string name="nightscout_mode_upload">Soo rar</string>

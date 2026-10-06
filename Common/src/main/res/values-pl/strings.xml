@@ -1325,6 +1325,9 @@
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Skorzystaj z API Nightscout v3</string>
     <string name="nightscout_use_v3_api_desc">Przesyłanie glukozy wymaga api:entries:create i api:entries:update.</string>
+    <string name="nightscout_wifi_only">Wysyłaj tylko przez Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Wstrzymuje wysyłanie podczas korzystania z danych mobilnych.</string>
+    <string name="nightscout_status_wifi_waiting">Oczekiwanie na Wi-Fi</string>
     <string name="nightscout_follow_desc">Utwórz wirtualny czujnik tylko do odczytu z tego adresu URL Nightscout.</string>
     <string name="nightscout_follow_url_required">Najpierw wpisz adres URL Nightscout</string>
     <string name="nightscout_test_testing">Testowanie...</string>

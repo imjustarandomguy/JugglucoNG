@@ -1318,6 +1318,9 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Nightscout v3 API\'sini kullanın</string>
     <string name="nightscout_use_v3_api_desc">Glikoz yüklemeleri api:entries:create ve api:entries:update gerektirir.</string>
+    <string name="nightscout_wifi_only">Yalnızca Wi-Fi ile yükle</string>
+    <string name="nightscout_wifi_only_desc">Mobil veri kullanılırken yüklemeleri bekletir.</string>
+    <string name="nightscout_status_wifi_waiting">Wi-Fi bekleniyor</string>
     <string name="nightscout_follow_desc">Bu Nightscout URL\'sinden salt okunur sanal sensör oluşturur.</string>
     <string name="nightscout_follow_url_required">Önce bir Nightscout URL\'si girin</string>
     <string name="nightscout_test_testing">Test ediliyor...</string>

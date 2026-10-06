@@ -1327,6 +1327,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Используйте API Nightscout v3</string>
     <string name="nightscout_use_v3_api_desc">Для загрузки глюкозы нужны api:entries:create и api:entries:update.</string>
+    <string name="nightscout_wifi_only">Загружать только по Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Откладывает загрузку при мобильном интернете.</string>
+    <string name="nightscout_status_wifi_waiting">Ожидание Wi-Fi</string>
     <string name="nightscout_follow_desc">Создать виртуальный датчик только для чтения из этого URL Nightscout.</string>
     <string name="nightscout_follow_url_required">Сначала введите URL Nightscout</string>
     <string name="nightscout_test_testing">Проверка...</string>

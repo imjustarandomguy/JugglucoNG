@@ -1324,6 +1324,9 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Nightscout v3 API ашиглах</string>
     <string name="nightscout_use_v3_api_desc">Глюкозын байршуулалтад api:entries:create болон api:entries:update хэрэгтэй.</string>
+    <string name="nightscout_wifi_only">Зөвхөн Wi-Fi-аар байршуулах</string>
+    <string name="nightscout_wifi_only_desc">Мобайл дата ашиглаж байх үед байршуулалтыг хүлээлгэнэ.</string>
+    <string name="nightscout_status_wifi_waiting">Wi-Fi хүлээж байна</string>
     <string name="nightscout_follow_desc">Энэ Nightscout URL-аас зөвхөн унших боломжтой виртуал мэдрэгч үүсгэх.</string>
     <string name="nightscout_follow_url_required">Эхлээд Nightscout URL-г оруулна уу</string>
     <string name="no_active_sensor_selected">No active sensor selected</string>
