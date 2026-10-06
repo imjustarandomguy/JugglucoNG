@@ -481,7 +481,7 @@ object WearSync2 {
                 // Taken before storing: a reading filled in behind this device's own
                 // newest is history, not the current value.
                 val localNewestMs = if (readsLocally) {
-                    runCatching { Natives.lastglucosetime() * 1000L }.getOrDefault(Long.MAX_VALUE)
+                    runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
                 } else 0L
                 var written = 0
                 var earliest = 0L
