@@ -14,6 +14,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -499,6 +502,8 @@ fun FloatingGlucoseSettingsScreen(
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsStateWithLifecycle(initialValue = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsStateWithLifecycle(initialValue = 0f)
+    val islandTappable by repository.isIslandTappable.collectAsStateWithLifecycle(initialValue = false)
+    val islandServiceOn = tk.glucodata.service.IslandAccessibilityService.windowManager.collectAsStateWithLifecycle().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsStateWithLifecycle(initialValue = false)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
@@ -670,6 +675,36 @@ fun FloatingGlucoseSettingsScreen(
                 range = 0f..200f,
                 steps = 40
             )
+
+            // App overlays sit under the status bar, so the island cannot be
+            // tapped; drawn through the island accessibility service it can.
+            Spacer(modifier = Modifier.height(8.dp))
+            SettingsSwitchItem(
+                title = stringResource(R.string.floating_island_tappable),
+                subtitle = stringResource(R.string.floating_island_tappable_desc),
+                checked = islandTappable,
+                onCheckedChange = { repository.setIslandTappable(it) },
+                position = CardPosition.SINGLE,
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+            )
+            if (islandTappable && !islandServiceOn) {
+                Spacer(modifier = Modifier.height(8.dp))
+                WarningPanel(
+                    text = stringResource(
+                        R.string.floating_island_service_off,
+                        stringResource(R.string.floating_island_service_label),
+                    ),
+                    modifier = Modifier
+                        .padding(horizontal = legacySettingsHorizontalPadding)
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

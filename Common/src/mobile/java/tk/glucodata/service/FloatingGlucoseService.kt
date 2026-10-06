@@ -149,6 +149,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private var legacyPixelPosition: Pair<Int, Int>? = null
     private var screenArea: OverlayScreenArea? = null
     private var dragging = false
+    private var islandTappable = false
+    // The WindowManager the pill is attached through: the app's own, or the
+    // island accessibility service's (see attachToHost).
+    private var hostWindowManager: WindowManager? = null
 
     private fun setupOverlay() {
         if (composeView != null) return
@@ -232,6 +236,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
         try {
             windowManager?.addView(root, layoutParams)
+            hostWindowManager = windowManager
             root.requestApplyInsets()
         } catch (e: Exception) {
             e.printStackTrace()
@@ -392,7 +397,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
 
         try {
-            windowManager?.updateViewLayout(overlayRoot, layoutParams)
+            hostWindowManager?.updateViewLayout(overlayRoot, layoutParams)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -448,8 +453,62 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         serviceScope.launch {
             settingsRepository.isDynamicIslandEnabled.collectLatest { isIsland ->
                 dynamicIslandEnabled = isIsland
+                attachToHost()
                 applyOverlayPlacement()
             }
+        }
+
+        serviceScope.launch {
+            settingsRepository.isIslandTappable.collectLatest { tappable ->
+                islandTappable = tappable
+                attachToHost()
+                applyOverlayPlacement()
+            }
+        }
+
+        serviceScope.launch {
+            IslandAccessibilityService.windowManager.collectLatest {
+                attachToHost()
+                applyOverlayPlacement()
+            }
+        }
+    }
+
+    /**
+     * Puts the pill in an accessibility overlay while the island is tappable and
+     * the island accessibility service is on, and in an app overlay otherwise.
+     *
+     * App overlays sit under the status bar window, so the island beside the
+     * camera could be seen but every touch on it went to the status bar.
+     * Accessibility overlays sit above it and receive the touch.
+     */
+    private fun attachToHost() {
+        val root = overlayRoot ?: return
+        val accessibilityWm = IslandAccessibilityService.windowManager.value
+        val useAccessibility = dynamicIslandEnabled && islandTappable && accessibilityWm != null
+        val target = (if (useAccessibility) accessibilityWm else windowManager) ?: return
+        if (target === hostWindowManager) return
+        closeDetails()
+        hostWindowManager?.let { old ->
+            try {
+                old.removeViewImmediate(root)
+            } catch (e: Exception) {
+                // Already gone: the system removes an accessibility overlay
+                // itself when its service is turned off.
+            }
+        }
+        hostWindowManager = null
+        layoutParams.type = if (useAccessibility) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        }
+        try {
+            target.addView(root, layoutParams)
+            hostWindowManager = target
+            root.requestApplyInsets()
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -525,7 +584,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
 
         try {
-            windowManager?.updateViewLayout(overlayRoot, layoutParams)
+            hostWindowManager?.updateViewLayout(overlayRoot, layoutParams)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -639,7 +698,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         serviceScope.cancel()
         if (overlayRoot != null) {
             try {
-                windowManager?.removeView(overlayRoot)
+                hostWindowManager?.removeView(overlayRoot)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

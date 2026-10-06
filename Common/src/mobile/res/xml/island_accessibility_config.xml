@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No event types and no window content: the service only lends its window
+     token to the floating glucose island (IslandAccessibilityService). -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/floating_island_service_desc"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="false"
+    android:accessibilityFlags="flagDefault" />
