@@ -44,8 +44,7 @@ import tk.glucodata.ui.WearSectionTitle
 fun AlertsScreen() {
     val isMmol = remember { runCatching { Applic.unit == 1 }.getOrDefault(false) }
     var revision by remember { mutableIntStateOf(0) }
-    // The phone's reply lands here; a status refresh does not bump [revision],
-    // so without observing it a flipped switch never redrew.
+    // The phone's last report; switches redraw when it changes.
     val toggles by WearToggleSync.state.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -62,8 +61,7 @@ fun AlertsScreen() {
                 WearSectionTitle(stringResource(R.string.alarms))
             }
             items(AlertType.settingsEntries) { type ->
-                // Keyed on the toggles too: the reply rewrites the local config.
-                val config = remember(type, revision, toggles) {
+                val config = remember(type, revision) {
                     runCatching { AlertRepository.loadConfig(type) }.getOrNull()
                 } ?: return@items
                 val snoozed = remember(type, revision) {

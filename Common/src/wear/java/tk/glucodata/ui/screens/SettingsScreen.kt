@@ -26,8 +26,7 @@ fun SettingsScreen(
     onOpenSensor: () -> Unit,
     onOpenExchange: () -> Unit = {},
 ) {
-    // Observed, and asked for on entry, so the prediction switch shows the
-    // phone's answer rather than whatever was cached when the screen opened.
+    // The phone's last report, requested on entry.
     val toggles by tk.glucodata.WearToggleSync.state.collectAsState()
     LaunchedEffect(Unit) { tk.glucodata.WearToggleSync.requestState() }
 
