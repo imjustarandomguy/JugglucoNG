@@ -499,8 +499,8 @@ fun FloatingGlucoseSettingsScreen(
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsStateWithLifecycle(initialValue = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsStateWithLifecycle(initialValue = 0f)
-    val islandTappable by repository.isIslandTappable.collectAsStateWithLifecycle(initialValue = false)
-    val islandServiceOn = tk.glucodata.service.IslandAccessibilityService.windowManager.collectAsStateWithLifecycle().value != null
+    val aboveStatusBar by repository.isAboveStatusBar.collectAsStateWithLifecycle(initialValue = false)
+    val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsStateWithLifecycle().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsStateWithLifecycle(initialValue = false)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
@@ -540,16 +540,6 @@ fun FloatingGlucoseSettingsScreen(
                 modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
             )
         }
-
-        Spacer(Modifier.height(8.dp))
-        SettingsSwitchItem(
-            title = stringResource(R.string.floating_tap_details),
-            subtitle = stringResource(R.string.floating_tap_details_desc),
-            checked = tapShowsDetails,
-            onCheckedChange = { repository.setTapShowsDetails(it) },
-            position = CardPosition.SINGLE,
-            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
-        )
 
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel(
@@ -652,36 +642,46 @@ fun FloatingGlucoseSettingsScreen(
                 range = 0f..200f,
                 steps = 40
             )
+        }
 
-            // App overlays sit under the status bar, so the island cannot be
-            // tapped; drawn through the island accessibility service it can.
-            Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        Column(
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        ) {
             SettingsSwitchItem(
-                title = stringResource(R.string.floating_island_tappable),
-                subtitle = stringResource(R.string.floating_island_tappable_desc),
-                checked = islandTappable,
-                onCheckedChange = { repository.setIslandTappable(it) },
-                position = CardPosition.SINGLE,
-                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+                title = stringResource(R.string.floating_tap_details),
+                subtitle = stringResource(R.string.floating_tap_details_desc),
+                checked = tapShowsDetails,
+                onCheckedChange = { repository.setTapShowsDetails(it) },
+                position = CardPosition.TOP
             )
-            if (islandTappable && !islandServiceOn) {
-                Spacer(modifier = Modifier.height(8.dp))
-                WarningPanel(
-                    text = stringResource(
-                        R.string.floating_island_service_off,
-                        stringResource(R.string.floating_island_service_label),
-                    ),
-                    modifier = Modifier
-                        .padding(horizontal = legacySettingsHorizontalPadding)
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            context.startActivity(
-                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        }
-                )
-            }
+            SettingsSwitchItem(
+                title = stringResource(R.string.floating_above_status_bar),
+                subtitle = stringResource(R.string.floating_above_status_bar_desc),
+                checked = aboveStatusBar && tapShowsDetails,
+                enabled = tapShowsDetails,
+                onCheckedChange = { repository.setAboveStatusBar(it) },
+                position = CardPosition.BOTTOM
+            )
+        }
+        if (tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
+            Spacer(modifier = Modifier.height(8.dp))
+            WarningPanel(
+                text = stringResource(
+                    R.string.floating_accessibility_service_off,
+                    stringResource(R.string.floating_accessibility_service_label),
+                ),
+                modifier = Modifier
+                    .padding(horizontal = legacySettingsHorizontalPadding)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
