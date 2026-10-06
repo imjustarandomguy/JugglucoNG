@@ -230,6 +230,19 @@ private int connectionTimeouts=0;
     @Override
     public void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
+        // Ignore, and close, callbacks from a GATT this callback has replaced: a late
+        // DISCONNECTED would schedule a second reconnect, a late CONNECTED would start a
+        // handshake on a retired link.
+        final boolean currentGatt;
+        synchronized (this) {
+            // The connect runnable assigns mBluetoothGatt under this monitor.
+            currentGatt = bluetoothGatt == mBluetoothGatt;
+        }
+        if (!currentGatt) {
+            {if(doLog) {Log.i(LOG_ID, SerialNumber + " ignore stale onConnectionStateChange state=" + newState);};};
+            try { bluetoothGatt.close(); } catch (Throwable th) { Log.stack(LOG_ID, "close stale gatt", th); }
+            return;
+        }
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
@@ -505,11 +518,6 @@ private void sendcertthread() {
     public void onCharacteristicWrite(BluetoothGatt bluetoothGatt, BluetoothGattCharacteristic bluetoothGattCharacteristic, int status) {
 //        {if(doLog) {Log.d(LOG_ID, bluetoothGatt.getDevice().getAddress() + " onCharacteristicWrite, status:" + status + " UUID:" + bluetoothGattCharacteristic.getUuid().toString());};};
         showCharacter("onCharacteristicWrite " + bluetoothGatt.getDevice().getAddress() + " status:" + status + " ", bluetoothGattCharacteristic);
-    }
-
-    @SuppressWarnings("unused")
-    public void onConnectionUpdated(BluetoothGatt gatt, int interval, int latency, int timeout, int status) {
-        {if(doLog) {Log.i(LOG_ID, "onConnectionUpdated interval=" + interval + " latency=" + latency + " timeout=" + timeout + " status=" + status);};};
     }
 
 
@@ -853,17 +861,20 @@ private    void getdata(byte[] value) {
     public void onCharacteristicChanged(@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic bluetoothGattCharacteristic, @NonNull byte[] value) {
         if(doLog)
             {if(doLog){Log.showbytes("DexGattCallback onCharacteristicChanged UUID: " + bluetoothGattCharacteristic.getUuid().toString(), value);};}
+        if (bluetoothGattCharacteristic.equals(charact[0])) {
+            getdata(value);
+            return;
+        }
         if (bluetoothGattCharacteristic.equals(charact[2])) {
             Natives.dexbackfill(dataptr, value);
             return;
         }
-
         if (bluetoothGattCharacteristic.equals(charact[3])) {
             getcert(value);
-        } else if (bluetoothGattCharacteristic.equals(charact[1])) {
+            return;
+        }
+        if (bluetoothGattCharacteristic.equals(charact[1])) {
             authenticate(value);
-        } else if (bluetoothGattCharacteristic.equals(charact[0])) {
-            getdata(value);
         }
     }
 
@@ -992,7 +1003,13 @@ private    void getdata(byte[] value) {
                 getdatacmd();
                 if(!has_service) {
                     Applic.RunOnUiThread(() -> {
-                        if (!mBluetoothGatt.discoverServices()) {
+                        // The GATT may be closed by the time this runs (bond broadcast after a disconnect).
+                        final var gatt = mBluetoothGatt;
+                        if (gatt == null) {
+                            Log.e(LOG_ID, "bonded(): mBluetoothGatt==null");
+                            return;
+                        }
+                        if (!gatt.discoverServices()) {
                             Log.e(LOG_ID, "bonded(): bluetoothGatt.discoverServices()  failed");
                             disconnect();
                         }
