@@ -211,8 +211,11 @@ object WearSensorClaim {
             }
         }
         val now = System.currentTimeMillis()
-        val timeoutMs = callback?.handoverWindowMs()?.takeIf { it > 0L } ?: CLAIM_TIMEOUT_MS
-        if (now - requestStart >= timeoutMs) {
+        // The phone stands down only for the window, so a claim past it is void.
+        // A sensor read alongside the phone has no window: keep trying until it
+        // is reached and paired, however long that takes.
+        val alongside = callback?.readsAlongside() == true
+        if (!alongside && now - requestStart >= CLAIM_TIMEOUT_MS) {
             synchronized(this) {
                 if (!directRequested || requestedAtMs != requestStart) return
                 directRequested = false

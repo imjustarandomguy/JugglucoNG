@@ -213,23 +213,17 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     }
 
     /**
-     * Whether the sensor pairs anew with every device that reads it. Such a
-     * sensor is only dialled by a device it was handed to: the attempt alone
-     * can take it from the device holding it.
+     * Whether the sensor serves this device and the other at once, each over
+     * its own channel. Neither then stands down for the other, and a watch
+     * dials it only when told to read it ("Direct sensor on watch").
      */
-    public boolean pairsPerDevice() {
+    public boolean readsAlongside() {
         return false;
     }
 
-    /** How long handing the sensor to the other device may take; 0 for the default. */
-    public long handoverWindowMs() {
-        return 0L;
-    }
-
-    /** Stands down so the other device can connect. */
-    public void releaseToPeer() {
-        setPause(true);
-        disconnect();
+    /** Bluetooth use stops; by default the same as dropping the sensor. */
+    public void stopTransport() {
+        free();
     }
 
     /**
