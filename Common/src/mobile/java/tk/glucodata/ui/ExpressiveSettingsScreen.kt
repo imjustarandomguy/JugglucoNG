@@ -526,7 +526,7 @@ fun ExpressiveSettingsScreen(
                             healthConnectEnabled = enabled
                             if (enabled) {
                                 MainActivity.tryHealth = 5
-                                (context.findActivity() as? MainActivity)?.let(HealthConnection::init)
+                                (context.findActivity() as? MainActivity)?.let(HealthConnection::glucoseSwitchedOn)
                             } else {
                                 MainActivity.tryHealth = 0
                                 HealthConnection.stop()

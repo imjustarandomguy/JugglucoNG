@@ -1231,7 +1231,8 @@ public class Natives {
 
         public static native int healthConnectfromSensorptr(long sensorptr);
 
-        public static native void healthConnectWritten(long sensorptr, int pos);
+        /** Moves the export cursor from {@code from} to {@code pos}; false when a late reading moved it back meanwhile. */
+        public static native boolean healthConnectWritten(long sensorptr, int from, int pos);
 
         public static native void sethealthConnect(boolean val);
 

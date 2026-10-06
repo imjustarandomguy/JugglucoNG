@@ -1305,7 +1305,8 @@ public class Applic extends Application implements androidx.work.Configuration.P
                         ;
                     }
                     ;
-                    if (Build.VERSION.SDK_INT >= 28) {
+                    // Only with Exchange data's Health Connect switch on, as SuperGattCallback's export.
+                    if (Build.VERSION.SDK_INT >= 28 && Natives.gethealthConnect()) {
                         var health = HealthConnectAccess.get();
                         if (health != null) health.writeAll(sensorptr, SerialNumber);
                     }
