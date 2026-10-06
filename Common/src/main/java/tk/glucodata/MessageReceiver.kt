@@ -98,6 +98,9 @@ class MessageReceiver: WearableListenerService() {
                     WearToggleSync.pushIfChanged(messageEvent.sourceNodeId)
                     // Answer the handshake with this build's protocol version.
                     MessageSender.sendProtocol(messageEvent.sourceNodeId)
+                } else {
+                    // The phone asks for a reading it missed of a sensor both read.
+                    WearSync2.onRequest(data)
                 }
             }
             WearMessagePath.SYNC2_CHUNK -> {
