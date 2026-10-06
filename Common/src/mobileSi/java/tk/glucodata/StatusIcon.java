@@ -22,10 +22,9 @@ public class StatusIcon {
     }
 
     /**
-     * A coloured value for the status bar. Stock Android tints every status-bar
-     * icon to one colour whatever its pixels say; some skins (Samsung One UI)
-     * keep the bitmap's colours. The thin dark outline keeps a coloured value
-     * legible on a light status bar there, as GlucoDataHandler does.
+     * Colours the value. Most status bars draw small icons as a one-colour mask;
+     * where a bitmap's colours are kept, the dark edge keeps a coloured value
+     * legible on a light bar.
      */
     private static void applyColor(Paint paint, int color) {
         paint.setColor(color);

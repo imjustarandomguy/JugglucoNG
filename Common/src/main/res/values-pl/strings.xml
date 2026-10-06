@@ -3221,5 +3221,5 @@
         <item quantity="other">Uwzględniono %d zaplanowanego wpisu dziennika</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
-    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu.</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu</string>
 </resources>

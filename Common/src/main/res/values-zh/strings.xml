@@ -3176,5 +3176,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">包含 %d 条计划的日志条目</item>
     </plurals>
     <string name="status_bar_icon_colored_title">彩色状态栏图标</string>
-    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值。</string>
+    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值</string>
 </resources>
