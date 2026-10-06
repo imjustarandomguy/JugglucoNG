@@ -1228,7 +1228,11 @@ static void uploaderthread() {
             treatmentbackoffmin=0;
             treatmentnextattempt=std::chrono::steady_clock::time_point{};
             }
-        bool useV3=settings->data()->nightscoutV3;
+        /* The API version is the user's setting. A 404 is reported like any other refusal;
+           it used to turn v3 on for good (and with it a token exchange in place of the
+           secret), on the strength of one answer that need not even have come from
+           Nightscout. */
+        const bool useV3=settings->data()->nightscoutV3;
         glucosefailed=false;
         const bool prioritizeRecent=(current&Backup::wakestream);
         /* What asks for glucose, and what asks for treatments (a Resend asks for both). */
@@ -1238,16 +1242,6 @@ static void uploaderthread() {
         Pass pass=Pass::done;
         if(current&glucosewakes) {
             pass = useV3?uploadCGM3(prioritizeRecent):uploadCGM(prioritizeRecent);
-            if(pass==Pass::failed && !useV3 && lastNightUploadCode==404) {
-                LOGSTRING("Nightscout v1 endpoint returned 404, retrying with v3\n");
-                settings->data()->nightscoutV3 = true;
-                settings->updated();
-                auto env = getenv();
-                makeuploadsecret(env);
-                makeuploadurls(env);
-                useV3 = true;
-                pass = uploadCGM3(prioritizeRecent);
-            }
             /* A pass that gave way for a live reading is not a failure: no back-off and no
                waiting, the wake that stopped it is still set and starts the next pass at once,
                which sends that reading first and then continues the history. */
@@ -1272,17 +1266,7 @@ static void uploaderthread() {
             retrypending|=Backup::waketreatments;
             }
         else if(aside&&(current&treatmentwakes)) {
-            bool treatmentsOk = uploadJournalTreatmentsViaJava(useV3);
-            if(!treatmentsOk && !useV3 && lastNightUploadCode==404) {
-                LOGSTRING("Nightscout v1 treatments endpoint returned 404, retrying with v3\n");
-                settings->data()->nightscoutV3 = true;
-                settings->updated();
-                auto env = getenv();
-                makeuploadsecret(env);
-                makeuploadurls(env);
-                useV3 = true;
-                treatmentsOk = uploadJournalTreatmentsViaJava(true);
-            }
+            const bool treatmentsOk = uploadJournalTreatmentsViaJava(useV3);
             if(!treatmentsOk) {
                 /* Ask again without waiting for anything else to happen, and more slowly
                    each time: an entry the server will never accept must not be retried
