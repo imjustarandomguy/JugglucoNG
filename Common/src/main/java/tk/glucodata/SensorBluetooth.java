@@ -1674,10 +1674,7 @@ public class SensorBluetooth {
         ;
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
         }
-        // Every scan that adds a sensor ends here. Names looked up before its
-        // record existed are cached as unknown: a new G7's short name then kept
-        // resolving to itself instead of the full name until the app restarted,
-        // and the watch got its chunks under one name, then the other.
+        // A scan may have added a sensor: drop identity lookups cached as unknown before its record existed.
         SensorIdentity.invalidateCaches();
         // blueone is null until BLE init completes; callers include Compose
         // view models built at first frame and the wear handoff receiver, so

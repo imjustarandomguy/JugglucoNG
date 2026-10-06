@@ -9,6 +9,7 @@ import tk.glucodata.drivers.ManagedSensorRuntime
 object SensorIdentity {
     private const val NULL_SENTINEL = "\u0000"
     private const val UNKNOWN_SENSOR_SENTINEL = "?"
+    private const val NATIVE_PREFIX_LENGTH = 5
     private val nativeCanonicalCache = ConcurrentHashMap<String, String>()
     // raw id -> resolved app (canonical) sensor id. resolveAppSensorId iterates every driver's
     // identity adapter (each hitting SharedPreferences + regex), so it is far too costly to run
@@ -83,17 +84,10 @@ object SensorIdentity {
     }
 
     /**
-     * The record this device keeps for [sensorId] under its short alias, if it
-     * has one.
-     *
-     * Native finds a record named by a full sensor name through the short alias
-     * as well (the name without its five-character prefix, sensoren.hpp
-     * shortsensorname_view), but not the other way round. A phone that has not
-     * resolved a new sensor's full name yet sends chunks under the alias, so the
-     * watch made a record named after the alias. Once the phone resolved the full
-     * name (after its next restart) the chunks carried that instead, matched
-     * nothing on the watch, and went into a second record while the watch kept
-     * displaying the first one.
+     * The native record named after [sensorId]'s short alias (the name minus its
+     * five-character prefix, see sensoren.hpp shortsensorname_view), or null.
+     * Native resolves an alias to a full-named record but not the reverse, so a
+     * record created under the alias has to be looked up explicitly.
      */
     @JvmStatic
     fun shortNamedNativeRecord(sensorId: String?): String? {
@@ -108,7 +102,7 @@ object SensorIdentity {
         val raw = normalized(sensorId) ?: return null
         // "X-" names have no alias; "SIBI:" and the like are managed ids.
         if (raw.length <= 11 || raw.startsWith("X-") || raw.contains(':')) return null
-        val alias = raw.substring(5)
+        val alias = raw.substring(NATIVE_PREFIX_LENGTH)
         // Only a record named after the alias itself: one named by the full
         // name answers to the alias too, and that one is [raw]'s own.
         return fullNameOf(alias)?.trim()?.takeIf { it.equals(alias, ignoreCase = true) }
