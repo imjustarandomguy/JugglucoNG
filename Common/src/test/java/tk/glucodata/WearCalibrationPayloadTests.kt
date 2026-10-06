@@ -340,20 +340,19 @@ class WearCalibrationPayloadTests {
     fun aPhoneThatPredatesTheSwitchReadsAsEnabled() {
         // An older phone never sets the bits, so its payloads must not hide
         // calibration on the watch.
-        val decoded = requireNotNull(
-            WearCalibrationPayload.decode(
-                WearCalibrationPayload.encode(
-                    WearCalibrationPayload(
-                        sensorId = "sensor",
-                        revision = 1L,
-                        valuesPrecalibrated = false,
-                        hideInitialWhenCalibrated = false,
-                        auto = WearCalibrationMode(DoubleArray(0)),
-                        raw = WearCalibrationMode(DoubleArray(0)),
-                    ),
-                ),
+        val encoded = WearCalibrationPayload.encode(
+            WearCalibrationPayload(
+                sensorId = "sensor",
+                revision = 1L,
+                valuesPrecalibrated = false,
+                hideInitialWhenCalibrated = false,
+                auto = WearCalibrationMode(DoubleArray(0)),
+                raw = WearCalibrationMode(DoubleArray(0)),
             ),
         )
+        // Byte 1 is the flags byte; the disabled bits are 5 and 6.
+        assertEquals(0, encoded[1].toInt() and 0x60)
+        val decoded = requireNotNull(WearCalibrationPayload.decode(encoded))
         assertFalse(decoded.autoDisabled)
         assertFalse(decoded.rawDisabled)
     }

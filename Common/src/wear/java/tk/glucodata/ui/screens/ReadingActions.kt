@@ -68,11 +68,13 @@ object ReadingActions {
      * then, as it is on the phone. True until the phone has said otherwise.
      */
     @JvmStatic
-    @JvmOverloads
-    fun calibrationAvailable(
-        isRawMode: Boolean = WearGlucoseStore.viewMode().let { it == 1 || it == 3 },
-        sensorId: String? = WearGlucoseStore.currentSensor(),
-    ): Boolean = runCatching { CalibrationAccess.isEnabledForMode(isRawMode, sensorId) }.getOrDefault(true)
+    fun calibrationAvailable(isRawMode: Boolean, sensorId: String?): Boolean =
+        runCatching { CalibrationAccess.isEnabledForMode(isRawMode, sensorId) }.getOrDefault(true)
+
+    /** [calibrationAvailable] for the sensor and lane the screens currently show. */
+    @JvmStatic
+    fun calibrationAvailable(): Boolean =
+        WearGlucoseStore.snapshot.value.let { calibrationAvailable(it.isRawMode, it.sensorId) }
 
     /** Whether tapping a reading has anything to offer: calibration or the journal. */
     @JvmStatic
