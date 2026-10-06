@@ -159,21 +159,23 @@ private void docmd0(BluetoothGatt bluetoothGatt) {
 //private long connectedtime=0L;
 //private ArrayList<String> triedsensors=new ArrayList<>();
 
+/* One non-reference-counted lock per callback, acquired with a timeout so a GATT closed without a DISCONNECTED callback cannot keep it held. */
 private static PowerManager.WakeLock getwakelock() {
-      return ((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      final var lock=((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      lock.setReferenceCounted(false);
+      return lock;
       }
-private PowerManager.WakeLock wakelock=null;
+private final PowerManager.WakeLock wakelock=getwakelock();
+/** Covers a session, pairing included; a G7 session takes a few seconds. */
+private static final long WAKELOCK_TIMEOUT_MSEC=2L*60L*1000L;
 
 private void getlock() {
-    wakelock=getwakelock();
-    wakelock.acquire();
+    wakelock.acquire(WAKELOCK_TIMEOUT_MSEC);
     {if(doLog) {Log.i(LOG_ID,"getlock");};};
     }
 private void releaselock() {
-    var lock=wakelock;
-    if(lock!=null) {
-        wakelock=null;
-        lock.release();
+    if(wakelock.isHeld()) {
+        wakelock.release();
         {if(doLog) {Log.i(LOG_ID,"releaselock");};};
         }
    } 
@@ -1083,6 +1085,7 @@ private void resetconnect() {
 @Override
 public void close() {
    resetconnect();
+   releaselock();
    super.close();
    }
 

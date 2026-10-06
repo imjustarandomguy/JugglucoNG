@@ -2096,6 +2096,9 @@ public class SensorBluetooth {
     private BroadcastReceiver bondStateReceiver = null;
 
     private void addBondStateReceiver() {
+        // Registered once; addReceivers() runs on every updateDevicers()/addDevice().
+        if (bondStateReceiver != null)
+            return;
         bondStateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
