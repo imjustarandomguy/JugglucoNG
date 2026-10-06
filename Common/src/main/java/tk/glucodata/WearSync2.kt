@@ -476,6 +476,14 @@ object WearSync2 {
                     if (doLog) Log.i(LOG_ID, "ignored stale chunk for removed sensor $serial")
                     return@execute
                 }
+                val times = LongArray(count)
+                val autos = IntArray(count)
+                val rawWire = IntArray(count)
+                for (i in 0 until count) {
+                    times[i] = buf.long
+                    autos[i] = buf.int
+                    rawWire[i] = buf.int
+                }
                 // A managed watch can acquire live readings before its phone
                 // history arrives. Ownership does not imply a complete store.
                 // Native provenance, not today's connection proof, decides if
@@ -484,15 +492,30 @@ object WearSync2 {
                 val localOwner = SensorOwnershipRuntime.readsLocally(serial)
                 val managedWatchImport = Applic.isWearable &&
                     SensorIdentity.usesNativeDirectStreamShell(serial)
-                if (localOwner && !managedWatchImport) {
-                    if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
-                    return@execute
-                }
+                // Chunks travel in whichever direction ownership points. Any other
+                // device reading the sensor itself takes from the other only the
+                // readings it missed: when both read it (a G7) they are the same
+                // readings, and its own must never be replaced. Not a Libre 2: its
+                // polls are not minute slots, and filling them moves its BLE cursor
+                // (below).
+                val alreadyHave = if (localOwner && !managedWatchImport) {
+                    val filled = if (isLibre2NativeSensor(serial)) null
+                    else runCatching { Natives.streamSlotsFilled(times, serial) }.getOrNull()
+                    filled ?: run {
+                        if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
+                        return@execute
+                    }
+                } else null
                 // Libre 2's Abbott BLE IDs are not elapsed minutes. Importing
                 // minute-derived IDs into its phone polls advances the live BLE
                 // cursor and rejects real readings when ownership returns.
                 // The phone keeps synced data in Room; Wear needs native history.
                 val mirrorNative = Applic.isWearable || !isLibre2NativeSensor(serial)
+                // Taken before storing: a reading filled in behind this device's own
+                // newest is history, not the current value.
+                val localNewestMs = if (localOwner) {
+                    runCatching { Natives.lastglucosetime() * 1000L }.getOrDefault(Long.MAX_VALUE)
+                } else 0L
                 var written = 0
                 var earliest = 0L
                 val stamps = LongArray(count)
@@ -501,10 +524,10 @@ object WearSync2 {
                 val nativeSecs = LongArray(count)
                 val nativeValues = FloatArray(count)
                 for (i in 0 until count) {
-                    val t = buf.long
-                    val auto10 = buf.int
-                    val raw10 = buf.int
-                    if (t <= 0L || auto10 <= 0) continue
+                    val t = times[i]
+                    val auto10 = autos[i]
+                    val raw10 = rawWire[i]
+                    if (t <= 0L || auto10 <= 0 || alreadyHave?.get(i) == true) continue
                     if (earliest == 0L) {
                         earliest = t
                         // Native scale contract (g.cpp addGlucoseStreamInternal):
@@ -555,18 +578,20 @@ object WearSync2 {
                         raws.copyOf(written),
                     )
                     val newest = written - 1
-                    HistorySyncAccess.storeCurrentReadingAsync(
-                        stamps[newest],
-                        values[newest],
-                        raws[newest],
-                        0f,
-                        serial,
-                    )
-                    emitExchangeOutputsForSyncedReading(
-                        serial,
-                        stamps[newest],
-                        values[newest],
-                    )
+                    if (stamps[newest] > localNewestMs) {
+                        HistorySyncAccess.storeCurrentReadingAsync(
+                            stamps[newest],
+                            values[newest],
+                            raws[newest],
+                            0f,
+                            serial,
+                        )
+                        emitExchangeOutputsForSyncedReading(
+                            serial,
+                            stamps[newest],
+                            values[newest],
+                        )
+                    }
                 }
                 if (written > 0) {
                     // The receiver follows the mirrored selection, not the
@@ -579,7 +604,10 @@ object WearSync2 {
                     if (!localOwner) WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
                     UiRefreshBus.requestDataRefresh()
                 }
-                if (doLog) Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final")
+                if (doLog) {
+                    val scope = if (localOwner) " (missing only)" else ""
+                    Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final$scope")
+                }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }
         }
     }
