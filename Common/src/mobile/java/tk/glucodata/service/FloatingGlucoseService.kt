@@ -252,6 +252,17 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
     }
 
+    private fun statusBarHeightPx(): Int {
+        val wm = windowManager ?: return 0
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            return wm.currentWindowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout())
+                .top
+        }
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
+    }
+
     private fun persistViewPosition() {
         dragging = false
         if (dynamicIslandEnabled) return
@@ -406,20 +417,23 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * The whole display, in the coordinates the TOP|START overlay window is laid out
-     * in. The status bar, navigation bar and cutout are deliberately allowed: the pill
-     * may sit there, it just can't leave the screen.
+     * The display below the status bar, in the coordinates the TOP|START overlay
+     * window is laid out in. The navigation bar and side cutouts are allowed: the
+     * pill may sit there, it just can't leave the screen. The status bar strip is
+     * not: app overlays sit under the status bar window, so every touch there goes
+     * to the status bar and a pill dragged into it could not be grabbed again.
      */
     @Suppress("DEPRECATION")
     private fun currentScreenArea(): OverlayScreenArea? {
         val wm = windowManager ?: return null
         return runCatching {
+            val statusBar = statusBarHeightPx()
             if (android.os.Build.VERSION.SDK_INT >= 30) {
                 val bounds = wm.currentWindowMetrics.bounds
-                OverlayScreenArea(bounds.left, bounds.top, bounds.right, bounds.bottom)
+                OverlayScreenArea(bounds.left, bounds.top + statusBar, bounds.right, bounds.bottom)
             } else {
                 val real = Point().also { wm.defaultDisplay.getRealSize(it) }
-                OverlayScreenArea(0, 0, real.x, real.y)
+                OverlayScreenArea(0, statusBar, real.x, real.y)
             }
         }.getOrNull()?.takeIf { it.right > it.left && it.bottom > it.top }
     }
