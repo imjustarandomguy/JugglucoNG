@@ -3199,4 +3199,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="dexcom_share_auth_blocked">Gelitaanka waa la xannibay — hubi akoonka iyo furaha sirta</string>
     <string name="dexcom_share_credentials_required">Marka hore geli akoonka iyo furaha sirta</string>
     <string name="dexcom_share_warning">Interface aan rasmi ahayn: Dexcom wuu beddeli karaa ama xannibi karaa wakhti kasta. Tani maaha hawl qalab caafimaad.</string>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
 </resources>

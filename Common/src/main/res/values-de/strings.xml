@@ -3130,4 +3130,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="dexcom_share_auth_blocked">Anmeldung gesperrt — Konto und Passwort prüfen</string>
     <string name="dexcom_share_credentials_required">Zuerst Konto und Passwort eingeben</string>
     <string name="dexcom_share_warning">Inoffizielle Schnittstelle: Dexcom kann sie jederzeit ändern oder sperren. Dies ist keine Funktion eines Medizinprodukts.</string>
+    <string name="floating_tap_details">Details beim Antippen</string>
+    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details, langes Drücken öffnet die App</string>
 </resources>

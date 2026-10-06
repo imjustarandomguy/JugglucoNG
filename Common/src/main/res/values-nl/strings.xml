@@ -3057,4 +3057,6 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="dexcom_share_auth_blocked">Inloggen geblokkeerd — controleer account en wachtwoord</string>
     <string name="dexcom_share_credentials_required">Vul eerst account en wachtwoord in</string>
     <string name="dexcom_share_warning">Onofficiële interface: Dexcom kan deze op elk moment wijzigen of blokkeren. Dit is geen functie van een medisch hulpmiddel.</string>
+    <string name="floating_tap_details">Details bij tikken</string>
+    <string name="floating_tap_details_desc">Tikken toont de grafiek en details, lang drukken opent de app</string>
 </resources>

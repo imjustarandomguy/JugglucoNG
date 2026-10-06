@@ -3065,4 +3065,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="medtrum_setup_device_rejected">Это устройство не является патчем Medtrum. Убедитесь, что патч рядом, и повторите попытку.</string>
 
     <string name="alert_sound_volume">Громкость звука тревоги</string>
+    <string name="floating_tap_details">Подробности по нажатию</string>
+    <string name="floating_tap_details_desc">Нажатие показывает график и подробности, долгое нажатие открывает приложение</string>
 </resources>

@@ -3015,4 +3015,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Login bloqueado — verifique a conta e a senha</string>
     <string name="dexcom_share_credentials_required">Digite primeiro a conta e a senha</string>
     <string name="dexcom_share_warning">Interface não oficial: a Dexcom pode alterá-la ou bloqueá-la a qualquer momento. Este não é um recurso de dispositivo médico.</string>
+    <string name="floating_tap_details">Detalhes ao tocar</string>
+    <string name="floating_tap_details_desc">Tocar mostra o gráfico e os detalhes; manter premido abre a app</string>
 </resources>

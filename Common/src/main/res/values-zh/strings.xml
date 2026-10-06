@@ -3029,4 +3029,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">登录已被阻止——请检查账户和密码</string>
     <string name="dexcom_share_credentials_required">请先输入账户和密码</string>
     <string name="dexcom_share_warning">非官方接口：Dexcom 可能随时更改或封锁它。这不是医疗器械功能。</string>
+    <string name="floating_tap_details">点按显示详情</string>
+    <string name="floating_tap_details_desc">点按显示图表和详情，长按打开应用</string>
 </resources>

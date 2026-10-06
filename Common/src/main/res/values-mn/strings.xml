@@ -3115,4 +3115,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="dexcom_share_auth_blocked">Нэвтрэлт хаагдсан — бүртгэл болон нууц үгээ шалгана уу</string>
     <string name="dexcom_share_credentials_required">Эхлээд бүртгэл болон нууц үгээ оруулна уу</string>
     <string name="dexcom_share_warning">Албан бус интерфейс: Dexcom үүнийг хэзээ ч өөрчлөх эсвэл хааж болно. Энэ нь эмнэлгийн хэрэгслийн функц биш.</string>
+    <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
+    <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна; удаан дарахад програмыг нээнэ</string>
 </resources>

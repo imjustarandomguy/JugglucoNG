@@ -3056,4 +3056,6 @@
     <string name="dexcom_share_auth_blocked">Logowanie zablokowane — sprawdź konto i hasło</string>
     <string name="dexcom_share_credentials_required">Najpierw wpisz konto i hasło</string>
     <string name="dexcom_share_warning">Nieoficjalny interfejs: Dexcom może go w każdej chwili zmienić lub zablokować. To nie jest funkcja wyrobu medycznego.</string>
+    <string name="floating_tap_details">Szczegóły po dotknięciu</string>
+    <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły, przytrzymanie otwiera aplikację</string>
 </resources>
