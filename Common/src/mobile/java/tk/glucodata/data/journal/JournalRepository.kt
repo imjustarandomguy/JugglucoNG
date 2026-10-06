@@ -877,9 +877,18 @@ internal fun isEarlierJournalRow(
 private fun JournalEntryEntity.nightscoutDeleteRemoteId(): String? =
     nightscoutDeleteRemoteId(source, nsRemoteId)
 
+/**
+ * The Nightscout document a deleted row leaves a tombstone for, if any.
+ *
+ * This app's own rows, and rows received from Nightscout itself: the user deleted what
+ * Nightscout holds, and without a tombstone the next read of the server (the uploader's
+ * receive, or the follower) brings it straight back. With sending on, the uploader deletes it
+ * there too; with sending off, the tombstone only keeps it from being received again.
+ * Rows mirrored from AAPS, the API or Clone are another system's to delete: never here.
+ */
 internal fun nightscoutDeleteRemoteId(source: String, nsRemoteId: String?): String? {
     val entrySource = JournalEntrySource.fromStorage(source)
-    if (isExternalJournalMirrorSource(entrySource)) return null
+    if (entrySource != JournalEntrySource.NIGHTSCOUT && isExternalJournalMirrorSource(entrySource)) return null
     return nsRemoteId?.takeIf { it.isNotBlank() }
 }
 

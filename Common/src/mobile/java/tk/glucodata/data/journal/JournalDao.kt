@@ -247,6 +247,10 @@ interface JournalDao {
     @Query("UPDATE journal_entries SET lvUploadedAt = :uploadedAt WHERE id IN (:ids)")
     suspend fun markEntriesUploadedToLibreview(ids: List<Long>, uploadedAt: Long)
 
+    /** Rows other than [entryId] that still stand for this Nightscout document. */
+    @Query("SELECT COUNT(*) FROM journal_entries WHERE nsRemoteId = :nsRemoteId AND id != :entryId")
+    suspend fun countOtherEntriesWithNightscoutRemoteId(nsRemoteId: String, entryId: Long): Int
+
     @Query("SELECT * FROM journal_pending_deletes ORDER BY deletedAt ASC")
     suspend fun getPendingNightscoutDeletes(): List<JournalPendingDeleteEntity>
 

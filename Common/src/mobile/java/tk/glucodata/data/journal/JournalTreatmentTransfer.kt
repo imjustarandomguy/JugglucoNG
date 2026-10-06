@@ -319,6 +319,9 @@ object JournalTreatmentTransfer {
         return treatment.remoteIdentifiers().any { id -> id in remoteIds }
     }
 
+    /** Every name the server knows this treatment by; the first is the one rows store. */
+    fun remoteIdentifiersOf(treatment: JSONObject): List<String> = treatment.remoteIdentifiers()
+
     fun sourceRecordIdsForTreatment(treatment: JSONObject, sourcePrefix: String): List<String> {
         val baseId = treatment.sourceBaseId(treatment.optTreatmentTimestampMillis()) ?: return emptyList()
         return sourceRecordIdsForBaseId(sourcePrefix, baseId)
