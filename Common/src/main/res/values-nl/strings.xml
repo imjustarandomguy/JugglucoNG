@@ -3058,5 +3058,5 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="dexcom_share_credentials_required">Vul eerst account en wachtwoord in</string>
     <string name="dexcom_share_warning">Onofficiële interface: Dexcom kan deze op elk moment wijzigen of blokkeren. Dit is geen functie van een medisch hulpmiddel.</string>
     <string name="status_bar_icon_colored_title">Gekleurd statusbalkpictogram</string>
-    <string name="status_bar_icon_colored_desc">Tekent de waarde in de statusbalk in de kleur van het bereik. Sommige telefoons (bijv. Samsung) tonen hem in kleur, andere altijd wit.</string>
+    <string name="status_bar_icon_colored_desc">Tekent de waarde in de statusbalk in de kleur van het bereik.</string>
 </resources>
