@@ -3372,4 +3372,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_reorder">调整食物顺序</string>
     <string name="food_move_up">上移</string>
     <string name="food_move_down">下移</string>
+    <string name="floating_tap_details">点按显示详情</string>
+    <string name="floating_tap_details_desc">点按显示图表和详情，长按打开应用</string>
 </resources>

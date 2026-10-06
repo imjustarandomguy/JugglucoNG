@@ -3394,4 +3394,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="food_reorder">Yiyecekleri yeniden sırala</string>
     <string name="food_move_up">Yukarı taşı</string>
     <string name="food_move_down">Aşağı taşı</string>
+    <string name="floating_tap_details">Dokununca ayrıntılar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir, uzun basma uygulamayı açar</string>
 </resources>

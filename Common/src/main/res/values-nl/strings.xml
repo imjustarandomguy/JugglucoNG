@@ -3409,4 +3409,6 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="food_reorder">Voeding herschikken</string>
     <string name="food_move_up">Omhoog verplaatsen</string>
     <string name="food_move_down">Omlaag verplaatsen</string>
+    <string name="floating_tap_details">Details bij tikken</string>
+    <string name="floating_tap_details_desc">Tikken toont de grafiek en details, lang drukken opent de app</string>
 </resources>

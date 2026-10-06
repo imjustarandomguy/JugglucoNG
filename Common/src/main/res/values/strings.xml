@@ -3691,4 +3691,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_reorder">Reorder food</string>
     <string name="food_move_up">Move up</string>
     <string name="food_move_down">Move down</string>
+    <string name="floating_tap_details">Details on tap</string>
+    <string name="floating_tap_details_desc">Tap shows the chart and details; long press opens the app</string>
 </resources>

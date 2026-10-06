@@ -3551,4 +3551,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="food_reorder">Dib u kala hagaaji cuntada</string>
     <string name="food_move_up">Kor u dhaqaaji</string>
     <string name="food_move_down">Hoos u dhaqaaji</string>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
 </resources>
