@@ -1093,12 +1093,10 @@ public class Notify {
     }
 
     /**
-     * As above, but quiet about passive link states ("Searching for sensors",
-     * "Connecting…") while the reading on show is fresh. A sensor that links
-     * up only for a few seconds per reading, like the Dexcom G7, spends almost
-     * all its time disconnected, and any rescan in between stamped "Searching"
-     * on a sensor that was delivering on schedule. Once the reading is older
-     * than {@link #glucosetimeout} the status shows again.
+     * Like {@link #resolveNotificationStatusText(String, String)}, but hides passive
+     * link states ("Searching for sensors", "Connecting…") while the displayed reading
+     * is younger than {@link #glucosetimeout}, so a sensor that connects only briefly
+     * per reading is not shown as searching between readings.
      */
     private static String resolveNotificationStatusText(String activeSensorSerial, String fallbackStatus,
             long readingTimeMillis) {
