@@ -55,6 +55,10 @@ object SyncedWearCalibrationProvider : CalibrationProvider {
                 android.util.Base64.encodeToString(WearCalibrationPayload.encode(next), android.util.Base64.NO_WRAP),
             )?.apply()
         }.onFailure { Log.stack("SyncedWearCalibration", "persist", it) }
+        // The phone sends the payload with a fresh revision ahead of every
+        // reading. Refreshing for an unchanged one redrew every surface just
+        // before the reading itself was stored.
+        if (current != null && sameContent(current, next)) return
         // A managed driver that integrates the calibration has to replay its
         // history when the anchors move, exactly as CalibrationManager makes it
         // do on the phone. Without this the watch kept serving readings fitted
@@ -64,6 +68,16 @@ object SyncedWearCalibrationProvider : CalibrationProvider {
         }.onFailure { Log.stack("SyncedWearCalibration", "notify drivers", it) }
         UiRefreshBus.requestDataRefresh()
     }
+
+    /**
+     * Equal apart from the revision. Compared through the wire encoding, so a
+     * field added to the payload is covered as soon as it travels.
+     */
+    internal fun sameContent(a: WearCalibrationPayload, b: WearCalibrationPayload): Boolean =
+        runCatching {
+            WearCalibrationPayload.encode(a.copy(revision = 0L))
+                .contentEquals(WearCalibrationPayload.encode(b.copy(revision = 0L)))
+        }.getOrDefault(false)
 
     override fun hasActiveCalibration(isRawMode: Boolean, sensorId: String?): Boolean {
         val current = matchingPayload(sensorId) ?: return false
