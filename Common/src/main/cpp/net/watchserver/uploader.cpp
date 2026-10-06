@@ -1063,6 +1063,28 @@ static bool uploadJournalTreatmentsViaJava(bool useV3) {
         }
     return res==JNI_TRUE;
     }
+/* False while "Upload only on Wi-Fi" holds uploads back (NightscoutWifiGate): the default
+   network is neither Wi-Fi nor Ethernet. */
+static bool uploadNetworkAllowed() {
+    if(nightpostclass==nullptr)
+        return true;
+    auto env=getenv();
+    if(env==nullptr)
+        return true;
+    const static jmethodID mid=env->GetStaticMethodID(nightpostclass,"uploadNetworkAllowed","()Z");
+    if(mid==nullptr) {
+        if(env->ExceptionCheck())
+            env->ExceptionClear();
+        return true;
+        }
+    const jboolean res=env->CallStaticBooleanMethod(nightpostclass,mid);
+    if(env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return false;
+        }
+    return res==JNI_TRUE;
+    }
 /* What a failed pass wants tried again, how long the treatments branch waits before it does,
    and when that wait is up. The wait needs its own clock: waitmin only applies when this
    thread actually sleeps, and with a sensor streaming it is woken every minute, so a backoff
@@ -1136,6 +1158,16 @@ static void uploaderthread() {
             uploadercondition.dobackup=0;
             }
         retrypending=0;
+        if(!uploadNetworkAllowed()) {
+            /* Held back until Wi-Fi: nothing is sent, so nothing fails and nothing backs off.
+               What this pass was woken for is kept for the pass that Wi-Fi's return raises,
+               which starts from the stored cursors. */
+            retrypending=current&(Backup::wakestream|Backup::wakeall|Backup::wakenums|Backup::waketreatments);
+            waitmin=60;
+            lastNightUploadWaitMinutes=0;
+            LOGSTRING("Nightscout upload waits for Wi-Fi\n");
+            continue;
+            }
         if(treatmentbackoffreset.exchange(false)) {
             treatmentbackoffmin=0;
             treatmentnextattemptms=0;
