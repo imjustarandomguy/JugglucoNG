@@ -2880,4 +2880,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Detaljer vid tryck</string>
     <string name="floating_tap_details_desc">Tryck visar diagram och detaljer, långt tryck öppnar appen</string>
+    <string name="floating_island_tappable">Tryckbar ö (experimentell)</string>
+    <string name="floating_island_tappable_desc">Ritas ovanför statusfältet så att tryck når den. Använder NG:s tillgänglighetstjänst ”flytande ö”.</string>
+    <string name="floating_island_service_off">Slå på ”%1$s” i tillgänglighetsinställningarna. Tryck för att öppna.</string>
+    <string name="floating_island_service_label">JugglucoNG flytande ö</string>
+    <string name="floating_island_service_desc">Låter den flytande glukosön bredvid kameran ta emot tryck. Läser inget från skärmen och tar inte emot några händelser.</string>
 </resources>

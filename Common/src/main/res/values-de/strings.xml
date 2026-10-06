@@ -2996,4 +2996,9 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     </plurals>
     <string name="floating_tap_details">Details beim Antippen</string>
     <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details, langes Drücken öffnet die App</string>
+    <string name="floating_island_tappable">Antippbare Insel (experimentell)</string>
+    <string name="floating_island_tappable_desc">Wird über der Statusleiste gezeichnet, damit Antippen sie erreicht. Nutzt den Bedienungshilfe-Dienst „Schwebende Insel“ von NG.</string>
+    <string name="floating_island_service_off">Aktiviere „%1$s“ in den Bedienungshilfen. Zum Öffnen antippen.</string>
+    <string name="floating_island_service_label">JugglucoNG schwebende Insel</string>
+    <string name="floating_island_service_desc">Lässt die schwebende Glukose-Insel neben der Kamera Antippen empfangen. Liest nichts vom Bildschirm und empfängt keine Ereignisse.</string>
 </resources>

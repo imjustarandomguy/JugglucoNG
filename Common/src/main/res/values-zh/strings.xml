@@ -2895,4 +2895,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">点按显示详情</string>
     <string name="floating_tap_details_desc">点按显示图表和详情，长按打开应用</string>
+    <string name="floating_island_tappable">可点按的灵动岛（实验）</string>
+    <string name="floating_island_tappable_desc">绘制在状态栏之上，以便接收点按。使用 NG 的悬浮岛无障碍服务。</string>
+    <string name="floating_island_service_off">请在无障碍设置中开启“%1$s”。点按以打开。</string>
+    <string name="floating_island_service_label">JugglucoNG 悬浮岛</string>
+    <string name="floating_island_service_desc">让摄像头旁的悬浮血糖岛能够接收点按。不读取屏幕内容，也不接收任何事件。</string>
 </resources>

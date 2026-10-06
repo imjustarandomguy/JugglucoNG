@@ -2955,4 +2955,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Падрабязнасці па націску</string>
     <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці; доўгі націск адкрывае праграму</string>
+    <string name="floating_island_tappable">Націскальны востраў (эксперымент)</string>
+    <string name="floating_island_tappable_desc">Малюецца над радком стану, каб націскі даходзілі. Выкарыстоўвае службу спецыяльных магчымасцей NG для плаваючага вострава.</string>
+    <string name="floating_island_service_off">Уключыце «%1$s» у наладах спецыяльных магчымасцей. Націсніце, каб адкрыць.</string>
+    <string name="floating_island_service_label">JugglucoNG плаваючы востраў</string>
+    <string name="floating_island_service_desc">Дазваляе плаваючаму востраву з глюкозай каля камеры прымаць націскі. Нічога не чытае з экрана і не атрымлівае падзей.</string>
 </resources>

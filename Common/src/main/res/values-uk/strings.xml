@@ -2960,4 +2960,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Подробиці за натисканням</string>
     <string name="floating_tap_details_desc">Натискання показує графік і подробиці, довге натискання відкриває застосунок</string>
+    <string name="floating_island_tappable">Натискний острів (експеримент)</string>
+    <string name="floating_island_tappable_desc">Малюється над рядком стану, щоб натискання доходили. Використовує службу спеціальних можливостей NG «плаваючий острів».</string>
+    <string name="floating_island_service_off">Увімкніть «%1$s» у налаштуваннях спеціальних можливостей. Натисніть, щоб відкрити.</string>
+    <string name="floating_island_service_label">JugglucoNG плаваючий острів</string>
+    <string name="floating_island_service_desc">Дає плаваючому острову з глюкозою біля камери приймати натискання. Нічого не читає з екрана й не отримує подій.</string>
 </resources>

@@ -2881,4 +2881,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Detalhes ao tocar</string>
     <string name="floating_tap_details_desc">Tocar mostra o gráfico e os detalhes; manter premido abre a app</string>
+    <string name="floating_island_tappable">Ilha tocável (experimental)</string>
+    <string name="floating_island_tappable_desc">Desenhada acima da barra de estado para receber toques. Usa o serviço de acessibilidade «ilha flutuante» do NG.</string>
+    <string name="floating_island_service_off">Ative «%1$s» nas definições de acessibilidade. Toque para abrir.</string>
+    <string name="floating_island_service_label">JugglucoNG ilha flutuante</string>
+    <string name="floating_island_service_desc">Permite que a ilha de glicose flutuante junto à câmara receba toques. Não lê nada do ecrã nem recebe eventos.</string>
 </resources>

@@ -2923,4 +2923,9 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     </plurals>
     <string name="floating_tap_details">Details bij tikken</string>
     <string name="floating_tap_details_desc">Tikken toont de grafiek en details, lang drukken opent de app</string>
+    <string name="floating_island_tappable">Aantikbaar eiland (experimenteel)</string>
+    <string name="floating_island_tappable_desc">Boven de statusbalk getekend zodat tikken aankomen. Gebruikt de toegankelijkheidsdienst ‘zwevend eiland’ van NG.</string>
+    <string name="floating_island_service_off">Zet ‘%1$s’ aan in de toegankelijkheidsinstellingen. Tik om te openen.</string>
+    <string name="floating_island_service_label">JugglucoNG zwevend eiland</string>
+    <string name="floating_island_service_desc">Laat het zwevende glucose-eiland naast de camera tikken ontvangen. Leest niets van het scherm en ontvangt geen gebeurtenissen.</string>
 </resources>

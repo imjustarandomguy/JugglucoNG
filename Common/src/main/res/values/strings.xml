@@ -3132,4 +3132,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Details on tap</string>
     <string name="floating_tap_details_desc">Tap shows the chart and details; long press opens the app</string>
+    <string name="floating_island_tappable">Tappable island (experimental)</string>
+    <string name="floating_island_tappable_desc">Drawn above the status bar so taps reach it. Uses NG\'s floating island accessibility service.</string>
+    <string name="floating_island_service_off">Turn on “%1$s” in Accessibility settings. Tap to open.</string>
+    <string name="floating_island_service_label">JugglucoNG floating island</string>
+    <string name="floating_island_service_desc">Lets the floating glucose island next to the camera receive taps. It reads nothing on screen and receives no events.</string>
 </resources>

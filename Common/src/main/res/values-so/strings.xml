@@ -3065,4 +3065,9 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     </plurals>
     <string name="floating_tap_details">Faahfaahin marka la taabto</string>
     <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
+    <string name="floating_island_tappable">Jasiirad la taaban karo (tijaabo)</string>
+    <string name="floating_island_tappable_desc">Waxaa lagu sawiraa korka baararka xaaladda si taabashadu u gaarto. Waxay isticmaashaa adeegga gelitaanka ee NG ee jasiiradda sabaynaysa.</string>
+    <string name="floating_island_service_off">Shid “%1$s” ee goobaha gelitaanka. Taabo si aad u furto.</string>
+    <string name="floating_island_service_label">JugglucoNG jasiirad sabaynaysa</string>
+    <string name="floating_island_service_desc">Waxay u oggolaataa jasiiradda gulukooska ee ag kamarada inay hesho taabashooyin. Waxba kama akhriso shaashadda, dhacdooyinna ma hesho.</string>
 </resources>
