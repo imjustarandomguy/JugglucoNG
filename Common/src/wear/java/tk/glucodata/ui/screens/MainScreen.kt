@@ -185,6 +185,13 @@ fun MainScreen(
     val peerReadings = remember(storeSnapshot, isMmol, now / TICK_MS) {
         peerReadings(storeSnapshot.peers, isMmol, now)
     }
+    // Calibration switched off on the phone hides it here too. A reading tap
+    // then only leads to the journal, and with that off as well there is
+    // nothing to offer, so readings stop being clickable.
+    val calibrationAvailable = remember(storeSnapshot, snapshot) {
+        ReadingActions.calibrationAvailable(storeSnapshot.isRawMode, storeSnapshot.sensorId)
+    }
+    val onReadingTap = onCalibrateReading.takeIf { calibrationAvailable || ReadingActions.journalAvailable() }
 
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(
@@ -217,7 +224,7 @@ fun MainScreen(
                         onGestureOwnership = { chartOwnsDrag = it },
                         // The scrub chip acts on the reading it shows, the same
                         // way the hero and the rows act on theirs.
-                        onSelectedReadingClick = onCalibrateReading,
+                        onSelectedReadingClick = onReadingTap,
                         headlineTopPadding = heroBottom,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -230,7 +237,7 @@ fun MainScreen(
                             sensorId = snap?.sensorId,
                             velocity = velocities[newestReading.timestamp] ?: 0f,
                             peers = peerReadings,
-                            onClick = { onCalibrateReading(newestReading) },
+                            onClick = onReadingTap?.let { tap -> { tap(newestReading) } },
                             // As on the phone's hero: a peer's chip promotes it.
                             onPeerClick = { tk.glucodata.ui.WearSensorSelection.makePrimary(it) },
                             // Sits as high as the clock allows so the big value
@@ -275,7 +282,7 @@ fun MainScreen(
                         // Tapping a reading acts on that reading, as on the
                         // phone: it calibrates against it, or edits the
                         // calibration it already carries.
-                        onClick = { onCalibrateReading(point) },
+                        onClick = onReadingTap?.let { tap -> { tap(point) } },
                         onAddJournal = onAddJournalAt
                             ?.takeIf { ReadingActions.journalAvailable() }
                             ?.let { add -> { add(point) } },
@@ -297,9 +304,11 @@ fun MainScreen(
                     modifier = Modifier.padding(horizontal = 18.dp),
                 )
             }
-            item {
-                Box(Modifier.padding(horizontal = 18.dp)) {
-                    WearNavigationRow(stringResource(R.string.calibration), onClick = onOpenCalibrations)
+            if (calibrationAvailable) {
+                item {
+                    Box(Modifier.padding(horizontal = 18.dp)) {
+                        WearNavigationRow(stringResource(R.string.calibration), onClick = onOpenCalibrations)
+                    }
                 }
             }
             // Only offered when the phone reports the journal as enabled, so the
@@ -385,7 +394,7 @@ private fun ReadingRow(
     isMmol: Boolean,
     viewMode: Int,
     velocity: Float,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     peers: List<WearReadingPeer> = emptyList(),
     primaryColorArgb: Int? = null,
     onAddJournal: (() -> Unit)? = null,
@@ -399,7 +408,7 @@ private fun ReadingRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

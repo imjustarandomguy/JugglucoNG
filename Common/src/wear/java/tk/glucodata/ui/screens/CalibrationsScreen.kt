@@ -56,15 +56,15 @@ fun CalibrationScreen(
     val isMmol = remember { runCatching { Applic.unit == 1 }.getOrDefault(false) }
     val conversion = if (isMmol) 18.0182f else 1f
     val entries = remember(revision) { calibrations() }
-    val enabled = remember(revision) {
-        runCatching { tk.glucodata.CalibrationAccess.hasActiveCalibration(false, null) }.getOrDefault(false)
-    }
+    // The phone's own switch, now that it says so. "Has calibrations" stood in
+    // for it and showed an enabled lane without any calibration yet as off.
+    val enabled = remember(revision) { ReadingActions.calibrationAvailable() }
     val context = LocalContext.current
     val formatter = remember(context) { DateFormat.getDateFormat(context) }
     val timeFormatter = remember(context) { DateFormat.getTimeFormat(context) }
-    val canCalibrate = remember {
-        findCalibratableDriver() != null ||
-            (tk.glucodata.MessageSender.isWearTransportAvailable() && tk.glucodata.MessageSender.getMessageSender() != null)
+    val canCalibrate = remember(revision) {
+        enabled && (findCalibratableDriver() != null ||
+            (tk.glucodata.MessageSender.isWearTransportAvailable() && tk.glucodata.MessageSender.getMessageSender() != null))
     }
 
     ScreenScaffold(timeText = { TimeText() }) {
