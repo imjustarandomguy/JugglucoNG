@@ -13,8 +13,12 @@ object SyncedWearCalibrationProvider : CalibrationProvider {
     @Volatile
     private var restored = false
 
-    private fun keyOf(sensorId: String): String =
-        (runCatching { SensorIdentity.canonicalSensorId(sensorId) }.getOrNull() ?: sensorId).lowercase()
+    // The phone names a native sensor in full while the watch may hold it under
+    // its short alias, so the key is the alias when there is one.
+    private fun keyOf(sensorId: String): String {
+        val canonical = runCatching { SensorIdentity.canonicalSensorId(sensorId) }.getOrNull() ?: sensorId
+        return (runCatching { SensorIdentity.nativeAlias(canonical) }.getOrNull() ?: canonical).lowercase()
+    }
 
     /**
      * The payload used to live only in memory, so every app restart left the
@@ -35,7 +39,10 @@ object SyncedWearCalibrationProvider : CalibrationProvider {
                     val decoded = WearCalibrationPayload.decode(
                         android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP),
                     ) ?: return@forEach
-                    payloads[keyOf(decoded.sensorId)] = decoded
+                    // Entries saved under an older key can map to the same one now.
+                    val key = keyOf(decoded.sensorId)
+                    val kept = payloads[key]
+                    if (kept == null || decoded.revision > kept.revision) payloads[key] = decoded
                 }
         }.onFailure { Log.stack("SyncedWearCalibration", "restore", it) }
     }
