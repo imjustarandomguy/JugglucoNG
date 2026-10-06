@@ -21,6 +21,7 @@
 
 package tk.glucodata
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -41,7 +42,11 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tk.glucodata.HealthActivityImportPolicy.ImportedRow
+import tk.glucodata.HealthActivityImportPolicy.Interval
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntrySource
 import tk.glucodata.data.journal.JournalEntryType
@@ -73,9 +78,10 @@ private  fun writeAllIns(sensorptr:Long, sensorName:String) {
     scope.launch {
         try {
             Log.i(LOG_ID, "writeAll 0x${sensorptr.toHexString()} $sensorName")
-            if (!hasPermission) {
-                checkPermissionsAndRun(MainActivity.thisone)
-                if (!hasPermission) {
+            // A reading never brings up the permission dialog: it only notices a grant made since.
+            if (!hasGlucosePermission) {
+                refreshPermissions()
+                if (!hasGlucosePermission) {
                     if(doLog) {Log.i(LOG_ID, "No permission");}
                     return@launch
                 }
@@ -87,21 +93,31 @@ private  fun writeAllIns(sensorptr:Long, sensorName:String) {
            if(start==end)
                return@launch
             Log.i(LOG_ID,"endstart=$endstart start=$start end=$end len=${end-start}")
-                  val meta=androidx.health.connect.client.records.metadata.Metadata.unknownRecordingMethod(device=Device(TYPE_UNKNOWN,"Libre", sensorName)
-//                val meta = androidx.health.connect.client.records.metadata.Metadata( device=Device("Libre", sensorName)
-                )
+            val device=Device(TYPE_UNKNOWN,"Libre", sensorName)
             while (start < end) {
                 val take = min(end - start, 500)
                 Log.i(LOG_ID,"start=$start take=$take")
-                val siz = client.insertRecords(GlucoseList(meta,sensorptr, start, take)).recordIdsList.size
-                if (siz == 0) {
-                    Log.e(LOG_ID, "insertRecors $siz==0")
+                // Empty slots are left out, so a batch can hold nothing to send.
+                val records = GlucoseList(device, sensorName, sensorptr, start, take).records()
+                if (records.isNotEmpty()) {
+                    val siz = client.insertRecords(records).recordIdsList.size
+                    if (siz == 0) {
+                        Log.e(LOG_ID, "insertRecors $siz==0")
+                        return@launch
+                      }
+                    Log.i(LOG_ID,"siz=$siz")
+                }
+                if (!Natives.healthConnectWritten(sensorptr, start, start + take)) {
+                    // A late reading moved the cursor back below this batch: the next export starts there.
+                    Log.i(LOG_ID, "cursor moved back while writing from $start")
                     return@launch
-                  }
-                Log.i(LOG_ID,"siz=$siz")
+                }
                 start += take;
-                Natives.healthConnectWritten(sensorptr, start)
             }
+        } catch (se: SecurityException) {
+            // Revoked in Health Connect: look again before the next write.
+            hasGlucosePermission = false
+            Log.stack(LOG_ID, "writeAll", se);
         } catch (th: Throwable) {
             Log.stack(LOG_ID, "writeAll", th);
         } finally {
@@ -110,49 +126,84 @@ private  fun writeAllIns(sensorptr:Long, sensorName:String) {
     }
 }
 
-private suspend fun checkPermissionsAndRun(act:MainActivity?) {
-        Log.i(LOG_ID,"Before getGrantedPermissions()")
+/** What Health Connect has granted, read without asking for anything. */
+private suspend fun refreshPermissions() {
         val granted = client.permissionController.getGrantedPermissions()
-        Log.i(LOG_ID,"checkPermissionsAndRun granted=$granted")
-        if (granted.containsAll(PERMISSIONS)) {
-            Log.i(LOG_ID,"granted")
-            hasPermission = true
-        } else {
-            hasPermission = false
-            if(act?.permHealth!=null) {
-                val request=act.permHealth
-                withContext(Dispatchers.Main) {
-                    request.request(PERMISSIONS)
-                }
-                Log.i(LOG_ID,"requested")
-                }
-            else
-                Log.i(LOG_ID,"no act?.permHealth, not requested")
-        }
+        Log.i(LOG_ID,"refreshPermissions granted=$granted")
+        hasGlucosePermission = granted.containsAll(GLUCOSE_PERMISSIONS)
+        hasActivityPermission = granted.containsAll(ACTIVITY_PERMISSIONS)
     }
 
-private fun importActivityIns(daysBack: Int) {
+/**
+ * Brings up the dialog for what a switched-on feature lacks, each feature's own permissions
+ * only: once per process, or again when the user has just turned that feature's switch on.
+ * Serialised, so that two callers at start-up make one dialog for both features, not two.
+ */
+private suspend fun requestMissing(act: MainActivity?, glucoseTurnedOn: Boolean, activityTurnedOn: Boolean): Unit = permissionLock.withLock {
+        refreshPermissions()
+        val askGlucose = HealthConnectPermissionPolicy.shouldRequest(
+            switchOn = glucoseExportOn(), granted = hasGlucosePermission,
+            userTurnedOn = glucoseTurnedOn, askedThisProcess = glucoseAsked.get())
+        val askActivity = HealthConnectPermissionPolicy.shouldRequest(
+            switchOn = activityImportOn(), granted = hasActivityPermission,
+            userTurnedOn = activityTurnedOn, askedThisProcess = activityAsked.get())
+        if (!askGlucose && !askActivity)
+            return@withLock
+        val request = act?.permHealth
+        if (request == null) {
+            Log.i(LOG_ID,"no act?.permHealth, not requested")
+            return@withLock
+        }
+        val wanted = HashSet<String>()
+        if (askGlucose) {
+            glucoseAsked.set(true)
+            wanted += GLUCOSE_PERMISSIONS
+        }
+        if (askActivity) {
+            activityAsked.set(true)
+            wanted += ACTIVITY_PERMISSIONS
+        }
+        withContext(Dispatchers.Main) {
+            request.request(wanted)
+        }
+        Log.i(LOG_ID,"requested $wanted")
+    }
+
+/**
+ * [userTurnedOn]: the import switch was just turned on, which may bring up the dialog again.
+ * A run that stops for lack of permission is not a run: only a finished one sets
+ * [lastActivityImportMillis], which spaces the foreground runs.
+ */
+private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
     if (activityImportActive.getAndSet(true)) {
         if(doLog) {Log.i(LOG_ID, "activity import already active");}
         return
     }
     scope.launch {
         try {
-            if (!hasPermission) {
-                checkPermissionsAndRun(MainActivity.thisone)
-                if (!hasPermission) return@launch
+            if (!hasActivityPermission) {
+                requestMissing(MainActivity.thisone, glucoseTurnedOn = false, activityTurnedOn = userTurnedOn)
+                if (!hasActivityPermission) {
+                    if(doLog) {Log.i(LOG_ID, "activity import: no permission");}
+                    return@launch
+                }
             }
             val now = Instant.now()
             val start = now.minusSeconds(daysBack.coerceIn(1, 30) * 24L * 60L * 60L)
+            val range = TimeRangeFilter.between(start, now)
             val repository = JournalRepository()
             var imported = 0
 
-            val sessions = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = ExerciseSessionRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, now)
-                )
-            ).records
+            val sessions = HealthActivityImportPolicy.readAllPages { token ->
+                client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = ExerciseSessionRecord::class,
+                        timeRangeFilter = range,
+                        pageToken = token
+                    )
+                ).let { it.records to it.pageToken }
+            }
+            val sessionIntervals = sessions.map { Interval(it.startTime.toEpochMilli(), it.endTime.toEpochMilli()) }
             sessions.forEach { session ->
                 val startMillis = session.startTime.toEpochMilli()
                 val endMillis = session.endTime.toEpochMilli()
@@ -172,17 +223,26 @@ private fun importActivityIns(daysBack: Int) {
                 imported++
             }
 
-            val steps = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = StepsRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(start, now)
-                )
-            ).records
-            steps
-                .filter { it.count >= 250L }
-                .forEach { record ->
+            val steps = HealthActivityImportPolicy.readAllPages { token ->
+                client.readRecords(
+                    ReadRecordsRequest(
+                        recordType = StepsRecord::class,
+                        timeRangeFilter = range,
+                        pageToken = token
+                    )
+                ).let { it.records to it.pageToken }
+            }
+            // Every step record's interval by its name, for the clean-up below.
+            val stepIntervals = HashMap<String, Interval>()
+            steps.forEach { record ->
                     val startMillis = record.startTime.toEpochMilli()
                     val endMillis = record.endTime.toEpochMilli()
+                    val interval = Interval(startMillis, endMillis)
+                    val sourceRecordId = record.stableHealthRecordId("steps", startMillis, endMillis)
+                    stepIntervals[sourceRecordId] = interval
+                    // Steps taken during an exercise session are that session's.
+                    if (!HealthActivityImportPolicy.importsSteps(record.count, interval, sessionIntervals))
+                        return@forEach
                     val durationMinutes = ((endMillis - startMillis) / 60_000L).toInt().coerceAtLeast(1)
                     repository.upsertEntry(
                         JournalEntryInput(
@@ -194,12 +254,22 @@ private fun importActivityIns(daysBack: Int) {
                             durationMinutes = durationMinutes,
                             intensity = record.count.inferredStepIntensity(durationMinutes),
                             source = JournalEntrySource.HEALTH_CONNECT,
-                            sourceRecordId = record.stableHealthRecordId("steps", startMillis, endMillis)
+                            sourceRecordId = sourceRecordId
                         )
                     )
                     imported++
                 }
-            Log.i(LOG_ID, "Imported $imported Health Connect activity records")
+            // Step rows an earlier import wrote next to the session they belong to.
+            val rows = repository.entriesFromSourceBetween(
+                JournalEntrySource.HEALTH_CONNECT, start.toEpochMilli(), now.toEpochMilli()
+            ).map { ImportedRow(it.id, it.sourceRecordId, it.timestamp, it.durationMinutes) }
+            val doubled = HealthActivityImportPolicy.stepRowsToRemove(rows, sessionIntervals, stepIntervals)
+            doubled.forEach { repository.deleteEntry(it) }
+            lastActivityImportMillis = System.currentTimeMillis()
+            Log.i(LOG_ID, "Imported $imported Health Connect activity records, removed ${doubled.size} steps within sessions")
+        } catch (se: SecurityException) {
+            hasActivityPermission = false
+            Log.stack(LOG_ID, "importActivity", se)
         } catch (th: Throwable) {
             Log.stack(LOG_ID, "importActivity", th)
         } finally {
@@ -210,19 +280,47 @@ private fun importActivityIns(daysBack: Int) {
 
 
 companion object {
-    val PERMISSIONS =
+    // Each feature asks for its own permissions only.
+    val GLUCOSE_PERMISSIONS =
         if(Build.VERSION.SDK_INT < 28) setOf("") else
             setOf(
                 getWritePermission(
                     BloodGlucoseRecord::class
-                ),
+                )
+            )
+    val ACTIVITY_PERMISSIONS =
+        if(Build.VERSION.SDK_INT < 28) setOf("") else
+            setOf(
                 getReadPermission(ExerciseSessionRecord::class),
                 getReadPermission(StepsRecord::class)
             )
-    var hasPermission = false
+    @Volatile
+    var hasGlucosePermission = false
+    @Volatile
+    var hasActivityPermission = false
+    // Whether this process has brought up the dialog for a feature already.
+    private val glucoseAsked = AtomicBoolean(false)
+    private val activityAsked = AtomicBoolean(false)
+    private val permissionLock = Mutex()
+    // When the activity import last finished: the foreground runs keep 15 minutes from it.
+    @Volatile
+    private var lastActivityImportMillis = 0L
+    private const val ACTIVITY_DAYS_BACK = 14
     private const val LOG_ID = "HealthConnection"
    @Volatile
         private var instance:HealthConnection? = null
+
+    private fun glucoseExportOn(): Boolean = Natives.gethealthConnect()
+
+    /**
+     * The journal's "Import Health Connect activity" switch, which the journal switch hides
+     * (DashboardViewModel's JOURNAL_HEALTH_CONNECT_ACTIVITY_KEY and dashboard_journal_enabled).
+     */
+    private fun activityImportOn(): Boolean {
+        val prefs = Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
+        return prefs.getBoolean("dashboard_journal_enabled", true) &&
+            prefs.getBoolean("dashboard_journal_health_connect_activity_enabled", false)
+    }
 
     private fun googleplay(context: ComponentActivity) {
         val playstr =
@@ -234,18 +332,27 @@ companion object {
         intent.putExtra("callerId", context.packageName)
         context.startActivity(intent)
     }
+    /** The app started with the export switch on: asks for what is missing, once per process. */
    fun init(context:MainActivity)  {
-     if(instance==null) {
 	       GlobalScope.launch {
-		  susinit(context)
+		  (instance ?: susinit(context, openStore = true))
+		      ?.requestMissing(context, glucoseTurnedOn = false, activityTurnedOn = false)
 		}
-       }
-
    }
-private suspend   fun susinit(context: MainActivity): Int {
+
+    /** The export switch was just turned on: asks for its permission if it is missing. */
+    fun glucoseSwitchedOn(context: MainActivity) {
+        GlobalScope.launch {
+            (instance ?: susinit(context, openStore = true))
+                ?.requestMissing(context, glucoseTurnedOn = true, activityTurnedOn = false)
+        }
+    }
+
+/** [openStore]: on a phone whose Health Connect needs an update, send the user to the Play Store. */
+private fun susinit(context: MainActivity, openStore: Boolean): HealthConnection? {
 
            if (Build.VERSION.SDK_INT < 28) {
-               return HealthConnectClient.SDK_UNAVAILABLE
+               return null
 
            }
            return try {
@@ -253,44 +360,73 @@ private suspend   fun susinit(context: MainActivity): Int {
                when (ret) {
                    HealthConnectClient.SDK_AVAILABLE -> {
                        Log.i(LOG_ID, "SDK_AVAILABLE")
-                       val client = HealthConnectClient.getOrCreate(context)
-                       val health = HealthConnection(client)
-                       instance = health
+                       val health = synchronized(this) {
+                           instance ?: HealthConnection(HealthConnectClient.getOrCreate(context)).also { instance = it }
+                       }
                        Log.i(LOG_ID, "after getOrCreate")
-                       health.checkPermissionsAndRun(context)
-                       Log.i(LOG_ID, "after checkPermissionsAndRun")
 		       MainActivity.tryHealth=0;
+                       health
                    }
 
                    HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED -> {
                        Log.i(LOG_ID, "SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED")
-                       googleplay(context)
-                       Log.i(LOG_ID, "After googleplay")
+                       if (openStore) {
+                           googleplay(context)
+                           Log.i(LOG_ID, "After googleplay")
+                       }
+                       null
                    }
 
                    HealthConnectClient.SDK_UNAVAILABLE -> {
                        Log.i(LOG_ID, "SDK_UNAVAILABLE")
-
+                       null
                    }
 
-                   else -> Log.e(LOG_ID, "unknown return value from getSdkStatus(context)")
+                   else -> {
+                       Log.e(LOG_ID, "unknown return value from getSdkStatus(context)")
+                       null
+                   }
                }
-               ret
            } catch (th: Throwable) {
                Log.stack(LOG_ID, "exception ", th)
-               HealthConnectClient.SDK_UNAVAILABLE
+               null
            }
    }
 
 fun writeAll(sensorptr:Long,sensorname:String) {
 	instance?.writeAllIns(sensorptr,sensorname);
     }
-    fun importActivity(daysBack: Int = 14) {
-        instance?.importActivityIns(daysBack) ?: MainActivity.thisone?.let { context ->
+
+    /** The import switch was just turned on: imports now, asking for permission if it is missing. */
+    fun importActivity(daysBack: Int = ACTIVITY_DAYS_BACK) {
+        instance?.importActivityIns(daysBack, userTurnedOn = true) ?: MainActivity.thisone?.let { context ->
             GlobalScope.launch {
-                susinit(context)
-                instance?.importActivityIns(daysBack)
+                susinit(context, openStore = true)?.importActivityIns(daysBack, userTurnedOn = true)
             }
+        }
+    }
+
+    /** The app came to the foreground: imports again while the switch is on, at most every 15 minutes. */
+    fun onForeground(context: MainActivity) {
+        if (Build.VERSION.SDK_INT < 28 || !activityImportOn())
+            return
+        if (!HealthActivityImportPolicy.foregroundImportDue(System.currentTimeMillis(), lastActivityImportMillis))
+            return
+        GlobalScope.launch {
+            // Not to the Play Store from here: opening the app should not keep doing that.
+            (instance ?: susinit(context, openStore = false))
+                ?.importActivityIns(ACTIVITY_DAYS_BACK, userTurnedOn = false)
+        }
+    }
+
+    /** The dialog's answer: [granted] is what it granted of what it asked for. */
+    fun onPermissionResult(granted: Set<String>) {
+        if (granted.containsAll(GLUCOSE_PERMISSIONS))
+            hasGlucosePermission = true
+        if (granted.containsAll(ACTIVITY_PERMISSIONS)) {
+            hasActivityPermission = true
+            if (activityImportOn())
+                instance?.importActivityIns(ACTIVITY_DAYS_BACK, userTurnedOn = false)
         }
     }
     public fun stop() {
