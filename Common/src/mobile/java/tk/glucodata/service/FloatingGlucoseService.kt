@@ -12,7 +12,12 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
+import androidx.compose.runtime.MonotonicFrameClock
+import androidx.compose.runtime.PausableMonotonicFrameClock
+import androidx.compose.runtime.Recomposer
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
@@ -28,8 +33,10 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -41,6 +48,7 @@ import tk.glucodata.ui.overlay.FloatingDetailsCard
 import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
 import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
+import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.Natives
 
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -83,6 +91,18 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private lateinit var settingsRepository: FloatingSettingsRepository
     private val glucoseRepository = GlucoseRepository()
 
+    private val presence = FloatingPillPresence()
+    // The pill's readings, followed only while the screen is on; see loadHistory.
+    private val history = MutableStateFlow<List<GlucosePoint>>(emptyList())
+    private var historyJob: Job? = null
+
+    // The pill's window is removed while the screen is off and when it changes host,
+    // but its composition stays, so that it comes back with its settings instead of a
+    // first frame of defaults. It therefore runs on this recomposer rather than its
+    // window's, which ends with the window, and its frames pause while the screen is off.
+    private lateinit var pillFrameClock: PausableMonotonicFrameClock
+    private lateinit var pillRecomposer: Recomposer
+
     override fun onCreate() {
         super.onCreate()
         savedStateRegistryController.performRestore(null)
@@ -91,6 +111,11 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         settingsRepository = FloatingSettingsRepository(this)
         glucoseRepository.refreshSensorSerial()
+
+        val ui = AndroidUiDispatcher.Main
+        pillFrameClock = PausableMonotonicFrameClock(ui[MonotonicFrameClock]!!).apply { pause() }
+        pillRecomposer = Recomposer(ui + pillFrameClock)
+        serviceScope.launch(ui + pillFrameClock) { pillRecomposer.runRecomposeAndApplyChanges() }
 
         setupOverlay()
         androidx.core.content.ContextCompat.registerReceiver(
@@ -102,6 +127,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             },
             androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        updateForScreen()
         observeSettings()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -144,7 +170,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     )
     private val cutoutData = kotlinx.coroutines.flow.MutableStateFlow(CutoutData(0.dp, CutoutEdge.NONE))
     private var dynamicIslandEnabled = false
-    // The app's WindowManager or FloatingAccessibilityService's; see attachToHost.
+    // Where the pill goes: the app's WindowManager or FloatingAccessibilityService's; see attachToHost.
+    private var pillHost: WindowManager? = null
+    // The WindowManager the pill is attached through, or null while it is off screen.
     private var hostWindowManager: WindowManager? = null
     private var freeformX = 0
     private var freeformY = 0
@@ -162,8 +190,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 }
             }
         }.apply {
-            // Compose resolves the window recomposer's lifecycle from the window's
-            // rootView, which is this container now — the owners have to live here.
+            // Compose looks the view-tree owners up from the window's rootView,
+            // which is this container now — the owners have to live here.
             setViewTreeLifecycleOwner(this@FloatingGlucoseService)
             setViewTreeViewModelStoreOwner(this@FloatingGlucoseService)
             setViewTreeSavedStateRegistryOwner(this@FloatingGlucoseService)
@@ -171,13 +199,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         overlayRoot = root
 
         composeView = ComposeView(this).apply {
+            setParentCompositionContext(pillRecomposer)
+            setViewCompositionStrategy(
+                ViewCompositionStrategy.DisposeOnLifecycleDestroyed(this@FloatingGlucoseService)
+            )
             setContent {
                 FloatingGlucoseOverlay(
                     repository = settingsRepository,
-                    historyFlow = glucoseRepository.getHistoryFlow(
-                        System.currentTimeMillis() - FLOATING_HISTORY_WINDOW_MS,
-                        Natives.getunit() == 1
-                    ),
+                    historyFlow = history,
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
@@ -222,8 +251,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             )
         )
 
-        // attachToHost adds it once the settings are known. Placed again once
-        // it has its size, for the edge limits.
+        // updatePillWindow adds it once the settings and readings are known.
+        // Placed again once it has its size, for the edge limits.
         root.doOnLayout { applyOverlayPlacement() }
     }
     
@@ -466,25 +495,42 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * Attaches the pill through [host]: FloatingAccessibilityService's
+     * Puts the pill through [host] from now on: FloatingAccessibilityService's
      * WindowManager to draw it over the status bar (app overlays sit under the
      * status bar window, which takes every touch in its strip), else the app's.
      */
     private fun attachToHost(host: WindowManager?) {
+        if (host == null || host === pillHost) return
+        pillHost = host
+        detachPill()
+        updatePillWindow()
+    }
+
+    /** Adds or removes the pill as [presence] says. */
+    private fun updatePillWindow() {
+        if (presence.shown) attachPill() else detachPill()
+    }
+
+    /** Adds the pill through [pillHost], or as an app overlay if that host refuses it. */
+    private fun attachPill() {
         val root = overlayRoot ?: return
         val app = windowManager ?: return
-        if (host == null || host === hostWindowManager) return
-        closeDetails()
-        hostWindowManager?.let { old ->
-            try {
-                old.removeViewImmediate(root)
-            } catch (e: Exception) {
-                // Not attached; nothing to remove.
-            }
-        }
-        hostWindowManager = null
+        val host = pillHost ?: return
+        if (hostWindowManager != null) return
         if (!addOverlay(host, root) && host !== app) addOverlay(app, root)
-        updateScreenOffVisibility()
+    }
+
+    /** Removes the pill's window; its composition stays, see pillRecomposer. */
+    private fun detachPill() {
+        val root = overlayRoot ?: return
+        val host = hostWindowManager ?: return
+        closeDetails()
+        hostWindowManager = null
+        try {
+            host.removeViewImmediate(root)
+        } catch (e: Exception) {
+            // Not attached; nothing to remove.
+        }
     }
 
     private fun addOverlay(host: WindowManager, root: View): Boolean {
@@ -507,20 +553,44 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * An accessibility overlay also draws on the always-on display, where a fixed pill
-     * would burn in; hide it while the screen is off. The lock screen keeps it.
+     * While the screen is off the pill's window is removed (an accessibility overlay
+     * would also draw on the always-on display, where a fixed pill burns in), its
+     * frames are paused and its readings are not followed: nothing runs for it. When
+     * the screen comes on, its frames resume, the readings are loaded again, and the
+     * pill goes back in a new window once they are in; see FloatingPillPresence. The
+     * lock screen keeps it.
      */
-    private fun updateScreenOffVisibility() {
-        val root = overlayRoot ?: return
+    private fun updateForScreen() {
         val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        val overStatusBar = layoutParams.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        root.visibility = if (overStatusBar && !power.isInteractive) View.GONE else View.VISIBLE
+        if (presence.onScreen(power.isInteractive)) {
+            pillFrameClock.resume()
+            loadHistory()
+        } else if (!presence.screenOn) {
+            pillFrameClock.pause()
+            historyJob?.cancel()
+            historyJob = null
+        }
+        updatePillWindow()
+    }
+
+    /** Follows the readings, from a window that starts now, until the screen goes off. */
+    private fun loadHistory() {
+        historyJob?.cancel()
+        historyJob = serviceScope.launch {
+            glucoseRepository.getHistoryFlow(
+                System.currentTimeMillis() - FLOATING_HISTORY_WINDOW_MS,
+                Natives.getunit() == 1
+            ).collect { points ->
+                history.value = points
+                presence.onReadingsLoaded()
+                updatePillWindow()
+            }
+        }
     }
 
     private val screenStateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) closeDetails()
-            updateScreenOffVisibility()
+            updateForScreen()
         }
     }
 
@@ -661,6 +731,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         stopForeground(if (held) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         store.clear()
+        pillRecomposer.cancel()
         serviceScope.cancel()
         if (overlayRoot != null) {
             try {
