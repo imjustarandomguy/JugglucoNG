@@ -45,7 +45,11 @@ internal object GlucoseComplicationData {
     private fun displaySensor(): String? =
         runCatching { tk.glucodata.ui.WearSensorSelection.resolve() }.getOrNull()
 
-    fun currentReading(sensor: String? = displaySensor()): Reading? {
+    /** The display sensor's reading; showing it arms the alarm that takes it down once stale. */
+    fun currentReading(): Reading? =
+        currentReading(displaySensor())?.also { ComplicationFreshness.onReadingShown(it.timeMillis) }
+
+    fun currentReading(sensor: String?): Reading? {
         val snapshot = runCatching {
             CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensor)
         }.getOrNull() ?: return syncedReading(sensor)

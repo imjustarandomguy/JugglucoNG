@@ -318,6 +318,9 @@
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="0" />
         </service>
+        <receiver
+            android:name=".glucosecomplication.ComplicationFreshnessReceiver"
+            android:exported="false" />
 
 
 
