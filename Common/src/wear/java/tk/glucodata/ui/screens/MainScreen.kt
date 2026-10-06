@@ -185,10 +185,9 @@ fun MainScreen(
     val peerReadings = remember(storeSnapshot, isMmol, now / TICK_MS) {
         peerReadings(storeSnapshot.peers, isMmol, now)
     }
-    // Calibration switched off on the phone hides it here too. A reading tap
-    // then only leads to the journal, and with that off as well there is
-    // nothing to offer, so readings stop being clickable.
-    val calibrationAvailable = remember(storeSnapshot, snapshot) {
+    // Calibration off on the phone hides it here; readings stay tappable while the journal is on.
+    // loadedAtMs changes on each store reload, which a new phone payload triggers.
+    val calibrationAvailable = remember(storeSnapshot.isRawMode, storeSnapshot.sensorId, storeSnapshot.loadedAtMs) {
         ReadingActions.calibrationAvailable(storeSnapshot.isRawMode, storeSnapshot.sensorId)
     }
     val onReadingTap = onCalibrateReading.takeIf { calibrationAvailable || ReadingActions.journalAvailable() }
