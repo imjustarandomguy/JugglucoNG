@@ -659,7 +659,7 @@ public class Notify {
 
             try {
                 // Cleanup experiment channels
-                String[] obsolete = { "glucoseNotification_nodot", "glucoseNotification_nobadge" };
+                String[] obsolete = { "glucoseNotification_nodot", "glucoseNotification_nobadge", "glucoseNotificationHidden" };
                 for (String s : obsolete) {
                     if (notificationManager.getNotificationChannel(s) != null) {
                         notificationManager.deleteNotificationChannel(s);
