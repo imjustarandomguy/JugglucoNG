@@ -461,7 +461,8 @@ object WearSync2 {
             runCatching {
                 val nowSec = System.currentTimeMillis() / 1000L
                 val horizonStart = nowSec - BACKFILL_HORIZON_SEC
-                val lastSec = runCatching { Natives.lastglucosetime() }.getOrDefault(0L)
+                // lastglucosetime is in milliseconds.
+                val lastSec = runCatching { Natives.lastglucosetime() / 1000L }.getOrDefault(0L)
                 val fromSec = if (deep || lastSec <= 0L) {
                     horizonStart
                 } else {
