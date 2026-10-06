@@ -4060,8 +4060,7 @@ public class Notify {
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         boolean showTargetRange = prefs.getBoolean("notification_chart_target_range", true);
 
-        // Optional GDH-style traffic coloring of the value (and arrow): green
-        // in target range, yellow up to the alarm bounds, red beyond.
+        // Optional coloring of the value (and arrow) in the color set for its range.
         if (prefs.getBoolean("glucose_value_range_colors_enabled", false)) {
             primaryDisplayColor = GlucoseRangeColors.trafficColorForValue(
                     displayGlucoseValue,

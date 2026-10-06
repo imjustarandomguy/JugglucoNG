@@ -462,11 +462,14 @@ fun DashboardCombinedHeader(
             veryHighThreshold = veryHighThreshold
         )
     }
-    // Optional GDH-style traffic coloring of the value itself: green in
-    // target range, yellow up to the alarm bounds, red beyond.
+    // Optional coloring of the value itself in the color set for its range.
     val heroValueColor = if (valueRangeColorsEnabled && isFreshData) {
         val fallbackArgb = glucoseContentColor.toArgb()
-        remember(dvs?.primaryValue, isDark, isMmol, targetLow, targetHigh, veryLowThreshold, veryHighThreshold, fallbackArgb) {
+        remember(
+            dvs?.primaryValue, isDark, isMmol, targetLow, targetHigh, veryLowThreshold, veryHighThreshold, fallbackArgb,
+            // The band colors are user-editable; recolor when they change, not at the next reading.
+            GlucosePaletteState.revision
+        ) {
             Color(
                 GlucoseRangeColors.trafficColorForValue(
                     dvs?.primaryValue ?: Float.NaN,

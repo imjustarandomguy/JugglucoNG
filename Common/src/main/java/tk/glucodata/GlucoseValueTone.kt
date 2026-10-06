@@ -8,10 +8,10 @@ package tk.glucodata
  * in-range included, which the phone never does. Both surfaces call this now,
  * so a palette or threshold change lands identically on each.
  *
- * Two distinct schemes live here, matching [GlucoseRangeColors]:
- *  - [heroTone] — the five AGP bands, used as a faint container tint.
- *  - [valueColorArgb] — the three-tier traffic colour for the number itself,
- *    applied only when the user has switched value range colours on.
+ * Both follow the five bands of [GlucoseRangeColors]:
+ *  - [heroTone] — the band colour as a faint container tint, out of range only.
+ *  - [valueColorArgb] — the band colour for the number itself, applied only
+ *    when the user has switched value range colours on.
  */
 object GlucoseValueTone {
     enum class Band { VERY_LOW, LOW, HIGH, VERY_HIGH }
@@ -77,7 +77,7 @@ object GlucoseValueTone {
         }
     }
 
-    /** True when the user asked for GDH-style traffic colouring of the value. */
+    /** True when the user asked for the value to be coloured by its range. */
     @JvmStatic
     fun valueRangeColorsEnabled(): Boolean = try {
         Applic.app
@@ -89,7 +89,7 @@ object GlucoseValueTone {
 
     /**
      * The colour for the number itself: [fallbackArgb] unless the user enabled
-     * value range colours, in which case the active palette's traffic tier.
+     * value range colours, in which case the colour set for its band.
      */
     @JvmStatic
     @JvmOverloads
