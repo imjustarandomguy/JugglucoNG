@@ -3168,4 +3168,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">Incluída %d entrada de diário planeada</item>
         <item quantity="other">Incluídas %d entradas de diário planeadas</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
+    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa. Alguns telefones (ex. Samsung) mostram em cores; outros sempre em branco.</string>
 </resources>

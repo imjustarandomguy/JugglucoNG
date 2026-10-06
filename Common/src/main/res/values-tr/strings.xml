@@ -3194,4 +3194,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="one">%d planlanmış günlük kaydı dahil edildi</item>
         <item quantity="other">%d planlanmış günlük kaydı dahil edildi</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Renkli durum çubuğu simgesi</string>
+    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer. Bazı telefonlar (ör. Samsung) renkli gösterir, diğerleri her zaman beyaz.</string>
 </resources>
