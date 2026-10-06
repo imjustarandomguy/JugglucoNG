@@ -21,6 +21,8 @@ object JournalTreatmentTransfer {
     private const val SOURCE_KIND_NOTE = "note"
     private const val MIN_VALID_EPOCH_MS = 946_684_800_000L
     private const val MGDL_PER_MMOLL = 18.0182f
+    /** As the v1 upload's own lookup of a document by identifier allows. */
+    private const val OWN_V1_DOCUMENT_TIME_TOLERANCE_MILLIS = 60_000L
 
     private val allKinds = listOf(
         SOURCE_KIND_CARBS,
@@ -330,6 +332,26 @@ object JournalTreatmentTransfer {
         baseId: String,
         type: JournalEntryType,
     ): String = sourceRecordId(sourcePrefix, baseId, type.storageValue)
+
+    /**
+     * Whether [treatment] is a document this install sent over API v1, as API v3 serves it.
+     *
+     * A v1 write is remembered by the _id Nightscout answered with, but v3 serves a document
+     * that carries an identifier under that identifier alone, without the _id. So once the
+     * uploader is switched to v3, its own v1 documents no longer match what it remembers and
+     * were received back as new treatments: every recent dose and meal in the journal twice.
+     * The v1 identifier is the bare row id, which another install, or this one after a
+     * reinstall, also uses; it names this install's document only together with the row's time.
+     *
+     * @param ownV1Rows the time of each row this install uploaded, by its v1 identifier
+     *        ([JournalTreatmentUploader.v1Identifier])
+     */
+    fun isOwnV1Document(treatment: JSONObject, ownV1Rows: Map<String, Long>): Boolean {
+        if (ownV1Rows.isEmpty()) return false
+        val rowTime = treatment.optNonBlankString("identifier")?.let(ownV1Rows::get) ?: return false
+        val time = treatment.optTreatmentTimestampMillis() ?: return false
+        return abs(time - rowTime) <= OWN_V1_DOCUMENT_TIME_TOLERANCE_MILLIS
+    }
 
     private fun sourceRecordId(sourcePrefix: String, baseId: String, kind: String): String =
         "$sourcePrefix:$baseId:$kind"

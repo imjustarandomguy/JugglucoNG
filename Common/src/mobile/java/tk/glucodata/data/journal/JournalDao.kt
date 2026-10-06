@@ -230,6 +230,10 @@ interface JournalDao {
     @Query("SELECT nsRemoteId FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL")
     suspend fun getOwnUploadedNightscoutRemoteIds(): List<String>
 
+    /** The same rows as [getOwnUploadedNightscoutRemoteIds], by row id and time. */
+    @Query("SELECT id, timestamp FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL")
+    suspend fun getOwnUploadedNightscoutRows(): List<JournalUploadedRow>
+
     @Query(
         """
         SELECT * FROM journal_entries
@@ -258,3 +262,6 @@ interface JournalDao {
     )
     suspend fun recordFailedNightscoutDelete(entryId: Long, attempts: Int, attemptedAt: Long)
 }
+
+/** A journal row by id and time, for matching it to the Nightscout document it was sent as. */
+data class JournalUploadedRow(val id: Long, val timestamp: Long)

@@ -106,6 +106,13 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         ID_PREFIX + entryId.toString(16) + "-" + timestampMillis.toString(16)
 
     /**
+     * The identifier a v1 write gives its document: the row id alone. v1 remembers the document
+     * by the _id it answers with, but v3 serves it under this identifier only (see
+     * [JournalTreatmentTransfer.isOwnV1Document]).
+     */
+    internal fun v1Identifier(entryId: Long): String = ID_PREFIX + entryId.toString(16)
+
+    /**
      * An update only where the server already holds this exact document; anything else is a
      * create. Entries written before the time was part of the name land here too, once each:
      * they are created afresh under the new name and their old copy is then removed.
@@ -381,7 +388,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                     break
                 }
 
-                val localIdentifier = ID_PREFIX + entry.id.toString(16)
+                val localIdentifier = v1Identifier(entry.id)
                 val remoteId = if (useV3) {
                     datedIdentifier(entry.id, entry.timestamp)
                 } else {

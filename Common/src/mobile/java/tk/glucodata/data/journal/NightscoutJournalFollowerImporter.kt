@@ -13,6 +13,7 @@ import tk.glucodata.data.HistoryDatabase
 @Keep
 object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
     private const val LOG_ID = "NightscoutJournalFollowerImporter"
+    private const val SOURCE_RECORD_IDS_PER_STATEMENT = 500
 
     @Keep
     override fun importTreatments(sensorId: String, treatmentsJson: String): Int = runBlocking {
@@ -45,14 +46,25 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
             .getOwnUploadedNightscoutRemoteIds()
             .mapNotNull { it.trim().takeIf(String::isNotBlank) }
             .toSet()
+        // The same rows once more, as an API v3 read serves those sent over v1.
+        val ownV1Rows = journalDao
+            .getOwnUploadedNightscoutRows()
+            .associate { JournalTreatmentUploader.v1Identifier(it.id) to it.timestamp }
         val sourcePrefix = "nightscout:${sensorId.trim().ifBlank { "unknown" }}"
         var imported = 0
         var deleted = 0
         val context = Applic.app
+        val ownV1Copies = ArrayList<String>()
 
         for (index in 0 until array.length()) {
             val treatment = array.optJSONObject(index) ?: continue
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, ownUploadedRemoteIds)) continue
+            if (JournalTreatmentTransfer.isOwnV1Document(treatment, ownV1Rows)) {
+                // Copies received before these documents were recognised are the install's own
+                // rows a second time.
+                ownV1Copies += JournalTreatmentTransfer.sourceRecordIdsForTreatment(treatment, sourcePrefix)
+                continue
+            }
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, pendingDeleteRemoteIds)) continue
             val parsed = JournalTreatmentTransfer.parseTreatment(
                 context = context,
@@ -75,6 +87,10 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
             val staleIds = parsed.candidateSourceRecordIds.filterNot { it in importedIds }
             deleted += repository.deleteEntriesBySourceRecordIds(staleIds)
         }
+        // In chunks: a read of 240 documents names five times as many rows, past the 999 bound
+        // variables older SQLite takes in one statement.
+        deleted += ownV1Copies.chunked(SOURCE_RECORD_IDS_PER_STATEMENT)
+            .sumOf { repository.deleteEntriesBySourceRecordIds(it) }
 
         if (imported > 0 || deleted > 0) {
             Log.i(LOG_ID, "Nightscout journal sync imported=$imported deleted=$deleted")
