@@ -1327,6 +1327,9 @@
     <string name="nightscout_url_placeholder">https://nightscout.example.com</string>
     <string name="nightscout_use_v3_api">Używaj API v3</string>
     <string name="nightscout_use_v3_api_desc">Wyłącz, jeśli serwer nie obsługuje v3</string>
+    <string name="nightscout_wifi_only">Wysyłaj tylko przez Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Wstrzymuj wysyłanie przy danych mobilnych</string>
+    <string name="nightscout_status_wifi_waiting">Oczekiwanie na Wi-Fi</string>
     <string name="nightscout_follow_desc">Utwórz wirtualny czujnik tylko do odczytu z tego adresu URL Nightscout.</string>
     <string name="nightscout_follow_url_required">Najpierw wpisz adres URL Nightscout</string>
     <string name="nightscout_test_testing">Testowanie…</string>

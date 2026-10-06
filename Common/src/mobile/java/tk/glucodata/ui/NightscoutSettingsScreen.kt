@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
@@ -88,6 +89,7 @@ import kotlinx.coroutines.withContext
 import tk.glucodata.Natives
 import tk.glucodata.NightPost
 import tk.glucodata.NightscoutTokenGrant
+import tk.glucodata.NightscoutWifiGate
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalSyncFailure
 import tk.glucodata.data.journal.JournalSyncStatus
@@ -263,6 +265,8 @@ fun NightscoutSettingsScreen(navController: NavController) {
     var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
     var tokenState by remember { mutableStateOf<TokenState>(TokenState.Idle) }
     var help by rememberSaveable { mutableStateOf<NightscoutHelp?>(null) }
+    var wifiOnly by remember { mutableStateOf(NightscoutWifiGate.isEnabled(context)) }
+    var waitingForWifi by remember { mutableStateOf(false) }
 
     var mode by rememberSaveable {
         mutableStateOf(
@@ -314,6 +318,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
         treatmentSync = JournalSyncStatus.state()
         deviceStatusOutcome = NightPost.getDeviceStatusOutcome()
         deviceStatusCode = NightPost.getDeviceStatusLastCode()
+        waitingForWifi = NightscoutWifiGate.isWaiting(context)
     }
 
     fun requireUrl(): Boolean {
@@ -406,6 +411,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
 
     val uploaderSummary = when {
         !isActive || mode != NightscoutModePreference.Mode.UPLOAD -> context.getString(R.string.nightscout_status_paused)
+        waitingForWifi -> context.getString(R.string.nightscout_status_wifi_waiting)
         uploaderRunning -> context.getString(R.string.nightscout_status_running)
         retryMinutes > 0 -> context.getString(R.string.nightscout_status_retry_in, retryMinutes)
         else -> context.getString(R.string.nightscout_status_waiting)
@@ -861,6 +867,20 @@ fun NightscoutSettingsScreen(navController: NavController) {
                                 if (it) Natives.wakeuploader()
                             },
                             icon = Icons.Default.CloudUpload,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            enabled = isActive,
+                            position = CardPosition.MIDDLE
+                        )
+                        SettingsSwitchItem(
+                            title = stringResource(R.string.nightscout_wifi_only),
+                            subtitle = stringResource(R.string.nightscout_wifi_only_desc),
+                            checked = wifiOnly,
+                            onCheckedChange = {
+                                wifiOnly = it
+                                NightscoutWifiGate.setEnabled(context, it)
+                                waitingForWifi = NightscoutWifiGate.isWaiting(context)
+                            },
+                            icon = Icons.Default.Wifi,
                             iconTint = MaterialTheme.colorScheme.secondary,
                             enabled = isActive,
                             position = CardPosition.MIDDLE

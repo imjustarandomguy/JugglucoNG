@@ -1335,6 +1335,9 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="nightscout_url_placeholder">https://nightscout.example.com</string>
     <string name="nightscout_use_v3_api">v3-API gebruiken</string>
     <string name="nightscout_use_v3_api_desc">Uitschakelen als de server v3 niet ondersteunt</string>
+    <string name="nightscout_wifi_only">Alleen uploaden via wifi</string>
+    <string name="nightscout_wifi_only_desc">Uploads tegenhouden bij mobiele data</string>
+    <string name="nightscout_status_wifi_waiting">Wacht op wifi</string>
     <string name="nightscout_follow_desc">Maak een alleen-lezen virtuele sensor van deze Nightscout-URL.</string>
     <string name="nightscout_follow_url_required">Voer eerst een Nightscout-URL in</string>
     <string name="nightscout_test_testing">Testen…</string>
