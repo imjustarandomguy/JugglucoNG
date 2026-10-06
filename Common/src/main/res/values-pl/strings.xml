@@ -3056,4 +3056,6 @@
     <string name="dexcom_share_auth_blocked">Logowanie zablokowane — sprawdź konto i hasło</string>
     <string name="dexcom_share_credentials_required">Najpierw wpisz konto i hasło</string>
     <string name="dexcom_share_warning">Nieoficjalny interfejs: Dexcom może go w każdej chwili zmienić lub zablokować. To nie jest funkcja wyrobu medycznego.</string>
+    <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu. Niektóre telefony (np. Samsung) pokazują ją w kolorze, inne zawsze na biało.</string>
 </resources>

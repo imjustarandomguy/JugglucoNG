@@ -3130,4 +3130,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="dexcom_share_auth_blocked">Anmeldung gesperrt — Konto und Passwort prüfen</string>
     <string name="dexcom_share_credentials_required">Zuerst Konto und Passwort eingeben</string>
     <string name="dexcom_share_warning">Inoffizielle Schnittstelle: Dexcom kann sie jederzeit ändern oder sperren. Dies ist keine Funktion eines Medizinprodukts.</string>
+    <string name="status_bar_icon_colored_title">Farbiges Statusleisten-Symbol</string>
+    <string name="status_bar_icon_colored_desc">Zeichnet den Wert in der Statusleiste in der Bereichsfarbe. Manche Telefone (z. B. Samsung) zeigen ihn farbig, andere immer weiß.</string>
 </resources>

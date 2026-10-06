@@ -3015,4 +3015,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Login bloqueado — verifique a conta e a senha</string>
     <string name="dexcom_share_credentials_required">Digite primeiro a conta e a senha</string>
     <string name="dexcom_share_warning">Interface não oficial: a Dexcom pode alterá-la ou bloqueá-la a qualquer momento. Este não é um recurso de dispositivo médico.</string>
+    <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
+    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa. Alguns telefones (ex. Samsung) mostram em cores; outros sempre em branco.</string>
 </resources>

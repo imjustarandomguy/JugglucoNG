@@ -3014,4 +3014,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Inloggning blockerad — kontrollera konto och lösenord</string>
     <string name="dexcom_share_credentials_required">Ange konto och lösenord först</string>
     <string name="dexcom_share_warning">Inofficiellt gränssnitt: Dexcom kan ändra eller blockera det när som helst. Detta är inte en funktion i en medicinteknisk produkt.</string>
+    <string name="status_bar_icon_colored_title">Färgad statusfältsikon</string>
+    <string name="status_bar_icon_colored_desc">Ritar värdet i statusfältet i intervallets färg. Vissa telefoner (t.ex. Samsung) visar det i färg, andra alltid vitt.</string>
 </resources>

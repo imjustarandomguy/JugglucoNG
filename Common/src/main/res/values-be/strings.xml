@@ -3089,4 +3089,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Уваход заблакаваны — праверце ўліковы запіс і пароль</string>
     <string name="dexcom_share_credentials_required">Спачатку ўвядзіце ўліковы запіс і пароль</string>
     <string name="dexcom_share_warning">Неафіцыйны інтэрфейс: Dexcom можа змяніць або заблакаваць яго ў любы момант. Гэта не функцыя медыцынскай прылады.</string>
+    <string name="status_bar_icon_colored_title">Каляровы значок у радку стану</string>
+    <string name="status_bar_icon_colored_desc">Маляваць значэнне ў радку стану колерам дыяпазону. Некаторыя тэлефоны (напр. Samsung) паказваюць яго ў колеры, іншыя — заўсёды белым.</string>
 </resources>

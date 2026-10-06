@@ -3020,4 +3020,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Connexion bloquée — vérifiez le compte et le mot de passe</string>
     <string name="dexcom_share_credentials_required">Saisissez d\'abord le compte et le mot de passe</string>
     <string name="dexcom_share_warning">Interface non officielle : Dexcom peut la modifier ou la bloquer à tout moment. Ce n\'est pas une fonction de dispositif médical.</string>
+    <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
+    <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage. Certains téléphones (ex. Samsung) l\'affichent en couleur, d\'autres toujours en blanc.</string>
 </resources>
