@@ -3005,4 +3005,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_secret_label">Секрет API или токен доступа</string>
     <string name="nightscout_api_help">Для v1 используйте секрет API, для v3 — токен доступа Nightscout.</string>
     <string name="nightscout_iob_help">eIOB и COB передаются в поле jugglucong объекта devicestatus отдельно от обычного IOB.</string>
+    <string name="status_bar_icon_colored_title">Цветной значок в строке состояния</string>
+    <string name="status_bar_icon_colored_desc">Рисует значение в строке состояния цветом диапазона. Некоторые телефоны (например, Samsung) показывают его цветным, другие — всегда белым.</string>
 </resources>

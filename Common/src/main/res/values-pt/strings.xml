@@ -2955,4 +2955,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_secret_label">Segredo da API ou token de acesso</string>
     <string name="nightscout_api_help">Use o segredo da API com v1 ou um token de acesso do Nightscout com v3.</string>
     <string name="nightscout_iob_help">eIOB e COB são enviados no campo jugglucong de devicestatus, separados da IOB padrão.</string>
+    <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
+    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa. Alguns telefones (ex. Samsung) mostram em cores; outros sempre em branco.</string>
 </resources>

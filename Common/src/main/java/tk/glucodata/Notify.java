@@ -3450,11 +3450,33 @@ public class Notify {
                     }
                 }
             }
-            final var icon = icons.getIcon(getglstring(glvalue, sensorgen2), peerTexts);
+            final var icon = icons.getIcon(getglstring(glvalue, sensorgen2), peerTexts,
+                    statusIconColor(glvalue));
             GluNotBuilder.setSmallIcon(icon);
         } else {
             var draw = GlucoseDraw.getgludraw(glvalue, sensorgen2);
             GluNotBuilder.setSmallIcon(draw);
+        }
+    }
+
+    static final String PREF_STATUS_ICON_COLORED = "notification_status_icon_colored";
+
+    /**
+     * The status-bar value's colour: white, or with "Colored status bar icon"
+     * on, the same in-target / outside-target / beyond-limit colour the app uses
+     * for values. Whether it shows in colour is up to the phone's status bar.
+     */
+    private static int statusIconColor(float glvalue) {
+        try {
+            if (!Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
+                    .getBoolean(PREF_STATUS_ICON_COLORED, false))
+                return android.graphics.Color.WHITE;
+            return GlucoseRangeColors.trafficColorForValue(glvalue,
+                    Natives.targetlow(), Natives.targethigh(),
+                    Natives.alarmverylow(), Natives.alarmveryhigh(),
+                    true, Applic.unit == 1, android.graphics.Color.WHITE);
+        } catch (Throwable th) {
+            return android.graphics.Color.WHITE;
         }
     }
 

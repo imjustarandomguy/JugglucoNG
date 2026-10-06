@@ -3055,4 +3055,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="nightscout_secret_label">API нууц эсвэл хандалтын токен</string>
     <string name="nightscout_api_help">v1-д API нууц, v3-д Nightscout хандалтын токен ашиглана уу.</string>
     <string name="nightscout_iob_help">eIOB болон COB нь стандарт IOB-оос тусдаа devicestatus-ийн jugglucong талбарт илгээгдэнэ.</string>
+    <string name="status_bar_icon_colored_title">Өнгөт төлөвийн мөрийн дүрс</string>
+    <string name="status_bar_icon_colored_desc">Төлөвийн мөр дэх утгыг хязгаарын өнгөөр зурна. Зарим утас (жишээ нь Samsung) өнгөтөөр, бусад нь үргэлж цагаанаар харуулна.</string>
 </resources>
