@@ -65,6 +65,13 @@ class MessageSender(val activity: Context):CapabilityClient.OnCapabilityChangedL
             runCatching { SensorOwnershipRuntime.onPeerReachabilityChanged(!ns.isEmpty()) }
         }
         ns.forEach { WearAlertSync.pushTo(it.id) }
+        // The watch mirrors the phone's display settings and colour scheme. A
+        // change the phone pushed while the watch was out of reach, or before
+        // this process started, never arrived; ask once each time the phone
+        // comes into reach, rather than on a timer.
+        if (isWearable && wasEmpty != false && ns.isNotEmpty()) {
+            requestWearPrefs()
+        }
         sendnetinfo();
     }
     public fun nulltimes() {
