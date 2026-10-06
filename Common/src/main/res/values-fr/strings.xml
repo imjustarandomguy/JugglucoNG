@@ -2886,9 +2886,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Détails au toucher</string>
     <string name="floating_tap_details_desc">Un appui affiche le graphique et les détails, un appui long ouvre l\'application</string>
-    <string name="floating_island_tappable">Îlot tactile (expérimental)</string>
-    <string name="floating_island_tappable_desc">Dessiné au-dessus de la barre d\'état pour recevoir les appuis. Utilise le service d\'accessibilité « îlot flottant » de NG.</string>
-    <string name="floating_island_service_off">Activez « %1$s » dans les paramètres d\'accessibilité. Appuyez pour ouvrir.</string>
-    <string name="floating_island_service_label">JugglucoNG îlot flottant</string>
-    <string name="floating_island_service_desc">Permet à l\'îlot de glucose flottant près de la caméra de recevoir les appuis. Ne lit rien à l\'écran et ne reçoit aucun événement.</string>
+    <string name="floating_above_status_bar">Au-dessus de la barre d\'état</string>
+    <string name="floating_above_status_bar_desc">Toucher et déplacer aussi sur la barre d\'état</string>
+    <string name="floating_accessibility_service_off">Activez « %1$s » dans les paramètres d\'accessibilité</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glycémie flottante</string>
+    <string name="floating_accessibility_service_desc">Permet de toucher la glycémie flottante au-dessus de la barre d\'état. Ne lit rien à l\'écran.</string>
 </resources>

@@ -7,6 +7,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -75,12 +76,7 @@ fun FloatingGlucoseOverlay(
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
-    /**
-     * Tapping the value opens or closes a card with what the glucose
-     * notification shows (time, Δ, chart, IOB), in a window of its own so this
-     * one never changes size; a long press opens the app, as a tap used to.
-     * Null keeps the old behaviour: a tap opens the app.
-     */
+    /** Opens or closes the details card on a tap ("Details on tap"); otherwise a tap opens the app. */
     onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -411,7 +407,7 @@ fun FloatingGlucoseOverlay(
             .clip(finalShape)
             .combinedClickable(
                 interactionSource = overlayInteractionSource,
-                indication = overlayIndication,
+                indication = null,
                 onLongClick = openApp,
                 onClick = onPillTap,
             )
@@ -431,7 +427,10 @@ fun FloatingGlucoseOverlay(
                         Surface(
                             color = finalBgColor,
                             shape = finalShape,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(finalShape)
+                                .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
                 ) {
@@ -465,7 +464,10 @@ fun FloatingGlucoseOverlay(
                         Surface(
                             color = finalBgColor,
                             shape = finalShape,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(finalShape)
+                                .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
                 ) {

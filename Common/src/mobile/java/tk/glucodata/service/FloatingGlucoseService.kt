@@ -73,9 +73,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // The details card has a window of its own. Growing the pill's window to
-    // hold it re-centred the pill over the card (pushing it off screen near an
-    // edge) and lagged while the window resized.
+    // The details card has its own window, so opening it never resizes or moves the pill.
     private var detailsRoot: View? = null
     private var detailsClosedByOutsideTouchAt = 0L
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -136,9 +134,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     )
     private val cutoutData = kotlinx.coroutines.flow.MutableStateFlow(CutoutData(0.dp, CutoutEdge.NONE))
     private var dynamicIslandEnabled = false
-    private var islandTappable = false
-    // The WindowManager the pill is attached through: the app's own, or the
-    // island accessibility service's (see attachToHost).
+    private var tapShowsDetails = true
+    private var aboveStatusBar = false
+    // The app's WindowManager or FloatingAccessibilityService's; see attachToHost.
     private var hostWindowManager: WindowManager? = null
     private var freeformX = 0
     private var freeformY = 0
@@ -228,17 +226,15 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             closeDetails()
             return
         }
-        // A tap on the pill while the card is open reaches the card first, as
-        // a touch outside it, and has closed it already: leave it closed.
+        // That tap already closed the card as an outside touch.
         if (android.os.SystemClock.uptimeMillis() - detailsClosedByOutsideTouchAt < DETAILS_REOPEN_GUARD_MS) return
         openDetails(request)
     }
 
     /**
-     * Opens the card next to the pill, on whichever side keeps it on screen:
-     * below the pill in the top half of the screen and above it in the bottom
-     * half, lined up with the pill's left edge in the left half and its right
-     * edge in the right half, and centred under the camera for the island.
+     * Opens the card beside the pill, on the side with room: away from the edge
+     * an island is docked to; for the free pill below it in the top half of the
+     * screen and above it in the bottom half, aligned to its nearer side edge.
      */
     private fun openDetails(request: FloatingDetailsRequest) {
         val wm = windowManager ?: return
@@ -249,7 +245,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val pillTop = location[1]
         val pillRight = pillLeft + anchor.width
         val pillBottom = pillTop + anchor.height
-        val screen = screenSize()
+        val pillCentreX = (pillLeft + pillRight) / 2
+        val pillCentreY = (pillTop + pillBottom) / 2
+        val screen = displaySizePx()
         val density = resources.displayMetrics.density
         val gap = (6 * density).toInt()
         val margin = (8 * density).toInt()
@@ -261,32 +259,48 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                 WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                // Touches elsewhere still reach the app below; the card only
-                // hears about them, to close.
+                // Outside touches still reach the app below; the card only closes on them.
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
         if (android.os.Build.VERSION.SDK_INT >= 28) {
             params.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
-        val below = (pillTop + pillBottom) / 2 < screen.y / 2
-        params.y = if (below) pillBottom + gap else screen.y - pillTop + gap
-        val pillCentreX = (pillLeft + pillRight) / 2
-        val horizontal = when {
-            dynamicIslandEnabled && cutoutData.value.edge.let { it == CutoutEdge.TOP || it == CutoutEdge.NONE } -> {
+        val islandEdge = if (dynamicIslandEnabled) {
+            cutoutData.value.edge.takeIf { it != CutoutEdge.NONE } ?: CutoutEdge.TOP
+        } else {
+            null
+        }
+        when (islandEdge) {
+            CutoutEdge.LEFT -> {
+                params.gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                params.x = pillRight + gap
+                params.y = pillCentreY - screen.y / 2
+            }
+            CutoutEdge.RIGHT -> {
+                params.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                params.x = screen.x - pillLeft + gap
+                params.y = pillCentreY - screen.y / 2
+            }
+            CutoutEdge.BOTTOM -> {
+                params.gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 params.x = pillCentreX - screen.x / 2
-                Gravity.CENTER_HORIZONTAL
+                params.y = screen.y - pillTop + gap
             }
-            pillCentreX < screen.x / 2 -> {
-                params.x = maxOf(margin, pillLeft)
-                Gravity.START
+            CutoutEdge.TOP, CutoutEdge.NONE -> {
+                params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                params.x = pillCentreX - screen.x / 2
+                params.y = pillBottom + gap
             }
-            else -> {
-                params.x = maxOf(margin, screen.x - pillRight)
-                Gravity.END
+            null -> {
+                val below = pillCentreY < screen.y / 2
+                val alignStart = pillCentreX < screen.x / 2
+                params.gravity = (if (below) Gravity.TOP else Gravity.BOTTOM) or
+                    (if (alignStart) Gravity.START else Gravity.END)
+                params.x = maxOf(margin, if (alignStart) pillLeft else screen.x - pillRight)
+                params.y = if (below) pillBottom + gap else screen.y - pillTop + gap
             }
         }
-        params.gravity = (if (below) Gravity.TOP else Gravity.BOTTOM) or horizontal
 
         val root = OutsideTouchContainer(this) {
             detailsClosedByOutsideTouchAt = android.os.SystemClock.uptimeMillis()
@@ -339,22 +353,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
     }
 
-    /** Full display size in pixels, which the overlay windows are laid out against. */
-    @Suppress("DEPRECATION")
-    private fun screenSize(): android.graphics.Point {
-        val wm = windowManager ?: return android.graphics.Point(0, 0)
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            val bounds = wm.currentWindowMetrics.bounds
-            return android.graphics.Point(bounds.width(), bounds.height())
-        }
-        val metrics = android.util.DisplayMetrics()
-        wm.defaultDisplay.getRealMetrics(metrics)
-        return android.graphics.Point(metrics.widthPixels, metrics.heightPixels)
-    }
-
     private fun updateViewPosition(xDelta: Int, yDelta: Int) {
         if (overlayRoot == null || windowManager == null) return
-        // The card was placed against the pill where it was; moving the pill leaves it behind.
+        // The card is placed against the pill; it would be left behind.
         closeDetails()
 
         layoutParams.x += xDelta
@@ -371,8 +372,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * Keeps the free pill on screen and below the status bar: app overlays sit
-     * under the status bar window, which takes every touch in its strip.
+     * Keeps the free pill on screen, and below the status bar unless it is an
+     * accessibility overlay: the status bar window takes every touch in its
+     * strip from app overlays.
      */
     private fun keepFreePillTouchable() {
         val limits = freePillLimits ?: computeFreePillLimits().also { freePillLimits = it }
@@ -387,7 +389,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val screen = displaySizePx()
         val width = overlayRoot?.width ?: 0
         val height = overlayRoot?.height ?: 0
-        return android.graphics.Rect(0, statusBarHeightPx(), screen.x - width, screen.y - height)
+        val overStatusBar = layoutParams.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        val top = if (overStatusBar) 0 else statusBarHeightPx()
+        return android.graphics.Rect(0, top, screen.x - width, screen.y - height)
     }
 
     /** Full display size in pixels: the overlay windows are laid out in screen coordinates. */
@@ -446,15 +450,23 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
 
         serviceScope.launch {
-            settingsRepository.isIslandTappable.collectLatest { tappable ->
-                islandTappable = tappable
+            settingsRepository.tapShowsDetails.collectLatest { enabled ->
+                tapShowsDetails = enabled
                 attachToHost()
                 applyOverlayPlacement()
             }
         }
 
         serviceScope.launch {
-            IslandAccessibilityService.windowManager.collectLatest {
+            settingsRepository.isAboveStatusBar.collectLatest { enabled ->
+                aboveStatusBar = enabled
+                attachToHost()
+                applyOverlayPlacement()
+            }
+        }
+
+        serviceScope.launch {
+            FloatingAccessibilityService.windowManager.collectLatest {
                 attachToHost()
                 applyOverlayPlacement()
             }
@@ -462,17 +474,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * Puts the pill in an accessibility overlay while the island is tappable and
-     * the island accessibility service is on, and in an app overlay otherwise.
-     *
-     * App overlays sit under the status bar window, so the island beside the
-     * camera could be seen but every touch on it went to the status bar.
-     * Accessibility overlays sit above it and receive the touch.
+     * Attaches the pill as an accessibility overlay when "Over the status bar"
+     * is on and its service is running, otherwise as an app overlay. App
+     * overlays sit under the status bar window, so touches there never reach them.
      */
     private fun attachToHost() {
         val root = overlayRoot ?: return
-        val accessibilityWm = IslandAccessibilityService.windowManager.value
-        val useAccessibility = dynamicIslandEnabled && islandTappable && accessibilityWm != null
+        val accessibilityWm = FloatingAccessibilityService.windowManager.value
+        val useAccessibility = tapShowsDetails && aboveStatusBar && accessibilityWm != null
         val target = (if (useAccessibility) accessibilityWm else windowManager) ?: return
         if (target === hostWindowManager) return
         closeDetails()
@@ -480,8 +489,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             try {
                 old.removeViewImmediate(root)
             } catch (e: Exception) {
-                // Already gone: the system removes an accessibility overlay
-                // itself when its service is turned off.
+                // The system has already removed it if the accessibility service stopped.
             }
         }
         hostWindowManager = null

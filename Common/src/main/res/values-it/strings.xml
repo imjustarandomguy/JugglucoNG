@@ -2870,9 +2870,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Dettagli al tocco</string>
     <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli, un tocco prolungato apre l\'app</string>
-    <string name="floating_island_tappable">Isola toccabile (sperimentale)</string>
-    <string name="floating_island_tappable_desc">Disegnata sopra la barra di stato perché riceva i tocchi. Usa il servizio di accessibilità «isola fluttuante» di NG.</string>
-    <string name="floating_island_service_off">Attiva «%1$s» nelle impostazioni di accessibilità. Tocca per aprire.</string>
-    <string name="floating_island_service_label">JugglucoNG isola fluttuante</string>
-    <string name="floating_island_service_desc">Permette all\'isola della glicemia vicino alla fotocamera di ricevere i tocchi. Non legge nulla dallo schermo e non riceve eventi.</string>
+    <string name="floating_above_status_bar">Sopra la barra di stato</string>
+    <string name="floating_above_status_bar_desc">Toccalo e spostalo anche sulla barra di stato</string>
+    <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glicemia fluttuante</string>
+    <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge nulla dallo schermo.</string>
 </resources>

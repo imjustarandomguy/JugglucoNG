@@ -2981,9 +2981,9 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     </plurals>
     <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
     <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна; удаан дарахад програмыг нээнэ</string>
-    <string name="floating_island_tappable">Дарж болох арал (туршилт)</string>
-    <string name="floating_island_tappable_desc">Төлөвийн мөрийн дээр зурагдаж, даралтыг хүлээн авна. NG-ийн хөвөгч арлын хүртээмжийн үйлчилгээг ашиглана.</string>
-    <string name="floating_island_service_off">Хүртээмжийн тохиргооноос «%1$s»-ийг асаана уу. Нээхийн тулд дарна уу.</string>
-    <string name="floating_island_service_label">JugglucoNG хөвөгч арал</string>
-    <string name="floating_island_service_desc">Камерын хажуудах хөвөгч глюкозын арлыг даралт хүлээн авах боломжтой болгоно. Дэлгэцээс юу ч уншихгүй, үйл явдал хүлээн авахгүй.</string>
+    <string name="floating_above_status_bar">Төлөвийн мөрийн дээр</string>
+    <string name="floating_above_status_bar_desc">Төлөвийн мөрийн дээр ч дарж, зөөж болно</string>
+    <string name="floating_accessibility_service_off">Хүртээмжийн тохиргооноос «%1$s»-ийг асаана уу</string>
+    <string name="floating_accessibility_service_label">JugglucoNG хөвөгч глюкоз</string>
+    <string name="floating_accessibility_service_desc">Хөвөгч глюкозыг төлөвийн мөрийн дээр дарах боломжтой болгоно. Дэлгэцээс юу ч уншихгүй.</string>
 </resources>

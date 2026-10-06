@@ -2908,9 +2908,9 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     </plurals>
     <string name="floating_tap_details">Dokununca ayrıntılar</string>
     <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir, uzun basma uygulamayı açar</string>
-    <string name="floating_island_tappable">Dokunulabilir ada (deneysel)</string>
-    <string name="floating_island_tappable_desc">Dokunmaların ulaşması için durum çubuğunun üstüne çizilir. NG\'nin yüzen ada erişilebilirlik hizmetini kullanır.</string>
-    <string name="floating_island_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın. Açmak için dokunun.</string>
-    <string name="floating_island_service_label">JugglucoNG yüzen ada</string>
-    <string name="floating_island_service_desc">Kameranın yanındaki yüzen glukoz adasının dokunmaları almasını sağlar. Ekrandan hiçbir şey okumaz ve olay almaz.</string>
+    <string name="floating_above_status_bar">Durum çubuğunun üstünde</string>
+    <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunup sürükleyin</string>
+    <string name="floating_accessibility_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın</string>
+    <string name="floating_accessibility_service_label">JugglucoNG yüzen glukoz</string>
+    <string name="floating_accessibility_service_desc">Yüzen glukozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekrandan hiçbir şey okumaz.</string>
 </resources>
