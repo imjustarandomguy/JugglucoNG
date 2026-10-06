@@ -200,6 +200,28 @@ protected boolean useAutoConnect() {
     }
 }
 
+/**
+ * After a session the G7 keeps advertising for a second or two, and a background
+ * connect armed at once linked up again, idled (the reading was in) and was dropped
+ * by the sensor, up to five times a session. Arming it once the advertising is over
+ * saves those links. A wake lock covers the wait: the scheduler stops while the CPU
+ * sleeps.
+ */
+private static final long REARM_AFTER_SESSION_MSEC = 5_000L;
+private final PowerManager.WakeLock rearmlock = newRearmLock();
+
+private static PowerManager.WakeLock newRearmLock() {
+    final var lock = ((PowerManager) Applic.app.getSystemService(POWER_SERVICE))
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::DexcomRearm");
+    lock.setReferenceCounted(false);
+    return lock;
+}
+
+private void rearmAfterSession(SensorBluetooth sensorbluetooth) {
+    rearmlock.acquire(REARM_AFTER_SESSION_MSEC + 2_000L);
+    sensorbluetooth.connectToActiveDevice(this, REARM_AFTER_SESSION_MSEC);
+}
+
 private boolean connected=false;
 private int connectionTimeouts=0;
     @SuppressLint("MissingPermission")
@@ -327,7 +349,7 @@ private int connectionTimeouts=0;
                             // itself: no alarm to wake for, no direct connect to time out.
                             cancelalarm();
                             {if(doLog) {Log.i(LOG_ID, "autoConnect: wait for the next session");};};
-                            sensorbluetooth.connectToActiveDevice(this, 0);
+                            rearmAfterSession(sensorbluetooth);
                         }
                         else if(getalarmclock()) {
                             //long stillwait=justdata?(6700-alreadywaited):0;
@@ -346,6 +368,10 @@ private int connectionTimeouts=0;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
                     }
+                    else if((tim-datatime)<60000&&useAutoConnect()) {
+                            // An idle re-link just after a session, dropped by the sensor.
+                            rearmAfterSession(sensorbluetooth);
+                            }
                     else {
                             {if(doLog) {Log.i(LOG_ID,"connect direct");};};
                             sensorbluetooth.connectToActiveDevice(this,0);
