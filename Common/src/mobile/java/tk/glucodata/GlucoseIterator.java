@@ -47,6 +47,10 @@ public class GlucoseIterator implements ListIterator<BloodGlucoseRecord> {
     final private static String LOG_ID="GlucoseIterator";
     GlucoseList base;
     int iter;
+    // The next reading to hand out, read ahead by hasNext().
+    private boolean pending=false;
+    private long pendingTime;
+    private int pendingMgdL;
 
     GlucoseIterator(GlucoseList gl,int it) {
             base=gl;
@@ -57,32 +61,51 @@ public class GlucoseIterator implements ListIterator<BloodGlucoseRecord> {
 
     @Override
     public boolean hasNext() {
-    	Log.i(LOG_ID,"hasnext iter="+iter);	
-        return iter < base.len;
+    	Log.i(LOG_ID,"hasnext iter="+iter);
+        if(!pending)
+            readahead();
+        return pending;
     }
 
 private    BloodGlucoseRecord getglucose(long time,double value) {
     final ZoneOffset offset = null;
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        return new BloodGlucoseRecord(Instant.ofEpochSecond(time), offset,base.metadata, BloodGlucose.milligramsPerDeciliter(value),1,0,0);
+        final Metadata meta=Metadata.unknownRecordingMethod(HealthConnectExportPolicy.clientRecordId(base.serial,time),HealthConnectExportPolicy.RECORD_VERSION,base.device);
+        return new BloodGlucoseRecord(Instant.ofEpochSecond(time), offset,meta, BloodGlucose.milligramsPerDeciliter(value),1,0,0);
     }
     else
             return null;
 }
-private    BloodGlucoseRecord getglucose() {
+/* Finds the batch's next exportable reading. streamfromSensorptr skips empty slots itself and
+   says it found nothing with a 0 time; that, or a value Health Connect would refuse, is skipped
+   rather than sent (it used to become a 1970 reading of 0 mg/dL). */
+private    void readahead() {
+    while(!pending&&iter<base.len) {
 	int pos=base.start+iter;
  	final long timevalue=Natives.streamfromSensorptr(base.sensorptr,pos);
-	final long time=timevalue&0xFFFFFFFFL;
-	final int mgdL=(int)((timevalue>>32)&0xFFFF);
-    final int nextpos=(int)((timevalue>>48)&0xFFFF);
-    iter=nextpos-base.start;
+	final long time=HealthConnectExportPolicy.time(timevalue);
+	final int mgdL=HealthConnectExportPolicy.mgdL(timevalue);
+    final int nextpos=HealthConnectExportPolicy.nextPos(timevalue);
     {if(doLog) {Log.i(LOG_ID,"getglucose("+pos+") nextpos="+nextpos+" time="+time+" mgdL="+mgdL+" mmol="+mgdL/18.0f);};};
-	return getglucose(time,mgdL);
+    if(HealthConnectExportPolicy.searchEnded(timevalue,pos)) {
+        iter=base.len;
+        return;
+        }
+    iter=nextpos-base.start;
+    if(HealthConnectExportPolicy.isExportable(time,mgdL)) {
+        pendingTime=time;
+        pendingMgdL=mgdL;
+        pending=true;
+        }
+    }
     }
 
     @Override
     public BloodGlucoseRecord next() {
-        return getglucose();
+        if(!hasNext())
+            throw new java.util.NoSuchElementException();
+        pending=false;
+        return getglucose(pendingTime,pendingMgdL);
 
     }
 
