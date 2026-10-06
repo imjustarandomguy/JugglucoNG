@@ -3206,4 +3206,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_secret_label">API secret or access token</string>
     <string name="nightscout_api_help">Use an API secret with v1, or a Nightscout access token with v3.</string>
     <string name="nightscout_iob_help">eIOB and COB are sent in the jugglucong field of devicestatus, separately from standard IOB.</string>
+    <string name="floating_tap_details">Details on tap</string>
+    <string name="floating_tap_details_desc">Tap shows the chart and details; long press opens the app</string>
 </resources>

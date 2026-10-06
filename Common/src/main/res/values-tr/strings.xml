@@ -2982,4 +2982,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="nightscout_secret_label">API sırrı veya erişim belirteci</string>
     <string name="nightscout_api_help">v1 için API sırrını, v3 için Nightscout erişim tokenini kullanın.</string>
     <string name="nightscout_iob_help">eIOB ve COB, standart IOB’den ayrı olarak devicestatus içindeki jugglucong alanında gönderilir.</string>
+    <string name="floating_tap_details">Dokununca ayrıntılar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir, uzun basma uygulamayı açar</string>
 </resources>

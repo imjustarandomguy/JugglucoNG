@@ -3070,4 +3070,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="nightscout_secret_label">API-Secret oder Zugriffstoken</string>
     <string name="nightscout_api_help">Für v1 das API-Geheimnis verwenden, für v3 ein Nightscout-Zugriffstoken.</string>
     <string name="nightscout_iob_help">eIOB und COB werden im Feld jugglucong von devicestatus übertragen, getrennt vom regulären IOB.</string>
+    <string name="floating_tap_details">Details beim Antippen</string>
+    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details, langes Drücken öffnet die App</string>
 </resources>
