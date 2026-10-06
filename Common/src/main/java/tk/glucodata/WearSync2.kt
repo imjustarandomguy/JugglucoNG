@@ -459,12 +459,30 @@ object WearSync2 {
                     if (doLog) Log.i(LOG_ID, "ignored stale chunk for removed sensor $serial")
                     return@execute
                 }
-                // Chunks now travel in whichever direction ownership points, so
-                // the receiving side must not be reading the same sensor itself.
-                if (SensorOwnershipRuntime.readsLocally(serial)) {
-                    if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
-                    return@execute
+                val times = LongArray(count)
+                val autos = IntArray(count)
+                val rawWire = IntArray(count)
+                for (i in 0 until count) {
+                    times[i] = buf.long
+                    autos[i] = buf.int
+                    rawWire[i] = buf.int
                 }
+                // Chunks travel in whichever direction ownership points. A device
+                // reading the sensor itself takes from the other only the readings
+                // it missed: when both read it (a G7) they are the same readings,
+                // and its own must never be replaced.
+                val readsLocally = SensorOwnershipRuntime.readsLocally(serial)
+                val alreadyHave = if (readsLocally) {
+                    runCatching { Natives.streamSlotsFilled(times, serial) }.getOrNull() ?: run {
+                        if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
+                        return@execute
+                    }
+                } else null
+                // Taken before storing: a reading filled in behind this device's own
+                // newest is history, not the current value.
+                val localNewestMs = if (readsLocally) {
+                    runCatching { Natives.lastglucosetime() * 1000L }.getOrDefault(Long.MAX_VALUE)
+                } else 0L
                 var written = 0
                 var earliest = 0L
                 val stamps = LongArray(count)
@@ -473,10 +491,10 @@ object WearSync2 {
                 val nativeSecs = LongArray(count)
                 val nativeValues = FloatArray(count)
                 for (i in 0 until count) {
-                    val t = buf.long
-                    val auto10 = buf.int
-                    val raw10 = buf.int
-                    if (t <= 0L || auto10 <= 0) continue
+                    val t = times[i]
+                    val auto10 = autos[i]
+                    val raw10 = rawWire[i]
+                    if (t <= 0L || auto10 <= 0 || alreadyHave?.get(i) == true) continue
                     if (earliest == 0L) {
                         earliest = t
                         // Native scale contract (g.cpp addGlucoseStreamInternal):
@@ -517,18 +535,20 @@ object WearSync2 {
                         raws.copyOf(written),
                     )
                     val newest = written - 1
-                    HistorySyncAccess.storeCurrentReadingAsync(
-                        stamps[newest],
-                        values[newest],
-                        raws[newest],
-                        0f,
-                        serial,
-                    )
-                    emitExchangeOutputsForSyncedReading(
-                        serial,
-                        stamps[newest],
-                        values[newest],
-                    )
+                    if (stamps[newest] > localNewestMs) {
+                        HistorySyncAccess.storeCurrentReadingAsync(
+                            stamps[newest],
+                            values[newest],
+                            raws[newest],
+                            0f,
+                            serial,
+                        )
+                        emitExchangeOutputsForSyncedReading(
+                            serial,
+                            stamps[newest],
+                            values[newest],
+                        )
+                    }
                 }
                 if (written > 0) {
                     // The receiver follows the mirrored selection, not the
@@ -541,7 +561,10 @@ object WearSync2 {
                     WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
                     UiRefreshBus.requestDataRefresh()
                 }
-                if (doLog) Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final")
+                if (doLog) {
+                    val scope = if (readsLocally) " (missing only)" else ""
+                    Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final$scope")
+                }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }
         }
     }
