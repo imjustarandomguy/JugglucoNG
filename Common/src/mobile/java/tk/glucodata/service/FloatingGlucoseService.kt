@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -195,6 +196,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         try {
             windowManager?.addView(root, layoutParams)
             root.requestApplyInsets()
+            // Place again once the pill has its size, for the edge limits.
+            root.doOnLayout { applyOverlayPlacement() }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -217,27 +220,31 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * Keeps the free-floating pill on screen and below the status bar.
-     *
-     * App overlays sit under the status bar window, so a pill dragged into that
-     * strip stayed visible but could not be touched again: every touch there
-     * goes to the status bar. Only its part below the strip could be grabbed.
+     * Keeps the free pill on screen and below the status bar: app overlays sit
+     * under the status bar window, which takes every touch in its strip.
      */
     private fun keepFreePillTouchable() {
+        val limits = freePillLimits ?: computeFreePillLimits().also { freePillLimits = it }
+        layoutParams.x = layoutParams.x.coerceIn(limits.left, maxOf(limits.left, limits.right))
+        layoutParams.y = layoutParams.y.coerceIn(limits.top, maxOf(limits.top, limits.bottom))
+    }
+
+    /** Where the free pill's top-left corner may go; cached for the length of a drag. */
+    private var freePillLimits: android.graphics.Rect? = null
+
+    private fun computeFreePillLimits(): android.graphics.Rect {
         val screen = displaySizePx()
         val width = overlayRoot?.width ?: 0
         val height = overlayRoot?.height ?: 0
-        val top = statusBarHeightPx()
-        layoutParams.x = layoutParams.x.coerceIn(0, maxOf(0, screen.x - width))
-        layoutParams.y = layoutParams.y.coerceIn(top, maxOf(top, screen.y - height))
+        return android.graphics.Rect(0, statusBarHeightPx(), screen.x - width, screen.y - height)
     }
 
-    /** Full display size in pixels: the free pill is laid out in screen coordinates. */
+    /** Full display size in pixels: the overlay windows are laid out in screen coordinates. */
     @Suppress("DEPRECATION")
     private fun displaySizePx(): android.graphics.Point {
         val wm = windowManager ?: return android.graphics.Point(Int.MAX_VALUE, Int.MAX_VALUE)
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            val bounds = wm.currentWindowMetrics.bounds
+            val bounds = wm.maximumWindowMetrics.bounds
             return android.graphics.Point(bounds.width(), bounds.height())
         }
         val metrics = android.util.DisplayMetrics()
@@ -248,7 +255,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private fun statusBarHeightPx(): Int {
         val wm = windowManager ?: return 0
         if (android.os.Build.VERSION.SDK_INT >= 30) {
-            return wm.currentWindowMetrics.windowInsets
+            return wm.maximumWindowMetrics.windowInsets
                 .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout())
                 .top
         }
@@ -257,6 +264,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     private fun persistViewPosition() {
+        freePillLimits = null
         if (dynamicIslandEnabled) return
         serviceScope.launch {
             settingsRepository.savePosition(freeformX, freeformY)
@@ -355,8 +363,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             layoutParams.gravity = Gravity.TOP or Gravity.START
             layoutParams.x = freeformX
             layoutParams.y = freeformY
-            // A position saved inside the status bar strip (before this was
-            // enforced) would leave the pill there, untouchable.
+            // A saved position may lie in the status bar strip or off a smaller screen.
+            freePillLimits = null
             keepFreePillTouchable()
             freeformX = layoutParams.x
             freeformY = layoutParams.y
@@ -373,9 +381,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         super.onConfigurationChanged(newConfig)
         overlayRoot?.post {
             overlayRoot?.requestApplyInsets()
-            if (dynamicIslandEnabled) {
-                applyOverlayPlacement()
-            }
+            applyOverlayPlacement()
         }
     }
 
