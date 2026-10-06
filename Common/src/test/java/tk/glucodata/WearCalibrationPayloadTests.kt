@@ -306,6 +306,59 @@ class WearCalibrationPayloadTests {
     }
 
     @Test
+    fun aLaneSwitchedOffOnThePhoneReachesTheWatch() {
+        val payload = WearCalibrationPayload(
+            sensorId = "sensor",
+            revision = 5L,
+            valuesPrecalibrated = false,
+            hideInitialWhenCalibrated = true,
+            autoIntegratedByDriver = true,
+            autoDisabled = true,
+            auto = WearCalibrationMode(DoubleArray(0)),
+            raw = WearCalibrationMode(DoubleArray(0)),
+        )
+
+        val decoded = requireNotNull(
+            WearCalibrationPayload.decode(WearCalibrationPayload.encode(payload)),
+        )
+
+        assertTrue(decoded.autoDisabled)
+        assertFalse(decoded.rawDisabled)
+        // The other flags in the same byte are untouched.
+        assertTrue(decoded.hideInitialWhenCalibrated)
+        assertTrue(decoded.autoIntegratedByDriver)
+        assertFalse(decoded.rawIntegratedByDriver)
+
+        val rawOff = requireNotNull(
+            WearCalibrationPayload.decode(WearCalibrationPayload.encode(payload.copy(autoDisabled = false, rawDisabled = true))),
+        )
+        assertFalse(rawOff.autoDisabled)
+        assertTrue(rawOff.rawDisabled)
+    }
+
+    @Test
+    fun aPhoneThatPredatesTheSwitchReadsAsEnabled() {
+        // An older phone never sets the bits, so its payloads must not hide
+        // calibration on the watch.
+        val decoded = requireNotNull(
+            WearCalibrationPayload.decode(
+                WearCalibrationPayload.encode(
+                    WearCalibrationPayload(
+                        sensorId = "sensor",
+                        revision = 1L,
+                        valuesPrecalibrated = false,
+                        hideInitialWhenCalibrated = false,
+                        auto = WearCalibrationMode(DoubleArray(0)),
+                        raw = WearCalibrationMode(DoubleArray(0)),
+                    ),
+                ),
+            ),
+        )
+        assertFalse(decoded.autoDisabled)
+        assertFalse(decoded.rawDisabled)
+    }
+
+    @Test
     fun decode_rejectsMalformedOrTrailingData() {
         assertNull(WearCalibrationPayload.decode(null))
         assertNull(WearCalibrationPayload.decode(byteArrayOf(1, 0, 4, 1, 2)))
