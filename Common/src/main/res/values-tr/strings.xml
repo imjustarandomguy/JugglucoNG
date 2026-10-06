@@ -2983,5 +2983,5 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="nightscout_api_help">v1 için API sırrını, v3 için Nightscout erişim tokenini kullanın.</string>
     <string name="nightscout_iob_help">eIOB ve COB, standart IOB’den ayrı olarak devicestatus içindeki jugglucong alanında gönderilir.</string>
     <string name="status_bar_icon_colored_title">Renkli durum çubuğu simgesi</string>
-    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer.</string>
+    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer</string>
 </resources>

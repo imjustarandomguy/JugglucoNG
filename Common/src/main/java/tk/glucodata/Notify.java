@@ -604,6 +604,8 @@ public class Notify {
         }
     }
 
+    public static final String PREF_STATUS_ICON_COLORED = "notification_status_icon_colored";
+
     private static final String NUMALARM = "MedicationReminder";
     private static final String GLUCOSEALARM = "glucoseAlarm";
     public static final String CHANNEL_LOW = "LOW";
@@ -3423,8 +3425,9 @@ public class Notify {
 
     private void setIcon(Notification.Builder GluNotBuilder, float glvalue, int sensorgen2,
             java.util.List<NotificationChartDrawer.ValueItem> peerValues) {
-        boolean hideIcon = Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
-                .getBoolean("notification_hide_status_icon", false);
+        final android.content.SharedPreferences prefs = Applic.app
+                .getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE);
+        boolean hideIcon = prefs.getBoolean("notification_hide_status_icon", false);
 
         if (hideIcon) {
             GluNotBuilder.setSmallIcon(R.drawable.transparent_icon);
@@ -3451,7 +3454,7 @@ public class Notify {
                 }
             }
             final var icon = icons.getIcon(getglstring(glvalue, sensorgen2), peerTexts,
-                    statusIconColor(glvalue));
+                    statusIconColor(prefs, glvalue));
             GluNotBuilder.setSmallIcon(icon);
         } else {
             var draw = GlucoseDraw.getgludraw(glvalue, sensorgen2);
@@ -3459,22 +3462,15 @@ public class Notify {
         }
     }
 
-    static final String PREF_STATUS_ICON_COLORED = "notification_status_icon_colored";
-
-    /**
-     * The status-bar value's colour: white, or with "Colored status bar icon"
-     * on, the same in-target / outside-target / beyond-limit colour the app uses
-     * for values. Whether it shows in colour is up to the phone's status bar.
-     */
-    private static int statusIconColor(float glvalue) {
+    /** White, or the value's range colour when the coloured status bar icon is on. */
+    private static int statusIconColor(android.content.SharedPreferences prefs, float glvalue) {
         try {
-            if (!Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
-                    .getBoolean(PREF_STATUS_ICON_COLORED, false))
+            if (!prefs.getBoolean(PREF_STATUS_ICON_COLORED, false))
                 return android.graphics.Color.WHITE;
             return GlucoseRangeColors.trafficColorForValue(glvalue,
                     Natives.targetlow(), Natives.targethigh(),
                     Natives.alarmverylow(), Natives.alarmveryhigh(),
-                    true, Applic.unit == 1, android.graphics.Color.WHITE);
+                    /* darkTheme */ true, Applic.unit == 1, android.graphics.Color.WHITE);
         } catch (Throwable th) {
             return android.graphics.Color.WHITE;
         }

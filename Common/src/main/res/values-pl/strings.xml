@@ -2997,5 +2997,5 @@
     <string name="nightscout_api_help">Dla v1 użyj sekretu API, a dla v3 tokenu dostępu Nightscout.</string>
     <string name="nightscout_iob_help">eIOB i COB są wysyłane w polu jugglucong w devicestatus, oddzielnie od standardowej IOB.</string>
     <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
-    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu.</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu</string>
 </resources>
