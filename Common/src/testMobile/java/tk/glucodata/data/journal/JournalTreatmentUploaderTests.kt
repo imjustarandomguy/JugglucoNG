@@ -472,4 +472,59 @@ class JournalTreatmentUploaderTests {
         assertFalse(JournalTreatmentUploader.sameServer("", ""))
         assertFalse(JournalTreatmentUploader.sameServer(null, followed))
     }
+
+    /** A token without api:treatments:read answers every read with 403. */
+    @Test
+    fun aRefusedReceiveDoesNotHoldTheSendsBack() {
+        for (wrote in listOf(false, true)) {
+            assertTrue(
+                JournalTreatmentUploader.treatmentPassOk(
+                    sendsOk = true,
+                    deletesUnanswered = false,
+                    receive = JournalTreatmentUploader.ReceiveResult.REFUSED,
+                    wroteThisPass = wrote
+                )
+            )
+        }
+    }
+
+    @Test
+    fun anUnansweredReceiveBacksOffUnlessThisPassReachedTheServer() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = false
+            )
+        )
+        assertTrue(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = true
+            )
+        )
+    }
+
+    @Test
+    fun failedSendsAndUnansweredDeletesStillBackOff() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = false,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = true,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
+    }
 }
