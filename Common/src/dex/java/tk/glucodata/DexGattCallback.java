@@ -549,12 +549,20 @@ private void sendcertthread() {
     }
 
 
+    /**
+     * The display slot asked for, as the request's last byte: the G7 serves
+     * one phone app (2) and one receiver (1), and refused a watch the phone
+     * slot (auth=2) while it still knew the phone. A watch takes the receiver's.
+     */
+    private static final byte AUTH_SLOT = isWearable ? (byte) 0x01 : (byte) 0x02;
+
     private void requestAuth() {
-        {if(doLog) {Log.i(LOG_ID,"requestAuth()");};};
+        {if(doLog) {Log.i(LOG_ID,"requestAuth() slot=" + AUTH_SLOT);};};
         Random.fillbytes(random8);
         var uit = new byte[10];
         System.arraycopy(random8, 0, uit, 1, random8.length);
-        uit[0] = uit[9] = (byte) 0x02;
+        uit[0] = (byte) 0x02;
+        uit[9] = AUTH_SLOT;
         charact[1].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         tryer(()->write(1, uit));
       }
