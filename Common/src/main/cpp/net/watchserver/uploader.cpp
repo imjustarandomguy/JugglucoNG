@@ -1127,21 +1127,15 @@ static void uploaderthread() {
             uploadercondition.dobackup=0;
             }
         retrypending=0;
-        bool useV3=settings->data()->nightscoutV3;
+        /* The API version is the user's setting. A 404 is reported like any other refusal;
+           it used to turn v3 on for good (and with it a token exchange in place of the
+           secret), on the strength of one answer that need not even have come from
+           Nightscout. */
+        const bool useV3=settings->data()->nightscoutV3;
         glucosefailed=false;
         const bool prioritizeRecent=(current&Backup::wakestream);
         if(current&(Backup::wakestream|Backup::wakeall)) {
-            bool uploaded = useV3?uploadCGM3(prioritizeRecent):uploadCGM(prioritizeRecent);
-            if(!uploaded && !useV3 && lastNightUploadCode==404) {
-                LOGSTRING("Nightscout v1 endpoint returned 404, retrying with v3\n");
-                settings->data()->nightscoutV3 = true;
-                settings->updated();
-                auto env = getenv();
-                makeuploadsecret(env);
-                makeuploadurls(env);
-                useV3 = true;
-                uploaded = uploadCGM3(prioritizeRecent);
-            }
+            const bool uploaded = useV3?uploadCGM3(prioritizeRecent):uploadCGM(prioritizeRecent);
             if(!uploaded) {
                 glucosefailed=true;
                 retrypending|=(current&(Backup::wakestream|Backup::wakeall));
@@ -1158,17 +1152,7 @@ static void uploaderthread() {
             retrypending|=Backup::waketreatments;
             }
         else if(current&(Backup::wakenums|Backup::wakeall|Backup::waketreatments)) {
-            bool treatmentsOk = uploadJournalTreatmentsViaJava(useV3);
-            if(!treatmentsOk && !useV3 && lastNightUploadCode==404) {
-                LOGSTRING("Nightscout v1 treatments endpoint returned 404, retrying with v3\n");
-                settings->data()->nightscoutV3 = true;
-                settings->updated();
-                auto env = getenv();
-                makeuploadsecret(env);
-                makeuploadurls(env);
-                useV3 = true;
-                treatmentsOk = uploadJournalTreatmentsViaJava(true);
-            }
+            const bool treatmentsOk = uploadJournalTreatmentsViaJava(useV3);
             if(!treatmentsOk) {
                 /* Ask again without waiting for anything else to happen, and more slowly
                    each time: an entry the server will never accept must not be retried
