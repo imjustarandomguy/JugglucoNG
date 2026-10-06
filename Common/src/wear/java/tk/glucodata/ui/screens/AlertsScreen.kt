@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,9 @@ import tk.glucodata.ui.WearSectionTitle
 fun AlertsScreen() {
     val isMmol = remember { runCatching { Applic.unit == 1 }.getOrDefault(false) }
     var revision by remember { mutableIntStateOf(0) }
+    // The phone's reply lands here; a status refresh does not bump [revision],
+    // so without observing it a flipped switch never redrew.
+    val toggles by WearToggleSync.state.collectAsState()
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         WearToggleSync.requestState()
@@ -58,7 +62,8 @@ fun AlertsScreen() {
                 WearSectionTitle(stringResource(R.string.alarms))
             }
             items(AlertType.settingsEntries) { type ->
-                val config = remember(type, revision) {
+                // Keyed on the toggles too: the reply rewrites the local config.
+                val config = remember(type, revision, toggles) {
                     runCatching { AlertRepository.loadConfig(type) }.getOrNull()
                 } ?: return@items
                 val snoozed = remember(type, revision) {
@@ -66,9 +71,7 @@ fun AlertsScreen() {
                 }
                 // The phone's reply is the truth; until it has one, show what
                 // this device holds so the list is never blank.
-                val known = remember(type, revision) {
-                    WearToggleSync.knownEnabled(WearToggleSync.SCOPE_ALERT, type.id.toString())
-                }
+                val known = WearToggleSync.knownEnabled(toggles, WearToggleSync.SCOPE_ALERT, type.id.toString())
                 SwitchButton(
                     checked = known ?: config.enabled,
                     onCheckedChange = { on ->
