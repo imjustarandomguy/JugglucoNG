@@ -6,7 +6,6 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import tk.glucodata.drivers.ManagedBluetoothSensorDriver
 
 enum class WearSensorClaimState(val wireValue: Int) {
     PHONE_OWNS(0),
@@ -80,7 +79,7 @@ internal object WearSensorClaimPolicy {
     }
 }
 
-/** Watch-only, process-local ownership claim for direct managed-sensor routing. */
+/** Watch-only, process-local ownership claim for direct sensor routing. */
 object WearSensorClaim {
     private const val LOG_ID = "WearSensorClaim"
     private const val CLAIM_TIMEOUT_MS = 3L * 60L * 1000L
@@ -205,8 +204,15 @@ object WearSensorClaim {
             readingAcceptedAt = localReadingAcceptedAtMs
         }
 
+        val sensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull()
+        val callback = sensorId?.let { id ->
+            SensorBluetooth.mygatts()?.firstOrNull { candidate ->
+                candidate.supportsWatchClaim() && SensorIdentity.matches(candidate.SerialNumber, id)
+            }
+        }
         val now = System.currentTimeMillis()
-        if (now - requestStart >= CLAIM_TIMEOUT_MS) {
+        val timeoutMs = callback?.handoverWindowMs()?.takeIf { it > 0L } ?: CLAIM_TIMEOUT_MS
+        if (now - requestStart >= timeoutMs) {
             synchronized(this) {
                 if (!directRequested || requestedAtMs != requestStart) return
                 directRequested = false
@@ -220,18 +226,12 @@ object WearSensorClaim {
             return
         }
 
-        val sensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull()
         if (sensorId.isNullOrBlank()) {
             logWaiting("no active sensor identity")
             return
         }
-        val callback = SensorBluetooth.mygatts()
-            ?.firstOrNull { candidate ->
-                candidate is ManagedBluetoothSensorDriver &&
-                    SensorIdentity.matches(candidate.SerialNumber, sensorId)
-            }
         if (callback == null) {
-            logWaiting("no matching local managed GATT callback for $sensorId")
+            logWaiting("no matching local GATT callback for $sensorId")
             return
         }
         if (!callback.hasLocallyConnectedGatt()) {
