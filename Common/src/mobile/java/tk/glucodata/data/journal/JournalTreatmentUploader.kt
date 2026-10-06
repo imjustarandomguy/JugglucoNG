@@ -14,6 +14,7 @@ import tk.glucodata.NightPost
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.HistoryDatabase
 import tk.glucodata.drivers.nightscout.NightscoutFollowerRegistry
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -364,7 +365,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             return intervalMillis - elapsed
         }
 
-        /** Only a read that succeeded starts the interval; a failure is the native backoff's. */
+        /**
+         * A read that was answered starts the interval, a refusal included; one that got no
+         * answer is the native backoff's.
+         */
         fun recordRead(key: String, nowMillis: Long) {
             lastKey = key
             lastReadAt = nowMillis
@@ -555,14 +559,20 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val receive = if (receiveEnabled) {
             receiveRemoteTreatments(baseUrl, rawSecret, useV3)
         } else {
-            ReceiveOutcome(ok = true)
+            ReceiveOutcome(ReceiveResult.DONE)
         }
         settleTombstones(dao, deletes, receiveEnabled, receive.readBody)
         // A refused delete is deliberately not folded in here: returning false backs off the
         // whole treatment path, and a token that may not delete would then hold every new entry
         // back too. A delete nobody answered is folded in, so the native backoff tries again
         // once the server may be reachable rather than waiting for the next journal change.
-        return uploadOk && receive.ok && deletes?.unanswered != true
+        // The receive follows the same rule (see treatmentPassOk).
+        return treatmentPassOk(
+            sendsOk = uploadOk,
+            deletesUnanswered = deletes?.unanswered == true,
+            receive = receive.result,
+            wroteThisPass = acceptedDocument
+        )
     }
 
     /** A delete the server confirmed this pass, and the document id it was sent for. */
@@ -982,26 +992,45 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         optString("_id").trim().takeIf { it.isNotBlank() }
             ?: optString("id").trim().takeIf { it.isNotBlank() }
 
+    /** How a receive went: done (or not due), refused by the server, or not answered at all. */
+    internal enum class ReceiveResult { DONE, REFUSED, UNANSWERED }
+
+    /**
+     * What a treatment pass tells the native uploader. False makes it back off, which holds the
+     * next journal changes back as well, up to four hours.
+     *
+     * A refused read is the receive's own failure (a token without api:treatments:read answers
+     * 403 every time): it is retried on the receive's interval, and folding it in held every new
+     * entry back for nothing. A read nobody answered is folded in like a delete nobody answered,
+     * as a server out of reach, unless this pass's own writes have just reached it.
+     */
+    internal fun treatmentPassOk(
+        sendsOk: Boolean,
+        deletesUnanswered: Boolean,
+        receive: ReceiveResult,
+        wroteThisPass: Boolean
+    ): Boolean = sendsOk && !deletesUnanswered && !(receive == ReceiveResult.UNANSWERED && !wroteThisPass)
+
     /**
      * How a receive went. [readBody] is the treatment list the server answered with, null when
      * nothing was read (deferred, failed, or no such endpoint).
      */
-    private class ReceiveOutcome(val ok: Boolean, val readBody: String? = null)
+    private class ReceiveOutcome(val result: ReceiveResult, val readBody: String? = null)
 
     private fun receiveRemoteTreatments(baseUrl: String, secret: String, useV3: Boolean): ReceiveOutcome {
         val floorKey = "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
         val waitMillis = receiveFloor.waitMillis(floorKey, System.currentTimeMillis())
         if (waitMillis > 0L) {
             bookDeferredReceive(waitMillis)
-            return ReceiveOutcome(ok = true)
+            return ReceiveOutcome(ReceiveResult.DONE)
         }
         var readBody: String? = null
-        val ok = runCatching {
+        val result = runCatching {
             val read = fetchTreatmentsRead(baseUrl, secret, useV3)
             receiveFloor.recordRead(floorKey, System.currentTimeMillis())
             readBody = read
-            val body = read ?: return@runCatching true
-            if (body.isBlank() || body == "[]") return@runCatching true
+            val body = read ?: return@runCatching ReceiveResult.DONE
+            if (body.isBlank() || body == "[]") return@runCatching ReceiveResult.DONE
             val sensorId = NightscoutFollowerRegistry.deriveSensorId(baseUrl)
             val imported = NightscoutJournalFollowerImporter.importTreatments(sensorId, body)
             if (imported > 0) {
@@ -1009,8 +1038,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 Log.i(LOG_ID, "received $imported Nightscout treatment journal items")
             }
             receiveErrorLog.reset()
-            true
-        }.onFailure { error ->
+            ReceiveResult.DONE
+        }.getOrElse { error ->
             // The uploader retries on its own cadence, so an unreachable or refusing server
             // used to write the same line every few seconds and bury the rest of the trace.
             val message = "receive treatments failed: ${error.message}"
@@ -1018,8 +1047,16 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             if (repeats >= 0) {
                 Log.e(LOG_ID, if (repeats == 0) message else "$message (repeated ${repeats + 1}x)")
             }
-        }.getOrDefault(false)
-        return ReceiveOutcome(ok, readBody)
+            // No answer is a failed connection or read; an error status is thrown as anything else.
+            if (error is IOException) {
+                ReceiveResult.UNANSWERED
+            } else {
+                // No backoff covers a refusal any more (see treatmentPassOk): the interval does.
+                receiveFloor.recordRead(floorKey, System.currentTimeMillis())
+                ReceiveResult.REFUSED
+            }
+        }
+        return ReceiveOutcome(result, readBody)
     }
 
     private fun fetchTreatmentsJson(baseUrl: String, secret: String, useV3: Boolean): String =
