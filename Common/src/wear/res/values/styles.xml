@@ -7,7 +7,11 @@
         <item name="windowActionBar">false</item>
        <item name="android:windowActionBar">false</item>
        <item name="android:windowContentOverlay">@null</item>
-       <item name="android:windowSwipeToDismiss">false</item>
+       <!-- The Compose UI's SwipeDismissableNavHost relies on the window swipe:
+            from Wear OS 6 (API 36) it only reacts to the system's predictive-back
+            events, which this flag being false suppresses, leaving sub-screens
+            with no way back. -->
+       <item name="android:windowSwipeToDismiss">true</item>
 <!--       <item name="android:textAppearanceButton">@style/textAppearanceButton</item> -->
        <item name="android:spinnerStyle">@style/myspinnerstyle</item>
      <item name="android:buttonStyle">@style/mybuttonstyle</item>
