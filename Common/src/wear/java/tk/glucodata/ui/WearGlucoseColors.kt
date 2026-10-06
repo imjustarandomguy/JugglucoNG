@@ -18,7 +18,7 @@ import tk.glucodata.Natives
  *
  * The phone's scheme is:
  *  - the number stays neutral unless "colour values by range" is on, and then
- *    takes the palette's three-tier traffic colour;
+ *    takes the colour set for its band;
  *  - the hero container carries a faint five-band tint when out of range;
  *  - the chart traces by band.
  *
