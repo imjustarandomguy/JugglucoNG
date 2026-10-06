@@ -9,23 +9,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Lends its window token to the floating glucose's Dynamic Island.
- *
- * App overlays sit under the status bar window, so an island drawn beside the
- * camera could be seen but not tapped: every touch there went to the status
- * bar. Accessibility overlays sit above it. While this service is on,
- * [FloatingGlucoseService] adds the island through its [WindowManager] when
- * "Tappable island" is set.
- *
- * It does nothing else: it asks for no events and cannot read the screen
- * (res/xml/island_accessibility_config.xml). It is kept apart from the AOD
- * service so that turning one on does not turn the other on.
+ * Provides the window token for drawing the floating glucose as an
+ * accessibility overlay, which sits above the status bar and so can be tapped
+ * there. It requests no events and no window content. Separate from the AOD
+ * service so that enabling one does not enable the other.
  */
-class IslandAccessibilityService : AccessibilityService() {
+class FloatingAccessibilityService : AccessibilityService() {
     companion object {
         private val host = MutableStateFlow<WindowManager?>(null)
 
-        /** What accessibility overlays are added through, while the service is on; else null. */
+        /** The WindowManager to add accessibility overlays through, or null while the service is off. */
         @JvmStatic
         val windowManager: StateFlow<WindowManager?> = host.asStateFlow()
     }
