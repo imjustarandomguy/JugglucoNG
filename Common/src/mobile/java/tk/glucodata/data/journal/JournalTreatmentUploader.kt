@@ -124,6 +124,16 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     internal fun v1Identifier(entryId: Long): String = ID_PREFIX + entryId.toString(16)
 
     /**
+     * Whether [remoteId] is a [v1Identifier]: this app's undated identifier, the bare row id.
+     * Another install, or this one after a reinstall, reuses it, so it may only name a document
+     * together with its _id. Not a [datedIdentifier], whose time follows a dash.
+     */
+    internal fun isUndatedOwnIdentifier(remoteId: String): Boolean =
+        remoteId.length > ID_PREFIX.length &&
+            remoteId.startsWith(ID_PREFIX, ignoreCase = true) &&
+            remoteId.substring(ID_PREFIX.length).all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+
+    /**
      * An update only where the server already holds this exact document; anything else is a
      * create. Entries written before the time was part of the name land here too, once each:
      * they are created afresh under the new name and their old copy is then removed.
@@ -245,14 +255,20 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
 
     /**
      * Which of [wanted] a treatments read still serves; null when the body is not a list of
-     * treatments, which says nothing either way.
+     * treatments, which says nothing either way. [v3Names] are the other names a v3 read serves
+     * some of them under ([v3NamesOfV1Documents]).
      */
-    internal fun servedRemoteIds(treatmentsBody: String, wanted: Set<String>): Set<String>? {
+    internal fun servedRemoteIds(
+        treatmentsBody: String,
+        wanted: Set<String>,
+        v3Names: Map<String, String> = emptyMap()
+    ): Set<String>? {
         val array = runCatching { JSONArray(treatmentsBody.trim()) }.getOrNull() ?: return null
         val served = HashSet<String>()
         for (index in 0 until array.length()) {
             val treatment = array.optJSONObject(index) ?: continue
             JournalTreatmentTransfer.remoteIdentifiersOf(treatment).filterTo(served) { it in wanted }
+            v1DocumentServedByV3(treatment, v3Names)?.takeIf { it in wanted }?.let(served::add)
         }
         return served
     }
@@ -262,11 +278,26 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         remoteId.length == 24 && remoteId.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
     /**
-     * This app's v1 identifier, the bare local row id. Another install, or this one after a
-     * reinstall, reuses it, so it may only name a document together with its _id.
+     * The names a v3 read serves the documents of queued deletes under, where those are not the
+     * names the tombstones hold: identifier → the ObjectId it stands for.
+     *
+     * This app remembers a document it sent over v1 by the _id Nightscout answered with. A v3
+     * read leaves the _id out and serves such a document under the identifier the v1 path gave
+     * it ([v1Identifier]), made from the row id the tombstone keeps. Only these tombstones hold an
+     * ObjectId for a document that has an identifier: a received row holds the identifier when
+     * the document has one, and v3 serves a document without one under its _id.
      */
-    internal fun isUndatedOwnIdentifier(remoteId: String): Boolean =
-        remoteId.startsWith(ID_PREFIX, ignoreCase = true) && '-' !in remoteId.substring(ID_PREFIX.length)
+    internal fun v3NamesOfV1Documents(tombstones: Collection<JournalPendingDeleteEntity>): Map<String, String> =
+        tombstones.filter { isObjectId(it.nsRemoteId) }.associate { v1Identifier(it.entryId) to it.nsRemoteId }
+
+    /**
+     * The ObjectId [treatment] is, when a v3 read served it under one of [v3Names]; null otherwise.
+     * A document served with its _id is matched by that instead: only a v3 read leaves it out.
+     */
+    internal fun v1DocumentServedByV3(treatment: JSONObject, v3Names: Map<String, String>): String? {
+        if (v3Names.isEmpty() || treatment.optString("_id").isNotBlank()) return null
+        return v3Names[treatment.optString("identifier")]
+    }
 
     /**
      * Keeps an unchanged, repeating failure to one line per interval. The sync retries far
@@ -495,7 +526,13 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 acceptedDocument = true
                 if (oldCopyAction(entry.nsRemoteId, acceptedRemoteId) == OldCopyAction.DELETE) {
                     val oldRemoteId = entry.nsRemoteId!!
-                    if (!NightPost.deleteUrl(tombstoneDeleteUrl(baseUrl, oldRemoteId, useV3), secretHashed)) {
+                    // An undated identifier is the queue's to name first: deleted as it is, v1
+                    // fails on it and v3 takes whichever document carries it.
+                    if (isUndatedOwnIdentifier(oldRemoteId)) {
+                        dao.enqueuePendingNightscoutDelete(
+                            JournalPendingDeleteEntity(entryId = entry.id, nsRemoteId = oldRemoteId, deletedAt = now)
+                        )
+                    } else if (!NightPost.deleteUrl(tombstoneDeleteUrl(baseUrl, oldRemoteId, useV3), secretHashed)) {
                         // The new document is on the server; the stale one is a duplicate, not a
                         // loss. It is queued with the deletes so the next cycle tries again.
                         Log.e(
@@ -548,7 +585,9 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         useV3: Boolean
     ): DeletePass {
         val pass = DeletePass()
-        // One v1 read per pass names every document known only by an undated identifier.
+        // One v1 read per pass names every document known only by an undated identifier. On v3
+        // too: a v3 read leaves the _id out, and a v3 delete by that identifier would take
+        // whichever document carries it, this install's own included.
         var recentTreatments: JSONArray? = null
         var ownRemoteIds: Set<String>? = null
         for (tomb in dao.getPendingNightscoutDeletes()) {
@@ -559,8 +598,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             if (dao.countOtherEntriesWithNightscoutRemoteId(tomb.nsRemoteId, tomb.entryId) > 0) continue
 
             var documentId = tomb.nsRemoteId
-            if (!useV3 && isUndatedOwnIdentifier(documentId)) {
-                val read = recentTreatments ?: fetchTreatmentsArray(baseUrl, rawSecret)
+            if (isUndatedOwnIdentifier(documentId)) {
+                val read = recentTreatments ?: fetchTreatmentsWithIds(baseUrl, rawSecret, useV3)
                 if (read == null) {
                     Log.e(LOG_ID, "tombstone entryId=${tomb.entryId}: treatments could not be read to name it; waiting")
                     pass.failureCode = NightPost.ERROR_NO_RESPONSE
@@ -644,7 +683,12 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val candidates = deletes?.confirmed?.map { it.tombstone to it.documentId }
             ?: dao.getPendingNightscoutDeletes().map { it to it.nsRemoteId }
         if (candidates.isEmpty()) return
-        val served = readBody?.let { body -> servedRemoteIds(body, candidates.mapTo(HashSet()) { it.second }) }
+        // A v3 read serves an own v1 upload without the _id its tombstone holds; were it not
+        // looked for under its identifier as well, it would read as gone and its tombstone go.
+        val v3Names = v3NamesOfV1Documents(candidates.map { it.first })
+        val served = readBody?.let { body ->
+            servedRemoteIds(body, candidates.mapTo(HashSet()) { it.second }, v3Names)
+        }
         for ((tomb, documentId) in candidates) {
             val action = settlement(
                 deleteConfirmed = deletes != null,
@@ -773,8 +817,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * v1's document route takes an ObjectId only: given a client identifier (AAPS's, any v3
      * uploader's, this app's dated one) it matches nothing, or fails, while the document stays
      * and the next read brings it back. Those are deleted by query on the identifier instead.
-     * The undated own identifier is never used that way (see [isUndatedOwnIdentifier]); it is
-     * resolved to its _id before it gets here.
+     * The undated own identifier is never sent as it is, on either version (see
+     * [isUndatedOwnIdentifier]): it is resolved to its _id before it gets here.
      */
     internal fun tombstoneDeleteUrl(baseUrl: String, documentId: String, useV3: Boolean): String {
         if (useV3 || isObjectId(documentId) || isUndatedOwnIdentifier(documentId)) {
@@ -900,9 +944,14 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         return match
     }
 
-    /** The v1 treatments read as an array; null when it could not be had. */
-    private fun fetchTreatmentsArray(baseUrl: String, secret: String): JSONArray? =
-        runCatching { fetchTreatmentsRead(baseUrl, secret, useV3 = false)?.let(::JSONArray) }.getOrNull()
+    /**
+     * The treatments as v1 serves them, each with its _id; null when they could not be had. A v3
+     * setup reads them the same way, with its token: v3 leaves the _id out.
+     */
+    private fun fetchTreatmentsWithIds(baseUrl: String, secret: String, useV3: Boolean): JSONArray? =
+        runCatching {
+            fetchTreatmentsRead(baseUrl, secret, useV3 = false, tokenAuth = useV3)?.let(::JSONArray)
+        }.getOrNull()
 
     private fun findRemoteIdByIdentifier(
         baseUrl: String,
@@ -979,8 +1028,15 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /**
      * The treatment list the server answered with; null when there is nothing to read from
      * (no URL, or no such endpoint). Throws when the read failed.
+     *
+     * @param tokenAuth authenticate with the v3 token, also for a v1 read made under a v3 setup
      */
-    private fun fetchTreatmentsRead(baseUrl: String, secret: String, useV3: Boolean): String? {
+    private fun fetchTreatmentsRead(
+        baseUrl: String,
+        secret: String,
+        useV3: Boolean,
+        tokenAuth: Boolean = useV3
+    ): String? {
         val normalized = NightscoutFollowerRegistry.normalizeUrl(baseUrl)
         if (normalized.isBlank()) return null
         val endpoint = treatmentFetchUrl(normalized, useV3)
@@ -992,8 +1048,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             setRequestProperty("User-Agent", "JugglucoNG Nightscout journal sync")
             // v3 reads want the same bearer token the v3 upload path already obtains and
             // caches; the configured secret is an access token there, and hashing it into an
-            // api-secret header is what the 401 was.
-            val v3Auth = if (useV3) NightPost.getV3AuthorizationHeader() else ""
+            // api-secret header is what the 401 was. So does a v1 read made under a v3 setup.
+            val v3Auth = if (tokenAuth) NightPost.getV3AuthorizationHeader() else ""
             if (v3Auth.isNotEmpty()) {
                 setRequestProperty("Authorization", v3Auth)
             } else {
