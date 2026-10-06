@@ -1360,6 +1360,10 @@ static int getgeneration(const char *info) {
   // ===== END RESET MODE API =====
 
   bool isDexcom() const { return getinfo()->dexcom; }
+  // Poll slot length for readings stored by time instead of by their driver.
+  // A Dexcom record keeps the driver's 5-minute slots from the sensor's start
+  // (dexcom/java.cpp DEXSECONDS); other stream records use 1-minute slots.
+  int streamSlotSeconds() const { return isDexcom() ? interval5 : 60; }
   bool isLibre3() const {
     return !isAccuChek() && !isSibionics() && !isDexcom() && !isAir() &&
            (getinfo()->interval == interval5);

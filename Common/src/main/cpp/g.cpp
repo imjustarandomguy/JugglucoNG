@@ -1453,6 +1453,28 @@ static int compactRawMgdl(jfloat rawGlucose) {
   return (int)roundf(rawGlucose * mgdlToMmol * 10.0f);
 }
 
+static int streamSlot(const SensorGlucoseData *hist, uint32_t start,
+                      jlong timestamp) {
+  if (start == 0 || timestamp < start)
+    return 0;
+  return (timestamp - start) / hist->streamSlotSeconds();
+}
+
+static bool saveStreamPoll(SensorGlucoseData *hist, bool quiet, time_t tim,
+                           int slot, int glu, float change, int raw,
+                           uint16_t temp) {
+  if (hist->isDexcom()) {
+    constexpr int secs = SensorGlucoseData::interval5;
+    return quiet ? hist->savepollallIDsQuiet<secs>(tim, slot, glu, 0, change,
+                                                   raw, temp)
+                 : hist->savepollallIDs<secs>(tim, slot, glu, 0, change, raw,
+                                              temp);
+  }
+  return quiet ? hist->savepollallIDsQuiet<60>(tim, slot, glu, 0, change, raw,
+                                               temp)
+               : hist->savepollallIDs<60>(tim, slot, glu, 0, change, raw, temp);
+}
+
 static bool storeGlucoseStreamSample(SensorGlucoseData *hist, const char *sensorId,
                                      jlong timestamp, jfloat glucose,
                                      jfloat rawGlucose, jfloat temperatureC,
@@ -1471,9 +1493,7 @@ static bool storeGlucoseStreamSample(SensorGlucoseData *hist, const char *sensor
     syncListStarttime(hist, start);
   }
 
-  int lifeCount = 0;
-  if (start > 0 && timestamp >= start)
-    lifeCount = (timestamp - start) / 60;
+  const int lifeCount = streamSlot(hist, start, timestamp);
   const uint16_t mgVal = (uint16_t)(glucose * 10.0f);
 
   if (!hist->validPollIndex(lifeCount)) {
@@ -1503,13 +1523,8 @@ static bool storeGlucoseStreamSample(SensorGlucoseData *hist, const char *sensor
 
   const float change = derivechangeforsample(hist->getPollsData(), 0, lifeCount,
                                              mgVal, timestamp);
-  const bool stored = quiet
-                          ? hist->savepollallIDsQuiet<60>(
-                                timestamp, lifeCount, mgVal, 0, change,
-                                preservedRaw, preservedTemp)
-                          : hist->savepollallIDs<60>(
-                                timestamp, lifeCount, mgVal, 0, change,
-                                preservedRaw, preservedTemp);
+  const bool stored = saveStreamPoll(hist, quiet, timestamp, lifeCount, mgVal,
+                                     change, preservedRaw, preservedTemp);
   if (!stored)
     return false;
 
@@ -1898,10 +1913,7 @@ fromjava(addRawGlucoseStream)(JNIEnv *env, jclass cl, jlong timestamp,
         syncListStarttime(hist, start);
       }
 
-      int lifeCount = 0;
-      if (start > 0 && timestamp >= start) {
-        lifeCount = (timestamp - start) / 60;
-      }
+      const int lifeCount = streamSlot(hist, start, timestamp);
 
       if (hist->validPollIndex(lifeCount) && hist->hasStreamID(lifeCount)) {
         int preservedAuto = hist->getPollsData()[lifeCount].g;
@@ -1918,8 +1930,8 @@ fromjava(addRawGlucoseStream)(JNIEnv *env, jclass cl, jlong timestamp,
         // See addGlucoseStreamInternal(): derive rather than storing a fake flat 0.0f.
         const float change = derivechangeforsample(hist->getPollsData(), 0, lifeCount,
                                                    preservedAuto, timestamp);
-        hist->savepollallIDs<60>(timestamp, lifeCount, preservedAuto, 0, change,
-                                 rawVal, preservedTemp);
+        saveStreamPoll(hist, false, timestamp, lifeCount, preservedAuto, change,
+                       rawVal, preservedTemp);
         if (backup) {
           // See addGlucoseStream(): raw-lane rewrites need the same mirror
           // resend range so follower Room data can be corrected too.

@@ -488,7 +488,10 @@ public:
              minimumPollRecords);
     }
     auto *info = hist[ind]->getinfo();
-    if (starttime > 0) {
+    // A Dexcom record starts when the sensor did, and its 5-minute slots count
+    // from there: a stream's earlier guess must not move it.
+    const bool fixedStart = info && info->dexcom && info->starttime > 0;
+    if (starttime > 0 && !fixedStart) {
       if (info && (info->starttime == 0 || starttime < info->starttime)) {
         info->starttime = starttime;
       }
