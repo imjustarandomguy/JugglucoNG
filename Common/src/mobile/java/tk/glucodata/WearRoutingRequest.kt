@@ -18,6 +18,7 @@ object WearRoutingRequest {
     private const val KEY_DIRECT = "direct."
     private const val KEY_ENTER = "enter."
     private const val KEY_SENSOR = "sensor."
+    private const val KEY_HANDED_DEXCOM = ManagedSensorHandoff.HANDED_DEXCOM_KEY_PREFIX
 
     private fun prefs() = Applic.app
         ?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -44,8 +45,13 @@ object WearRoutingRequest {
             SensorIdentity.canonicalSensorId(SensorIdentity.resolveMainSensor())
                 ?.takeIf { it.isNotBlank() }
                 ?.let { editor.putString(KEY_SENSOR + nodeId, it) }
+            // Switching on handed the watch the selected G7 already; later ones
+            // follow through ManagedSensorHandoff.followSelectedDexcom.
+            ManagedSensorHandoff.selectedDexcomName()
+                ?.let { editor.putString(KEY_HANDED_DEXCOM + nodeId, it) }
         } else {
             editor.remove(KEY_SENSOR + nodeId)
+            editor.remove(KEY_HANDED_DEXCOM + nodeId)
         }
         editor.apply()
     }
@@ -86,6 +92,7 @@ object WearRoutingRequest {
         routes.forEach { route ->
             editor.putBoolean(KEY_DIRECT + route.nodeId, false)
             editor.remove(KEY_SENSOR + route.nodeId)
+            editor.remove(KEY_HANDED_DEXCOM + route.nodeId)
         }
         editor.apply()
         return routes

@@ -160,6 +160,44 @@ object ManagedSensorHandoff {
             .put("start", start)
     }
 
+    /** The selected G7's full record name, as a handoff would carry it; null for any other sensor. */
+    @JvmStatic
+    fun selectedDexcomName(): String? =
+        dexcomPairing()?.optString("name")?.takeIf { it.isNotEmpty() }
+
+    /** Per watch: the G7 it was last handed ("Direct sensor on watch" preferences). */
+    const val HANDED_DEXCOM_KEY_PREFIX = "dexcom."
+    private const val ROUTING_PREFS = "wear_routing_request"
+    private const val DIRECT_KEY_PREFIX = "direct."
+
+    /**
+     * "Direct sensor on watch" hands the watch the phone's selected G7 when it
+     * is switched on. A sensor started later never reached it, and the watch
+     * kept looking for the old one. Called from the phone's ownership tick:
+     * each watch is handed each new G7 once.
+     */
+    @JvmStatic
+    fun followSelectedDexcom() {
+        if (Applic.isWearable) return
+        val name = selectedDexcomName() ?: return
+        val prefs = Applic.app?.getSharedPreferences(ROUTING_PREFS, Context.MODE_PRIVATE) ?: return
+        val nodes = prefs.all
+            .filter { (key, value) -> key.startsWith(DIRECT_KEY_PREFIX) && value == true }
+            .keys
+            .map { it.removePrefix(DIRECT_KEY_PREFIX) }
+            .filter { it.isNotBlank() && prefs.getString(HANDED_DEXCOM_KEY_PREFIX + it, null) != name }
+        // The send waits for delivery: don't hold up the ownership tick for an absent watch.
+        if (nodes.isEmpty() || runCatching { MessageSender.peerUnreachable() }.getOrDefault(true)) return
+        val sender = MessageSender.getMessageSender() ?: return
+        val payload = createOutgoingPayload()
+        nodes.forEach { node ->
+            if (sender.sendSensorHandoff(node, payload)) {
+                prefs.edit().putString(HANDED_DEXCOM_KEY_PREFIX + node, name).apply()
+                Log.i(LOG_ID, "handed G7 $name to watch $node")
+            }
+        }
+    }
+
     private fun adoptDexcom(dexcom: JSONObject) {
         val name = dexcom.optString("name").trim().takeIf { it.isNotEmpty() } ?: return
         val code = dexcom.optString("code").takeIf { it.isNotEmpty() } ?: return
