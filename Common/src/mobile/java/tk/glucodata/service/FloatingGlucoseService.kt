@@ -93,17 +93,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         glucoseRepository.refreshSensorSerial()
 
         setupOverlay()
-        // Exported: SystemUI, not the system, sends USER_PRESENT, so a non-exported
-        // receiver never gets it. All three actions are protected broadcasts.
         androidx.core.content.ContextCompat.registerReceiver(
             this,
             screenStateReceiver,
             android.content.IntentFilter().apply {
                 addAction(Intent.ACTION_SCREEN_OFF)
                 addAction(Intent.ACTION_SCREEN_ON)
-                addAction(Intent.ACTION_USER_PRESENT)
             },
-            androidx.core.content.ContextCompat.RECEIVER_EXPORTED,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
         )
         observeSettings()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
@@ -487,7 +484,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
         hostWindowManager = null
         if (!addOverlay(host, root) && host !== app) addOverlay(app, root)
-        updateLockScreenVisibility()
+        updateScreenOffVisibility()
     }
 
     private fun addOverlay(host: WindowManager, root: View): Boolean {
@@ -510,21 +507,20 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     }
 
     /**
-     * An accessibility overlay also draws over the lock screen; hide the pill there.
-     * [unlocked] trusts USER_PRESENT: the keyguard state can still read locked when it arrives.
+     * An accessibility overlay also draws on the always-on display, where a fixed pill
+     * would burn in; hide it while the screen is off. The lock screen keeps it.
      */
-    private fun updateLockScreenVisibility(unlocked: Boolean = false) {
+    private fun updateScreenOffVisibility() {
         val root = overlayRoot ?: return
-        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as android.app.KeyguardManager
+        val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         val overStatusBar = layoutParams.type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        val hide = overStatusBar && !unlocked && keyguard.isKeyguardLocked
-        root.visibility = if (hide) View.GONE else View.VISIBLE
+        root.visibility = if (overStatusBar && !power.isInteractive) View.GONE else View.VISIBLE
     }
 
     private val screenStateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) closeDetails()
-            updateLockScreenVisibility(unlocked = intent?.action == Intent.ACTION_USER_PRESENT)
+            updateScreenOffVisibility()
         }
     }
 
