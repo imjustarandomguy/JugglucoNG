@@ -1217,6 +1217,15 @@ public synchronized boolean changeAuthSlot(int slot) {
         super.free();
     }
 
+    /** Bluetooth use stopping is not the sensor going: keep the pairing, so starting again needs no new one. */
+    @Override
+    public void stopTransport() {
+        releaselock();
+        cancelalarm();
+        cancelShortReconnect();
+        super.free();
+    }
+
     /** The address this callback dials: its device's, else the stored one. */
     private String dialledAddress() {
         final var device = mActiveBluetoothDevice;
@@ -1240,31 +1249,15 @@ public synchronized boolean changeAuthSlot(int slot) {
         return false;
     }
 
-    /** Waiting for the sensor to advertise, then a pairing the user confirms. */
-    private static final long HANDOVER_WINDOW_MSEC = 15L * 60L * 1000L;
-
     @Override
     public boolean supportsWatchClaim() {
         return true;
     }
 
+    /** A G7 has its own channel for the phone app, a smartwatch and a receiver. */
     @Override
-    public boolean pairsPerDevice() {
+    public boolean readsAlongside() {
         return true;
-    }
-
-    @Override
-    public long handoverWindowMs() {
-        return HANDOVER_WINDOW_MSEC;
-    }
-
-    /** As in Juggluco, the device letting go removes its bond, so the other can pair. */
-    @Override
-    public void releaseToPeer() {
-        cancelalarm();
-        super.releaseToPeer();
-        unbond();
-        releaselock();
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");
