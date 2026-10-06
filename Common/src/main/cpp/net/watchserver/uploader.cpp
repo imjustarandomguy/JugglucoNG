@@ -16,6 +16,7 @@
 #include "share/logs.hpp"
 #include "sensoren.hpp"
 #include "nums/numdata.hpp"
+#include "net/ICE/ElapsedRealtime.hpp"
 #include "common.hpp"
 extern Settings *settings;
 extern Sensoren *sensors;
@@ -1065,17 +1066,25 @@ static bool uploadJournalTreatmentsViaJava(bool useV3) {
 /* What a failed pass wants tried again, how long the treatments branch waits before it does,
    and when that wait is up. The wait needs its own clock: waitmin only applies when this
    thread actually sleeps, and with a sensor streaming it is woken every minute, so a backoff
-   expressed as a sleep would throttle nothing at all. Only the uploader thread touches these. */
+   expressed as a sleep would throttle nothing at all. That clock is the one that keeps running
+   while the phone sleeps (CLOCK_BOOTTIME): on steady_clock, which stops in suspend, a quarter
+   of an hour lasted hours. Only the uploader thread touches these. */
 static uintptr_t retrypending=0;
 static int treatmentbackoffmin=0;
-static std::chrono::steady_clock::time_point treatmentnextattempt{};
+static int64_t treatmentnextattemptms=0;
+/* Raised by what makes a refused or unreachable server worth asking again at once: another
+   network (a server reachable only at home answers once the phone is back there) and the
+   user's "Send now". The backoff then starts over instead of holding the treatments for up
+   to four hours more. A journal change or a reading is no such reason, so a server that stays
+   out of reach on the same network is still asked ever more slowly. */
+static std::atomic<bool> treatmentbackoffreset{false};
 
 static void uploaderthread() {
     int waitmin=0;
     bool glucosefailed=false;
     retrypending=0;
     treatmentbackoffmin=0;
-    treatmentnextattempt=std::chrono::steady_clock::time_point{};
+    treatmentnextattemptms=0;
     uploaderrunning=true;
     lastNightUploadWaitMinutes = waitmin;
     const char view[]{"UPLOADER"};
@@ -1127,6 +1136,10 @@ static void uploaderthread() {
             uploadercondition.dobackup=0;
             }
         retrypending=0;
+        if(treatmentbackoffreset.exchange(false)) {
+            treatmentbackoffmin=0;
+            treatmentnextattemptms=0;
+            }
         /* The API version is the user's setting. A 404 is reported like any other refusal;
            it used to turn v3 on for good (and with it a token exchange in place of the
            secret), on the strength of one answer that need not even have come from
@@ -1141,8 +1154,8 @@ static void uploaderthread() {
                 retrypending|=(current&(Backup::wakestream|Backup::wakeall));
                 }
             }
-        const auto nowsteady=std::chrono::steady_clock::now();
-        const bool treatmentsdue=(nowsteady>=treatmentnextattempt);
+        const int64_t nowms=elapsedRealtimeMilliseconds();
+        const bool treatmentsdue=(nowms>=treatmentnextattemptms);
         /* Treatments are attempted even when the glucose upload has just failed. They are
            separate endpoints failing for separate reasons, and returning here meant one bad
            reading upload also swallowed the wake a journal entry had raised. */
@@ -1159,11 +1172,11 @@ static void uploaderthread() {
                    every quarter of an hour for the rest of the day. */
                 retrypending|=Backup::waketreatments;
                 treatmentbackoffmin=treatmentbackoffmin?(treatmentbackoffmin<120?treatmentbackoffmin*2:240):15;
-                treatmentnextattempt=nowsteady+std::chrono::minutes(treatmentbackoffmin);
+                treatmentnextattemptms=nowms+treatmentbackoffmin*60*1000LL;
                 }
             else {
                 treatmentbackoffmin=0;
-                treatmentnextattempt=std::chrono::steady_clock::time_point{};
+                treatmentnextattemptms=0;
                 }
             }
         /* Device status is not the treatments endpoint and does not fail with it. Skipping it
@@ -1178,10 +1191,13 @@ static void uploaderthread() {
             }
         if(glucosefailed)
             waitmin=lastNightUploadConfigError?1:15;
-        else if(retrypending&Backup::waketreatments)
-            /* Never zero while something is carried forward: a wait of nothing with work
-               pending is a loop that never sleeps. */
-            waitmin=treatmentbackoffmin?treatmentbackoffmin:15;
+        else if(retrypending&Backup::waketreatments) {
+            /* Until the hold is up, and never zero while something is carried forward: a wait
+               of nothing with work pending is a loop that never sleeps. */
+            const int64_t leftms=treatmentnextattemptms-elapsedRealtimeMilliseconds();
+            constexpr int64_t minutems=60*1000LL;
+            waitmin=leftms>0?static_cast<int>((leftms+minutems-1)/minutems):1;
+            }
         else
             waitmin=5*60;
         lastNightUploadWaitMinutes = waitmin;
@@ -1203,6 +1219,13 @@ void wakeuploader() {
         uploadercondition.wakebackup(Backup::wakeall);
         LOGSTRING("Nightscout wake source=full mask=all\n");
     }
+    }
+
+/* "Send now", "Resend" and a change of network: a full pass that also drops the treatment
+   backoff (see treatmentbackoffreset). */
+void wakeuploadernow() {
+    treatmentbackoffreset=true;
+    wakeuploader();
     }
 
 /* A journal entry was written, changed or deleted. Its own reason, so treatments no longer
@@ -1251,6 +1274,9 @@ void wakestreamuploader() {
 extern "C" JNIEXPORT void JNICALL fromjava(wakeuploader) (JNIEnv *env, jclass clazz) {
     wakeuploader();
     } 
+extern "C" JNIEXPORT void JNICALL fromjava(wakeuploadernow) (JNIEnv *env, jclass clazz) {
+    wakeuploadernow();
+    }
 extern "C" JNIEXPORT void JNICALL fromjava(waketreatments) (JNIEnv *env, jclass clazz) {
     waketreatmentsuploader();
     } 
@@ -1264,7 +1290,7 @@ extern "C" JNIEXPORT jboolean JNICALL fromjava(wakeNightscoutForLiveReading)
     }
 extern "C" JNIEXPORT void JNICALL fromjava(resetuploader) (JNIEnv *env, jclass clazz) {
     reset();
-    wakeuploader();
+    wakeuploadernow();
     } 
 
 extern "C" JNIEXPORT jint JNICALL fromjava(getnightscoutlastresponsecode) (JNIEnv *env, jclass clazz) {
