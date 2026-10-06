@@ -3030,5 +3030,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_credentials_required">请先输入账户和密码</string>
     <string name="dexcom_share_warning">非官方接口：Dexcom 可能随时更改或封锁它。这不是医疗器械功能。</string>
     <string name="status_bar_icon_colored_title">彩色状态栏图标</string>
-    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值。</string>
+    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值</string>
 </resources>

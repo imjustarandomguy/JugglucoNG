@@ -3095,5 +3095,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_credentials_required">Спочатку введіть обліковий запис і пароль</string>
     <string name="dexcom_share_warning">Неофіційний інтерфейс: Dexcom може змінити або заблокувати його будь-коли. Це не функція медичного виробу.</string>
     <string name="status_bar_icon_colored_title">Кольоровий значок у рядку стану</string>
-    <string name="status_bar_icon_colored_desc">Малює значення в рядку стану кольором діапазону.</string>
+    <string name="status_bar_icon_colored_desc">Малює значення в рядку стану кольором діапазону</string>
 </resources>

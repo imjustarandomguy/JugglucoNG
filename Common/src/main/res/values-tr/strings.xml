@@ -3043,5 +3043,5 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="dexcom_share_credentials_required">Önce hesabı ve şifreyi girin</string>
     <string name="dexcom_share_warning">Resmi olmayan arayüz: Dexcom bunu istediği zaman değiştirebilir veya engelleyebilir. Bu bir tıbbi cihaz özelliği değildir.</string>
     <string name="status_bar_icon_colored_title">Renkli durum çubuğu simgesi</string>
-    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer.</string>
+    <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer</string>
 </resources>

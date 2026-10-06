@@ -3200,5 +3200,5 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="dexcom_share_credentials_required">Marka hore geli akoonka iyo furaha sirta</string>
     <string name="dexcom_share_warning">Interface aan rasmi ahayn: Dexcom wuu beddeli karaa ama xannibi karaa wakhti kasta. Tani maaha hawl qalab caafimaad.</string>
     <string name="status_bar_icon_colored_title">Astaanta baararka xaaladda oo midab leh</string>
-    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa.</string>
+    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa</string>
 </resources>
