@@ -123,10 +123,9 @@ class JournalRepositoryIdentityPolicyTests {
     }
 
     @Test
-    fun mirroredRowsNeverCreateNightscoutDeleteTombstones() {
+    fun rowsMirroredFromOtherSystemsNeverCreateNightscoutDeleteTombstones() {
         val externalSources = listOf(
             JournalEntrySource.AAPS,
-            JournalEntrySource.NIGHTSCOUT,
             JournalEntrySource.API,
             JournalEntrySource.CLONE,
             JournalEntrySource.CLONE_LOCAL_ICE,
@@ -139,6 +138,17 @@ class JournalRepositoryIdentityPolicyTests {
             "remote-treatment-id",
             nightscoutDeleteRemoteId(JournalEntrySource.MANUAL.storageValue, "remote-treatment-id"),
         )
+    }
+
+    @Test
+    fun aDeletedRowReceivedFromNightscoutLeavesATombstone() {
+        // Without one, the next read of the server received the deleted treatment straight back.
+        assertEquals(
+            "remote-treatment-id",
+            nightscoutDeleteRemoteId(JournalEntrySource.NIGHTSCOUT.storageValue, "remote-treatment-id"),
+        )
+        assertNull(nightscoutDeleteRemoteId(JournalEntrySource.NIGHTSCOUT.storageValue, null))
+        assertNull(nightscoutDeleteRemoteId(JournalEntrySource.NIGHTSCOUT.storageValue, " "))
     }
 
     @Test
