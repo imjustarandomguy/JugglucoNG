@@ -22,13 +22,14 @@ import org.junit.Test
  *
  * What this pins, phone vs watch:
  * - the watch recomputes the complication views, the phone does not;
+ * - the watch refreshes its ongoing activity's value, which takes it down once stale;
  * - only the phone relays the loss alarm to WearInt, and only behind `doWearInt`;
  * - only the phone pushes the stale value to the home-screen widget;
  * - the phone's wake is conditional on `shouldwakesender()`, the watch's is unconditional;
  * - the watch asks for a sync afterwards, the phone does not;
  * - the phone calls `ensureCurrentSensorSelection()` on reconnect, the watch does not;
  * - and the one that looks like a bug rather than a decision: with no loss alarm the phone
- *   sends an `oldnotification` and the watch does nothing at all.
+ *   sends an `oldnotification` and the watch sends nothing.
  */
 class GlucoseAlarmsAsymmetryTests {
     private fun source(relative: String): String = File(repoRoot(), relative).readText()
@@ -56,6 +57,14 @@ class GlucoseAlarmsAsymmetryTests {
         assertTrue(watch, watch.contains("ComplicationValue.updateall()"))
         assertFalse(phone, phone.contains("ComplicationValue.updateall()"))
         assertFalse(phone, phone.contains("GlucoseValue.updateall()"))
+    }
+
+    @Test
+    fun onlyTheWatchRefreshesItsOngoingActivity() {
+        // Readings refresh it too, but when they stop this alarm is the only thing that
+        // runs, and the stale value would stay up without it.
+        assertTrue(watch, watch.contains("Notify.scheduleOngoingStatusRefresh()"))
+        assertFalse(phone, phone.contains("scheduleOngoingStatusRefresh"))
     }
 
     @Test
