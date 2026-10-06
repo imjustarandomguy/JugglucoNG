@@ -2987,5 +2987,5 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="floating_accessibility_service_label">JugglucoNG хөвөгч глюкоз</string>
     <string name="floating_accessibility_service_desc">Хөвөгч глюкозыг төлөвийн мөрийн дээр дарах боломжтой болгоно. Дэлгэцийг уншихгүй.</string>
     <string name="floating_mirrored">Толин байршил</string>
-    <string name="floating_mirrored_desc">Эхлээд сум, дараа нь утга (Dynamic Island горимд камерын баруун талд)</string>
+    <string name="floating_mirrored_desc">Эхлээд сум, дараа нь утга</string>
 </resources>

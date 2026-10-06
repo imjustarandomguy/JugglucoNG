@@ -2961,5 +2961,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_label">JugglucoNG плаваючая глюкоза</string>
     <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Не чытае экран.</string>
     <string name="floating_mirrored">Люстраны макет</string>
-    <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне (справа ад камеры ў рэжыме Dynamic Island)</string>
+    <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне</string>
 </resources>

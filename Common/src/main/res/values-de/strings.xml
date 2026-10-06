@@ -3002,5 +3002,5 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="floating_accessibility_service_label">JugglucoNG schwebender Glukosewert</string>
     <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest den Bildschirm nicht.</string>
     <string name="floating_mirrored">Layout spiegeln</string>
-    <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert (rechts der Kamera im Dynamic-Island-Modus)</string>
+    <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert</string>
 </resources>

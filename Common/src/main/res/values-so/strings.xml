@@ -3071,5 +3071,5 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="floating_accessibility_service_label">JugglucoNG gulukoos sabaynaya</string>
     <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Ma akhriyo shaashadda.</string>
     <string name="floating_mirrored">Rog qaabka</string>
-    <string name="floating_mirrored_desc">Fallaarta marka hore, kadibna qiimaha (dhinaca midig ee kamarada qaabka Dynamic Island)</string>
+    <string name="floating_mirrored_desc">Fallaarta marka hore, kadibna qiimaha</string>
 </resources>

@@ -2887,5 +2887,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_label">JugglucoNG glicose flutuante</string>
     <string name="floating_accessibility_service_desc">Permite tocar na glicose flutuante sobre a barra de estado. Não lê o ecrã.</string>
     <string name="floating_mirrored">Inverter disposição</string>
-    <string name="floating_mirrored_desc">Primeiro a seta, depois o valor (à direita da câmara no modo Dynamic Island)</string>
+    <string name="floating_mirrored_desc">Primeiro a seta, depois o valor</string>
 </resources>
