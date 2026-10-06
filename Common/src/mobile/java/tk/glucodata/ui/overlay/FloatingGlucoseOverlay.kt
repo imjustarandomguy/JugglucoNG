@@ -315,12 +315,19 @@ fun FloatingGlucoseOverlay(
         }
     }
 
-    // The value and arrow follow the app-wide "colour value by range" setting,
-    // as the dashboard hero and the notification do, and only while the
-    // reading is current. A filled pill is dark whatever the theme, so it
-    // takes the dark-theme shades.
-    val isFreshReading = glucosePoint != null &&
-        System.currentTimeMillis() - glucosePoint.timestamp <= Notify.glucosetimeout
+    // Range colours (the app-wide setting) only while the reading is current.
+    // A filled pill is dark in either theme, so it takes the dark-theme shades.
+    val readingTime = glucosePoint?.timestamp ?: 0L
+    var isFreshReading by remember(readingTime) {
+        mutableStateOf(readingTime > 0L && System.currentTimeMillis() - readingTime <= Notify.glucosetimeout)
+    }
+    LaunchedEffect(readingTime) {
+        val untilStale = readingTime + Notify.glucosetimeout - System.currentTimeMillis()
+        if (isFreshReading && untilStale > 0L) {
+            kotlinx.coroutines.delay(untilStale)
+            isFreshReading = false
+        }
+    }
     val valueColor = if (isFreshReading && displayValues != null && GlucoseValueTone.valueRangeColorsEnabled()) {
         Color(
             GlucoseValueTone.valueColorArgb(
