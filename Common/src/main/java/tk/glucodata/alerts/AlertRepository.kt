@@ -461,6 +461,11 @@ object AlertRepository {
         // change; on the watch this is a no-op, since a watch-side change has
         // already gone through the phone to get here.
         runCatching { tk.glucodata.WearToggleSync.push() }
+        // The very low/high thresholds are also where the colour bands are cut,
+        // and the watch colours by the phone's.
+        if (config.type == AlertType.VERY_LOW || config.type == AlertType.VERY_HIGH) {
+            tk.glucodata.GlucoseColorSync.push()
+        }
     }
     
     private fun saveToPrefs(config: AlertConfig) {

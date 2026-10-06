@@ -1634,6 +1634,8 @@ class DashboardViewModel(
         Natives.setTargetRange(low, high)
         refreshData()
         refreshNotificationPredictionSurfaces(tk.glucodata.Applic.app)
+        // The watch cuts its colour bands at the phone's ranges.
+        tk.glucodata.GlucoseColorSync.push()
     }
 
     // Shared storage with the very-low/very-high alert thresholds; alert
@@ -1647,6 +1649,7 @@ class DashboardViewModel(
         )
         refreshData()
         refreshNotificationPredictionSurfaces(tk.glucodata.Applic.app)
+        tk.glucodata.GlucoseColorSync.push()
     }
 
     fun setGraphLow(value: Float) {
