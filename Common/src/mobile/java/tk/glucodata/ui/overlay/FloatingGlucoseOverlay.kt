@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.collectLatest
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.theme.MainFontFile
 import tk.glucodata.ui.GlucosePoint
+import tk.glucodata.ui.GlucosePaletteState
 import tk.glucodata.ui.components.TrendIndicator
 import tk.glucodata.logic.TrendEngine
 import tk.glucodata.data.calibration.CalibrationManager
@@ -61,6 +62,9 @@ import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
+
+/** How often a current reading is rechecked for staleness. */
+private const val STALE_RECHECK_MS = 30_000L
 
 /** The reading a details card is opened for. */
 /** Width of the details card; the service places its window by it. */
@@ -100,6 +104,7 @@ fun FloatingGlucoseOverlay(
     val showArrow by repository.showArrow.collectAsState(initial = true)
     val cornerRadius by repository.cornerRadius.collectAsState(initial = 28f)
     val opacity by repository.backgroundOpacity.collectAsState(initial = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
+    val valueRangeColors by repository.valueRangeColors.collectAsState(initial = false)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsState(initial = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsState(initial = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
@@ -322,28 +327,39 @@ fun FloatingGlucoseOverlay(
         mutableStateOf(readingTime > 0L && System.currentTimeMillis() - readingTime <= Notify.glucosetimeout)
     }
     LaunchedEffect(readingTime) {
-        val untilStale = readingTime + Notify.glucosetimeout - System.currentTimeMillis()
-        if (isFreshReading && untilStale > 0L) {
-            kotlinx.coroutines.delay(untilStale)
-            isFreshReading = false
+        // Short steps against the wall clock: delay() pauses while the device sleeps.
+        while (isFreshReading) {
+            val untilStale = readingTime + Notify.glucosetimeout - System.currentTimeMillis()
+            if (untilStale <= 0L) {
+                isFreshReading = false
+            } else {
+                kotlinx.coroutines.delay(minOf(untilStale, STALE_RECHECK_MS))
+            }
         }
     }
-    val valueColor = if (isFreshReading && displayValues != null && GlucoseValueTone.valueRangeColorsEnabled()) {
-        Color(
-            GlucoseValueTone.valueColorArgb(
-                value = displayValues.primaryValue,
-                isDark = !isTransparent || isDarkTheme,
-                isMmol = unitInt == 1,
-                targetLow = runCatching { Natives.targetlow() }.getOrDefault(Float.NaN),
-                targetHigh = runCatching { Natives.targethigh() }.getOrDefault(Float.NaN),
-                veryLowThreshold = runCatching { Natives.alarmverylow() }.getOrDefault(Float.NaN),
-                veryHighThreshold = runCatching { Natives.alarmveryhigh() }.getOrDefault(Float.NaN),
-                fallbackArgb = finalTextColor.toArgb(),
-                enabled = true,
+    val paletteRevision = GlucosePaletteState.revision
+    val primaryValue = displayValues?.primaryValue
+    val valueColor = remember(
+        primaryValue, isFreshReading, valueRangeColors, isTransparent, isDarkTheme, unitInt,
+        finalTextColor, refreshRevision, paletteRevision,
+    ) {
+        if (!isFreshReading || primaryValue == null || !valueRangeColors) {
+            finalTextColor
+        } else {
+            Color(
+                GlucoseValueTone.valueColorArgb(
+                    value = primaryValue,
+                    isDark = !isTransparent || isDarkTheme,
+                    isMmol = unitInt == 1,
+                    targetLow = Natives.targetlow(),
+                    targetHigh = Natives.targethigh(),
+                    veryLowThreshold = Natives.alarmverylow(),
+                    veryHighThreshold = Natives.alarmveryhigh(),
+                    fallbackArgb = finalTextColor.toArgb(),
+                    enabled = true,
+                )
             )
-        )
-    } else {
-        finalTextColor
+        }
     }
 
     val valueContent: @Composable () -> Unit = {

@@ -63,6 +63,8 @@ class FloatingSettingsRepository(context: Context) {
     val islandGap: Flow<Float> = prefFlow(KEY_ISLAND_GAP, 0f) // 0 implies auto/default
     val showNotificationDot: Flow<Boolean> = prefFlow(KEY_NOTIFICATION_DOT, true)
     val useSubtleOutline: Flow<Boolean> = prefFlow(KEY_SUBTLE_OUTLINE, false)
+    /** The app-wide "colour value by range" setting. */
+    val valueRangeColors: Flow<Boolean> = prefFlow(tk.glucodata.GlucoseValueTone.PREF_VALUE_RANGE_COLORS, false)
 
 
 
