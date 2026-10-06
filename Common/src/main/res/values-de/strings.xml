@@ -3279,4 +3279,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
         <item quantity="one">%d geplanter Journaleintrag einbezogen</item>
         <item quantity="other">%d geplante Journaleinträge einbezogen</item>
     </plurals>
+    <string name="floating_tap_details">Details beim Antippen</string>
+    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details, langes Drücken öffnet die App</string>
 </resources>

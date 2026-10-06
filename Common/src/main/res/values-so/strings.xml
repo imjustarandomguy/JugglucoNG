@@ -3351,4 +3351,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="one">Waxaa lagu daray %d qoraal joornaal oo qorsheysan</item>
         <item quantity="other">Waxaa lagu daray %d qoraal joornaal oo qorsheysan</item>
     </plurals>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta; taabasho dheer waxay furtaa abka</string>
 </resources>

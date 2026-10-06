@@ -3209,4 +3209,6 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
         <item quantity="one">%d geplande logboekregel meegenomen</item>
         <item quantity="other">%d geplande logboekregels meegenomen</item>
     </plurals>
+    <string name="floating_tap_details">Details bij tikken</string>
+    <string name="floating_tap_details_desc">Tikken toont de grafiek en details, lang drukken opent de app</string>
 </resources>

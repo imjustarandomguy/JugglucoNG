@@ -3267,4 +3267,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">Төлөвлөсөн %d тэмдэглэл тооцсон</item>
         <item quantity="other">Төлөвлөсөн %d тэмдэглэл тооцсон</item>
     </plurals>
+    <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
+    <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна; удаан дарахад програмыг нээнэ</string>
 </resources>

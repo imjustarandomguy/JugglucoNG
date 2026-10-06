@@ -3157,4 +3157,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">Inclusa %d voce di diario pianificata</item>
         <item quantity="other">Incluse %d voci di diario pianificate</item>
     </plurals>
+    <string name="floating_tap_details">Dettagli al tocco</string>
+    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli, un tocco prolungato apre l\'app</string>
 </resources>

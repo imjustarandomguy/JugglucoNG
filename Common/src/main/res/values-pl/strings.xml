@@ -3220,4 +3220,6 @@
         <item quantity="many">Uwzględniono %d zaplanowanych wpisów dziennika</item>
         <item quantity="other">Uwzględniono %d zaplanowanego wpisu dziennika</item>
     </plurals>
+    <string name="floating_tap_details">Szczegóły po dotknięciu</string>
+    <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły, przytrzymanie otwiera aplikację</string>
 </resources>

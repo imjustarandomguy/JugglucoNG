@@ -3226,4 +3226,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">Учтено %d запланированных записей журнала</item>
         <item quantity="other">Учтено %d запланированной записи журнала</item>
     </plurals>
+    <string name="floating_tap_details">Подробности по нажатию</string>
+    <string name="floating_tap_details_desc">Нажатие показывает график и подробности, долгое нажатие открывает приложение</string>
 </resources>

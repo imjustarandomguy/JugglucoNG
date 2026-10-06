@@ -3166,4 +3166,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d planerad journalpost togs med</item>
         <item quantity="other">%d planerade journalposter togs med</item>
     </plurals>
+    <string name="floating_tap_details">Detaljer vid tryck</string>
+    <string name="floating_tap_details_desc">Tryck visar diagram och detaljer, långt tryck öppnar appen</string>
 </resources>
