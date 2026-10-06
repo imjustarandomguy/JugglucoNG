@@ -126,10 +126,11 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
     var revision by remember { mutableLongStateOf(0L) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val sensors = remember(revision) { loadSensors() }
-    val canCalibrate = remember(revision) {
-        findCalibratableDriver() != null ||
-            (tk.glucodata.MessageSender.isWearTransportAvailable() &&
-                tk.glucodata.MessageSender.getMessageSender() != null)
+    val canCalibrate = remember(revision, storeSnapshot) {
+        ReadingActions.calibrationAvailable(storeSnapshot.isRawMode, displayedSensor) &&
+            (findCalibratableDriver() != null ||
+                (tk.glucodata.MessageSender.isWearTransportAvailable() &&
+                    tk.glucodata.MessageSender.getMessageSender() != null))
     }
     val context = LocalContext.current
     val dateFormat = remember(context) { DateFormat.getMediumDateFormat(context) }
