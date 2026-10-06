@@ -25,7 +25,7 @@ import org.junit.Test
  * - only the phone relays the loss alarm to WearInt, and only behind `doWearInt`;
  * - only the phone pushes the stale value to the home-screen widget;
  * - the phone's wake is conditional on `shouldwakesender()`, the watch's is unconditional;
- * - the watch asks for a sync afterwards, the phone does not;
+ * - the watch asks for a sync afterwards, the phone only while the watch reads a sensor too;
  * - the phone calls `ensureCurrentSensorSelection()` on reconnect, the watch does not;
  * - and the one that looks like a bug rather than a decision: with no loss alarm the phone
  *   sends an `oldnotification` and the watch does nothing at all.
@@ -80,9 +80,11 @@ class GlucoseAlarmsAsymmetryTests {
     }
 
     @Test
-    fun onlyTheWatchAsksForASyncAfterwards() {
+    fun thePhoneAsksForASyncOnlyWhileTheWatchReadsASensorToo() {
         assertTrue(watch, watch.contains("WearSync2.requestSync()"))
-        assertFalse(phone, phone.contains("WearSync2.requestSync()"))
+        // Otherwise the watch has nothing the phone lacks: it got its readings from the phone.
+        val ask = after(phone, "if(SensorOwnershipRuntime.peerReadsAny())")
+        assertTrue(phone, ask.trimStart().startsWith("WearSync2.requestSync();"))
     }
 
     @Test
