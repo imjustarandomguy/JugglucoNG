@@ -62,6 +62,22 @@ object ReadingActions {
     fun journalAvailable(): Boolean =
         runCatching { tk.glucodata.WearJournalSync.cached().enabled }.getOrDefault(false)
 
+    /**
+     * False when the phone has calibration switched off for the lane this
+     * sensor is shown in. Every calibration entry point on the watch is hidden
+     * then, as it is on the phone. True until the phone has said otherwise.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun calibrationAvailable(
+        isRawMode: Boolean = WearGlucoseStore.viewMode().let { it == 1 || it == 3 },
+        sensorId: String? = WearGlucoseStore.currentSensor(),
+    ): Boolean = runCatching { CalibrationAccess.isEnabledForMode(isRawMode, sensorId) }.getOrDefault(true)
+
+    /** Whether tapping a reading has anything to offer: calibration or the journal. */
+    @JvmStatic
+    fun readingTapAvailable(): Boolean = calibrationAvailable() || journalAvailable()
+
     /** Readings for the History screen: a longer window than the home list. */
     @JvmStatic
     fun historyReadings(isMmol: Boolean, hours: Int = 24) = runCatching {

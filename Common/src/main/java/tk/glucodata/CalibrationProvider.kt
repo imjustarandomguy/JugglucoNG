@@ -88,6 +88,12 @@ interface CalibrationProvider {
     /** Enable or disable one calibration lane; false when no engine handled it. */
     fun setEnabledForMode(isRawMode: Boolean, enabled: Boolean, sensorId: String?): Boolean = false
 
+    /**
+     * Whether the user has calibration switched on for this lane of the sensor.
+     * True by default: with nothing to say otherwise, calibration is offered.
+     */
+    fun isEnabledForMode(isRawMode: Boolean, sensorId: String?): Boolean = true
+
     /** Delete every stored calibration; false when no engine handled it. */
     fun clearAllBlocking(): Boolean = false
 
