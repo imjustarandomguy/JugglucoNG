@@ -2879,5 +2879,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d poster</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Färgad statusfältsikon</string>
-    <string name="status_bar_icon_colored_desc">Ritar värdet i statusfältet i intervallets färg. Vissa telefoner (t.ex. Samsung) visar det i färg, andra alltid vitt.</string>
+    <string name="status_bar_icon_colored_desc">Ritar värdet i statusfältet i intervallets färg.</string>
 </resources>

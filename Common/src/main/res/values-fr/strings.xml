@@ -2885,5 +2885,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d entrées</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
-    <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage. Certains téléphones (ex. Samsung) l\'affichent en couleur, d\'autres toujours en blanc.</string>
+    <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage.</string>
 </resources>

@@ -2894,5 +2894,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d 条记录</item>
     </plurals>
     <string name="status_bar_icon_colored_title">彩色状态栏图标</string>
-    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值。部分手机（如三星）会显示颜色，其他手机始终显示为白色。</string>
+    <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值。</string>
 </resources>

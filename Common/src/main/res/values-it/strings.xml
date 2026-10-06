@@ -2869,5 +2869,5 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="other">%d voci</item>
     </plurals>
     <string name="status_bar_icon_colored_title">Icona della barra di stato colorata</string>
-    <string name="status_bar_icon_colored_desc">Disegna il valore nella barra di stato con il colore del suo intervallo. Alcuni telefoni (es. Samsung) lo mostrano a colori, altri sempre in bianco.</string>
+    <string name="status_bar_icon_colored_desc">Disegna il valore nella barra di stato con il colore del suo intervallo.</string>
 </resources>
