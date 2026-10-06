@@ -411,6 +411,8 @@ private boolean connected=false;
     public synchronized void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
         if (bluetoothGatt != mBluetoothGatt) return;
+        // Tracks the local GATT that ownership and the watch claim rely on.
+        super.onConnectionStateChange(bluetoothGatt, status, newState);
         if (stop) {
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
             // Nothing reconnects a stopped callback: close its GATT (close() also
@@ -1185,6 +1187,45 @@ private    void getdata(byte[] value) {
                 return true;
         }
         return false;
+    }
+
+    /** Two missed readings: a G7 is connected only a few seconds every 5 minutes. */
+    private static final long HOLD_BETWEEN_SESSIONS_MSEC = 11L * 60L * 1000L;
+    /** Waiting for the sensor to advertise, then a pairing the user confirms. */
+    private static final long HANDOVER_WINDOW_MSEC = 15L * 60L * 1000L;
+
+    @Override
+    public boolean holdsSensor(long nowMs) {
+        if (hasLocallyConnectedGatt())
+            return true;
+        if (stop)
+            return false;
+        final long last = lastLocalSessionReadingMs();
+        return last > 0L && nowMs - last < HOLD_BETWEEN_SESSIONS_MSEC;
+    }
+
+    @Override
+    public boolean supportsWatchClaim() {
+        return true;
+    }
+
+    @Override
+    public boolean pairsPerDevice() {
+        return true;
+    }
+
+    @Override
+    public long handoverWindowMs() {
+        return HANDOVER_WINDOW_MSEC;
+    }
+
+    /** As in Juggluco, the device letting go removes its bond, so the other can pair. */
+    @Override
+    public void releaseToPeer() {
+        cancelalarm();
+        super.releaseToPeer();
+        unbond();
+        releaselock();
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");
