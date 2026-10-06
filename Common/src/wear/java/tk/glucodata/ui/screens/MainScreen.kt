@@ -1,6 +1,7 @@
 package tk.glucodata.ui.screens
 
 import android.text.format.DateFormat
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,8 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -132,6 +138,23 @@ fun MainScreen(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var chartRangeIndex by remember { mutableIntStateOf(0) }
     var chartOwnsDrag by remember { mutableStateOf(false) }
+    // Opens on the chart and the hero. The default state centres the second item,
+    // which put the first readings mid-screen with the chart half scrolled away.
+    // The chart is about a screen tall: centring it would scroll past the start of
+    // the list, so the list stays at its top.
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    // The activity outlives each visit (back at the root only backgrounds it), and
+    // the position with it: leaving the app puts the list back on top for the next
+    // open, from the launcher, a complication or the ongoing activity. This is the
+    // activity's lifecycle, not this destination's, so coming back from a screen
+    // opened here keeps the position.
+    val listScope = rememberCoroutineScope()
+    val activity = LocalActivity.current as? LifecycleOwner
+    if (activity != null) {
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP, lifecycleOwner = activity) {
+            listScope.launch { listState.scrollToItem(0) }
+        }
+    }
 
     LaunchedEffect(Unit) {
         WearGlucoseStore.start()
@@ -165,6 +188,7 @@ fun MainScreen(
 
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(
+            state = listState,
             contentPadding = PaddingValues(top = 34.dp, bottom = 28.dp),
             userScrollEnabled = !chartOwnsDrag,
         ) {
