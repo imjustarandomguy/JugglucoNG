@@ -1,7 +1,10 @@
 package tk.glucodata.service
 
 import android.accessibilityservice.AccessibilityService
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,6 +24,24 @@ class FloatingAccessibilityService : AccessibilityService() {
         /** The WindowManager to add accessibility overlays through, or null while the service is off. */
         @JvmStatic
         val windowManager: StateFlow<WindowManager?> = host.asStateFlow()
+
+        /**
+         * Lists the service in the system's Accessibility settings only while an
+         * option needs it (it is disabled in the manifest).
+         */
+        @JvmStatic
+        fun setAvailable(context: Context, available: Boolean) {
+            val component = ComponentName(context, FloatingAccessibilityService::class.java)
+            val state = if (available) {
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            } else {
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT
+            }
+            val packageManager = context.packageManager
+            if (packageManager.getComponentEnabledSetting(component) != state) {
+                packageManager.setComponentEnabledSetting(component, state, PackageManager.DONT_KILL_APP)
+            }
+        }
     }
 
     override fun onServiceConnected() {
