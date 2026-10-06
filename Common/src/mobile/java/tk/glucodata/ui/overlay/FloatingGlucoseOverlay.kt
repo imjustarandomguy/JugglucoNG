@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.theme.MainFontFile
@@ -75,7 +76,8 @@ data class FloatingDetailsRequest(
 @Composable
 fun FloatingGlucoseOverlay(
     repository: FloatingSettingsRepository,
-    historyFlow: Flow<List<GlucosePoint>>,
+    /** The readings; a StateFlow, so a new composition starts from the loaded ones. */
+    historyFlow: StateFlow<List<GlucosePoint>>,
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
@@ -107,7 +109,7 @@ fun FloatingGlucoseOverlay(
     val cutoutSize = cutoutData.size
 
     // Data State: History List
-    val history by historyFlow.collectAsState(initial = emptyList())
+    val history by historyFlow.collectAsState()
     val refreshRevision by UiRefreshBus.revision.collectAsState(initial = 0L)
     
     // Derived Data
