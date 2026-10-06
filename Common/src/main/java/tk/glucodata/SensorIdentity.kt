@@ -82,6 +82,38 @@ object SensorIdentity {
         return canonical.takeLast(11)
     }
 
+    /**
+     * The record this device keeps for [sensorId] under its short alias, if it
+     * has one.
+     *
+     * Native finds a record named by a full sensor name through the short alias
+     * as well (the name without its five-character prefix, sensoren.hpp
+     * shortsensorname_view), but not the other way round. A phone that has not
+     * resolved a new sensor's full name yet sends chunks under the alias, so the
+     * watch made a record named after the alias. Once the phone resolved the full
+     * name (after its next restart) the chunks carried that instead, matched
+     * nothing on the watch, and went into a second record while the watch kept
+     * displaying the first one.
+     */
+    @JvmStatic
+    fun shortNamedNativeRecord(sensorId: String?): String? {
+        if (runCatching { isManagedCanonicalSensorId(sensorId) }.getOrDefault(false)) return null
+        return shortNamedRecord(sensorId) { alias ->
+            runCatching { Natives.resolveFullSensorName(alias) }.getOrNull()
+        }
+    }
+
+    /** [shortNamedNativeRecord] with the native lookup passed in. */
+    internal fun shortNamedRecord(sensorId: String?, fullNameOf: (String) -> String?): String? {
+        val raw = normalized(sensorId) ?: return null
+        // "X-" names have no alias; "SIBI:" and the like are managed ids.
+        if (raw.length <= 11 || raw.startsWith("X-") || raw.contains(':')) return null
+        val alias = raw.substring(5)
+        // Only a record named after the alias itself: one named by the full
+        // name answers to the alias too, and that one is [raw]'s own.
+        return fullNameOf(alias)?.trim()?.takeIf { it.equals(alias, ignoreCase = true) }
+    }
+
     @JvmStatic
     fun invalidateCaches() {
         nativeCanonicalCache.clear()
