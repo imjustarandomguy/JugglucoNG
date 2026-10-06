@@ -205,14 +205,55 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         
         layoutParams.x += xDelta
         layoutParams.y += yDelta
+        keepFreePillTouchable()
         freeformX = layoutParams.x
         freeformY = layoutParams.y
-        
+
         try {
             windowManager?.updateViewLayout(overlayRoot, layoutParams)
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Keeps the free-floating pill on screen and below the status bar.
+     *
+     * App overlays sit under the status bar window, so a pill dragged into that
+     * strip stayed visible but could not be touched again: every touch there
+     * goes to the status bar. Only its part below the strip could be grabbed.
+     */
+    private fun keepFreePillTouchable() {
+        val screen = displaySizePx()
+        val width = overlayRoot?.width ?: 0
+        val height = overlayRoot?.height ?: 0
+        val top = statusBarHeightPx()
+        layoutParams.x = layoutParams.x.coerceIn(0, maxOf(0, screen.x - width))
+        layoutParams.y = layoutParams.y.coerceIn(top, maxOf(top, screen.y - height))
+    }
+
+    /** Full display size in pixels: the free pill is laid out in screen coordinates. */
+    @Suppress("DEPRECATION")
+    private fun displaySizePx(): android.graphics.Point {
+        val wm = windowManager ?: return android.graphics.Point(Int.MAX_VALUE, Int.MAX_VALUE)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            val bounds = wm.currentWindowMetrics.bounds
+            return android.graphics.Point(bounds.width(), bounds.height())
+        }
+        val metrics = android.util.DisplayMetrics()
+        wm.defaultDisplay.getRealMetrics(metrics)
+        return android.graphics.Point(metrics.widthPixels, metrics.heightPixels)
+    }
+
+    private fun statusBarHeightPx(): Int {
+        val wm = windowManager ?: return 0
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            return wm.currentWindowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout())
+                .top
+        }
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id) else 0
     }
 
     private fun persistViewPosition() {
@@ -314,6 +355,11 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             layoutParams.gravity = Gravity.TOP or Gravity.START
             layoutParams.x = freeformX
             layoutParams.y = freeformY
+            // A position saved inside the status bar strip (before this was
+            // enforced) would leave the pill there, untouchable.
+            keepFreePillTouchable()
+            freeformX = layoutParams.x
+            freeformY = layoutParams.y
         }
 
         try {
