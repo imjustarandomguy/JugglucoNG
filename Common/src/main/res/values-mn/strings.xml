@@ -2979,4 +2979,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">%d бичлэг</item>
         <item quantity="other">%d бичлэг</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Өнгөт төлөвийн мөрийн дүрс</string>
+    <string name="status_bar_icon_colored_desc">Төлөвийн мөр дэх утгыг хязгаарын өнгөөр зурна. Зарим утас (жишээ нь Samsung) өнгөтөөр, бусад нь үргэлж цагаанаар харуулна.</string>
 </resources>

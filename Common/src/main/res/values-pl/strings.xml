@@ -2920,4 +2920,6 @@
         <item quantity="many">%d wpisów</item>
         <item quantity="other">%d wpisu</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu. Niektóre telefony (np. Samsung) pokazują ją w kolorze, inne zawsze na biało.</string>
 </resources>

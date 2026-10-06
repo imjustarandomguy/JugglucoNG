@@ -2994,4 +2994,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
         <item quantity="one">%d Eintrag</item>
         <item quantity="other">%d Einträge</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Farbiges Statusleisten-Symbol</string>
+    <string name="status_bar_icon_colored_desc">Zeichnet den Wert in der Statusleiste in der Bereichsfarbe. Manche Telefone (z. B. Samsung) zeigen ihn farbig, andere immer weiß.</string>
 </resources>

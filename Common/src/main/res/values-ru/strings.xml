@@ -2929,4 +2929,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d записей</item>
         <item quantity="other">%d записи</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Цветной значок в строке состояния</string>
+    <string name="status_bar_icon_colored_desc">Рисует значение в строке состояния цветом диапазона. Некоторые телефоны (например, Samsung) показывают его цветным, другие — всегда белым.</string>
 </resources>

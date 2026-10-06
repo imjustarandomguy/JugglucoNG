@@ -118,6 +118,7 @@ fun NotificationSettingsScreen(
     var iobCobRiskColored by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_iob_cob_risk_colored", false)) }
     var iobRiskWithoutCob by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_iob_risk_without_cob", false)) }
     var statusIconScale by rememberSaveable { mutableFloatStateOf(prefs.getFloat("notification_status_icon_scale", 1.0f)) }
+    var statusIconColored by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_status_icon_colored", false)) }
 
     fun save() {
         prefs.edit()
@@ -136,6 +137,7 @@ fun NotificationSettingsScreen(
             .putBoolean("notification_iob_cob_risk_colored", iobCobRiskColored)
             .putBoolean("notification_iob_risk_without_cob", iobRiskWithoutCob)
             .putFloat("notification_status_icon_scale", statusIconScale)
+            .putBoolean("notification_status_icon_colored", statusIconColored)
             .apply()
         viewModel.refreshNotificationSurfaces()
     }
@@ -206,6 +208,15 @@ fun NotificationSettingsScreen(
             value = statusIconScale,
             onValueChange = { statusIconScale = it; save() },
             range = 0f..1.25f
+        )
+        Spacer(Modifier.height(4.dp))
+        SettingsSwitchItem(
+            title = stringResource(R.string.status_bar_icon_colored_title),
+            subtitle = stringResource(R.string.status_bar_icon_colored_desc),
+            checked = statusIconColored,
+            onCheckedChange = { statusIconColored = it; save() },
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
         )
 
         SectionLabel(
