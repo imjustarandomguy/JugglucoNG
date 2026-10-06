@@ -37,8 +37,7 @@ import tk.glucodata.ui.WearSectionTitle
  */
 @Composable
 fun ExchangeScreen() {
-    // Observing the phone's reports is what redraws a switch once the phone
-    // has applied, or refused, a flip.
+    // The phone's last report; switches redraw when it changes.
     val toggles by WearToggleSync.state.collectAsState()
 
     LaunchedEffect(Unit) {
