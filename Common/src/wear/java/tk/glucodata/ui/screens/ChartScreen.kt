@@ -40,6 +40,9 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.rotary.onRotaryScrollEvent
+import androidx.compose.ui.semantics.ScrollAxisRange
+import androidx.compose.ui.semantics.horizontalScrollAxisRange
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.layout.layout
@@ -615,6 +618,12 @@ internal fun WearChart(
         Modifier
     } else {
         Modifier
+            // Tells the window's swipe-to-dismiss that sideways drags here pan
+            // the chart. Without it the system takes them as a dismiss swipe,
+            // since the pan detector below exposes no scroll semantics.
+            .semantics {
+                horizontalScrollAxisRange = ScrollAxisRange(value = { 0.5f }, maxValue = { 1f })
+            }
             .pointerInput(Unit) {
                 detectChartTransforms(onOwnership = onGestureOwnership ?: {}) { centroid, pan, zoom ->
                     val width = size.width.toFloat().coerceAtLeast(1f)
