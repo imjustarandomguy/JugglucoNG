@@ -29,10 +29,18 @@ object AlertRepository {
     @Volatile
     private var cachedNativeLossWaitMinutes: Int? = null
     
-    private val prefs: SharedPreferences by lazy {
+    private val storedPrefs: SharedPreferences by lazy {
         Applic.app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
-    
+
+    // What every reader below reads: this device's store, except on the thread
+    // that is parsing a peer's entries through [readConfig]. A getter rather than
+    // a parameter so a field added later is read from the right place unaided.
+    private val readSource = ThreadLocal<SharedPreferences?>()
+
+    private val prefs: SharedPreferences
+        get() = readSource.get() ?: storedPrefs
+
     // Keys for SharedPreferences
     private fun keyEnabled(type: AlertType) = "alert_${type.id}_enabled"
     private fun keyThreshold(type: AlertType) = "alert_${type.id}_threshold"
@@ -467,7 +475,16 @@ object AlertRepository {
         if (config.type == AlertType.SENSOR_EXPIRY) {
             adoptOpenWindowsForNewExpiryThresholds(config)
         }
-        prefs.edit {
+        prefs.edit { writeConfigEntries(config, this) }
+    }
+
+    /**
+     * Every key [saveConfig] stores for [config], written to [editor]. This is
+     * the one list of persisted fields: the watch sync records it to build its
+     * payload ([AlertConfigSync]) instead of keeping a list of its own.
+     */
+    internal fun writeConfigEntries(config: AlertConfig, editor: SharedPreferences.Editor) {
+        with(editor) {
             putBoolean(keyEnabled(config.type), config.enabled)
             if (config.threshold != null) putFloat(keyThreshold(config.type), config.threshold) else remove(keyThreshold(config.type))
             if (config.durationMinutes != null) putInt(keyDuration(config.type), config.durationMinutes) else remove(keyDuration(config.type))
@@ -711,4 +728,36 @@ object AlertRepository {
             hiddenLegacyAlertCleanupDone = true
         }
     }
+
+    // ---- the watch mirror ([AlertConfigSync]) ----------------------------------------------
+
+    /**
+     * Reads [type]'s configuration from [source] rather than from this device's
+     * store, with the reader [loadConfig] uses for the store-backed types. It
+     * reads every field the store knows, the native-backed types' enabled and
+     * threshold included, since [writeConfigEntries] stores those too.
+     *
+     * [isMmol] picks the defaults for keys [source] lacks; it is the unit the
+     * entries were written in, not necessarily this device's.
+     */
+    internal fun readConfig(type: AlertType, source: SharedPreferences, isMmol: Boolean): AlertConfig {
+        readSource.set(source)
+        try {
+            return loadFromPrefs(type, AlertDefaults.defaultConfig(type, isMmol))
+        } finally {
+            readSource.remove()
+        }
+    }
+
+    /** This device's own store, which a peer's entries are read over. */
+    internal fun storedPreferences(): SharedPreferences = storedPrefs
+
+    /**
+     * Keys whose value names something on this device only, so a peer's copy
+     * never replaces this device's: a custom sound is a content:// URI that
+     * resolves only where it was picked, and the flash is the phone's camera
+     * light (Notify never drives it on a watch).
+     */
+    internal fun deviceLocalKeys(type: AlertType): Set<String> =
+        setOf(keyCustomSound(type), keyFlash(type))
 }
