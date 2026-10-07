@@ -10,6 +10,7 @@ import tk.glucodata.RestrictedModeConfig
  */
 internal object RestrictedModeRoutes {
     const val ALARMS = "settings/alerts"
+    const val ALARM_HISTORY = "settings/alerts/history"
     const val VOICE = "settings/alerts/talker"
     const val DISPLAY_CHARTS = "settings/display-colors"
     const val DISPLAY_NOTIFICATION = "settings/notification-display"
@@ -40,7 +41,8 @@ internal object RestrictedModeRoutes {
         route == null -> true
         route in alwaysOpen -> true
         route == "journal" -> config.allowJournal
-        route == ALARMS -> config.allowAlarmSettings
+        // The history only shows what rang; it goes with the alarm settings.
+        route == ALARMS || route == ALARM_HISTORY -> config.allowAlarmSettings
         route == VOICE -> config.allowVoiceSettings
         route in displayRoutes -> config.allowDisplaySettings
         // Everything else needs full mode: every other screen under settings, and the
