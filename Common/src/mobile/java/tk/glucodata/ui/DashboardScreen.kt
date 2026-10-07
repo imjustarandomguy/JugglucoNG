@@ -153,6 +153,7 @@ import android.widget.Toast
 import tk.glucodata.data.journal.JournalChartMarker
 import tk.glucodata.data.journal.JournalDashboardVisibility
 import tk.glucodata.data.journal.JournalEntry
+import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalFood
 import tk.glucodata.data.journal.JournalInsulinPreset
@@ -167,6 +168,8 @@ import tk.glucodata.data.prediction.buildGlucosePrediction
 import tk.glucodata.ui.journal.JournalDoseProfile
 import tk.glucodata.ui.journal.JournalEntrySheet
 import tk.glucodata.ui.journal.JournalExpandableFab
+import tk.glucodata.ui.journal.JournalQuickEntryPrefs
+import tk.glucodata.ui.journal.journalSavedSummary
 import tk.glucodata.ui.journal.rememberJournalCob
 import tk.glucodata.ui.journal.JournalFloatingActionMenu
 import tk.glucodata.ui.journal.JournalInlineChip
@@ -947,6 +950,32 @@ fun DashboardScreen(
         return
     }
 
+    // Snackbar state for undo actions
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val journalUndoLabel = stringResource(R.string.undo)
+
+    // A save from the entry sheet below, with a few seconds to take it back: undo deletes what
+    // was added, or puts an edited entry back as it was ([previous]).
+    fun saveJournalEntriesWithUndo(inputs: List<JournalEntryInput>, previous: JournalEntry?) {
+        val message = context.getString(
+            R.string.journal_saved_entry,
+            journalSavedSummary(context, inputs, journalPresetsById, unit)
+        )
+        viewModel.saveJournalEntries(inputs) { savedIds ->
+            coroutineScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val result = snackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = journalUndoLabel,
+                    duration = androidx.compose.material3.SnackbarDuration.Short
+                )
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    viewModel.undoJournalSave(savedIds, previous)
+                }
+            }
+        }
+    }
+
     journalEditorRequest?.let { request ->
         JournalEntrySheet(
             unit = unit,
@@ -970,13 +999,13 @@ fun DashboardScreen(
             existingEntry = request.existingEntry,
             onDismiss = { journalEditorRequest = null },
             onSave = { input ->
-                viewModel.saveJournalEntry(input)
+                saveJournalEntriesWithUndo(listOf(input), request.existingEntry)
                 lastJournalType = input.type
                 journalEditorRequest = null
                 clearJournalAction()
             },
             onSaveEntries = { inputs ->
-                inputs.forEach(viewModel::saveJournalEntry)
+                saveJournalEntriesWithUndo(inputs, request.existingEntry)
                 inputs.firstOrNull()?.let { lastJournalType = it.type }
                 journalEditorRequest = null
                 clearJournalAction()
@@ -990,9 +1019,6 @@ fun DashboardScreen(
             sensorSerialProvider = { sensorName.ifBlank { null } }
         )
     }
-
-    // Snackbar state for undo actions
-    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
@@ -2188,6 +2214,9 @@ fun DashboardScreen(
                         dashboardFabExpanded = it
                         if (it) clearJournalAction()
                     },
+                    // A tap goes straight to the entry sheet, on the type last added; its type
+                    // selector switches it. Holding the + still opens the type menu.
+                    tapType = { JournalQuickEntryPrefs.lastType(context) },
                     onTypeSelected = { type ->
                         dashboardFabExpanded = false
                         clearJournalAction()
