@@ -20,7 +20,7 @@ import org.robolectric.annotation.ConscryptMode
  * migration that drops a column or a table fails here.
  *
  * The starting points are the released schemas recovered in H2: v11
- * (1.1.2-Alpha) and v12 (1.1.3-Alpha). v32 is the current version. The row tests
+ * (1.1.2-Alpha) and v12 (1.1.3-Alpha). v33 is the current version. The row tests
  * matter most: Room migrations are the one place a bug permanently destroys
  * user history.
  */
@@ -240,6 +240,43 @@ class HistoryMigrationTest {
             assertTrue("recoveryId is assigned", !cursor.isNull(3))
             assertEquals("the preset curve is frozen into the entry", "basal-json", cursor.getString(4))
             assertEquals(1, cursor.getInt(5))
+        }
+        migrated.close()
+    }
+
+    @Test
+    fun insulinPresetsGetWholeUnitStepsAndNoDefaultsThroughV32ToCurrent() {
+        helper.createDatabase(DB_NAME, 32).use { db ->
+            db.execSQL(
+                "INSERT INTO journal_insulin_presets " +
+                    "(id, displayName, onsetMinutes, durationMinutes, accentColor, curveJson, " +
+                    "isBuiltIn, isArchived, countsTowardIob, sortOrder, useForCalculation, " +
+                    "curveProfileId, curveModelVersion, curveEvidence) " +
+                    "VALUES (6, 'Fiasp', 10, 300, 202, 'fiasp-json', 1, 0, 1, 6, 1, 'fiasp', 3, 'source_single_dose')"
+            )
+            db.execSQL(
+                "INSERT INTO journal_insulin_presets " +
+                    "(id, displayName, onsetMinutes, durationMinutes, accentColor, curveJson, " +
+                    "isBuiltIn, isArchived, countsTowardIob, sortOrder, useForCalculation) " +
+                    "VALUES (30, 'My basal', 60, 2520, 203, 'basal-json', 0, 0, 0, 30, 0)"
+            )
+        }
+
+        val migrated = helper.runMigrationsAndValidate(DB_NAME, HISTORY_DATABASE_VERSION, true, *HistoryDatabase.ALL_MIGRATIONS)
+
+        migrated.query(
+            "SELECT id, displayName, curveEvidence, doseStep, defaultDose, reminderTimes " +
+                "FROM journal_insulin_presets ORDER BY id"
+        ).use { cursor ->
+            listOf(6 to "Fiasp", 30 to "My basal").forEach { (id, name) ->
+                assertTrue("preset $id survived", cursor.moveToNext())
+                assertEquals(id, cursor.getInt(0))
+                assertEquals(name, cursor.getString(1))
+                assertEquals("whole-unit step, built-in or not", 1.0, cursor.getDouble(3), 0.0)
+                assertTrue("no default dose, rather than 0", cursor.isNull(4))
+                assertEquals("no reminders", "", cursor.getString(5))
+            }
+            assertEquals(2, cursor.count)
         }
         migrated.close()
     }

@@ -149,7 +149,12 @@ data class JournalInsulinPreset(
     val curveProfileId: String? = null,
     val curveModelVersion: Int = 0,
     val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
-    val scientificName: String? = null
+    val scientificName: String? = null,
+    /** See [JournalInsulinPresetEntity.doseStep]. */
+    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    val defaultDose: Float? = null,
+    /** Minutes after midnight, long-acting insulin only. */
+    val reminderTimes: List<Int> = emptyList()
 ) {
     val curvePoints: List<JournalCurvePoint> = resolveJournalCurve(
         curveJson,
@@ -202,7 +207,10 @@ data class JournalInsulinPresetInput(
     val useForCalculation: Boolean = true,
     val curveProfileId: String? = null,
     val curveModelVersion: Int = 0,
-    val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED
+    val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
+    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    val defaultDose: Float? = null,
+    val reminderTimes: List<Int> = emptyList()
 )
 
 data class JournalChartMarker(
