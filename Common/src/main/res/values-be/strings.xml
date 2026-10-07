@@ -2906,6 +2906,13 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alert_feature_off">Выкл.</string>
     <string name="same_direction_suppression_title">Ціхі перыяд пасля сігналу пра трэнд</string>
     <string name="same_direction_suppression_summary">Да наступнага ў тым жа кірунку</string>
+    <string name="alarm_routing_title">Дзе гучаць сігналы</string>
+    <string name="alarm_routing_both">Абодва</string>
+    <string name="alarm_routing_watch">Гадзіннік, калі падключаны</string>
+    <string name="alarm_routing_phone">Толькі тэлефон</string>
+    <string name="alarm_routing_both_summary">Гучаць і тэлефон, і гадзіннік.</string>
+    <string name="alarm_routing_watch_summary">Тэлефон гучыць, толькі калі гадзіннік па-за зонай дасяжнасці або зараджаецца.</string>
+    <string name="alarm_routing_phone_summary">Гадзіннік маўчыць; гучыць толькі тэлефон.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d гадзіна</item>
         <item quantity="few">%1$d гадзіны</item>

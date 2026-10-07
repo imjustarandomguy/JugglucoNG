@@ -2863,6 +2863,13 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="alert_feature_off">Kapalı</string>
     <string name="same_direction_suppression_title">Eğilim alarmından sonra sessiz süre</string>
     <string name="same_direction_suppression_summary">O yöndeki bir sonrakinden önce</string>
+    <string name="alarm_routing_title">Alarmların çaldığı yer</string>
+    <string name="alarm_routing_both">Her ikisi</string>
+    <string name="alarm_routing_watch">Bağlıyken saat</string>
+    <string name="alarm_routing_phone">Yalnızca telefon</string>
+    <string name="alarm_routing_both_summary">Telefon ve saat birlikte çalar.</string>
+    <string name="alarm_routing_watch_summary">Telefon yalnızca saat menzil dışındayken veya şarj olurken çalar.</string>
+    <string name="alarm_routing_phone_summary">Saat sessiz kalır; yalnızca telefon çalar.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d saat</item>
         <item quantity="other">%1$d saat</item>

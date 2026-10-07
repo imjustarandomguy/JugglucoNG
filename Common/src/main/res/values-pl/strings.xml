@@ -2873,6 +2873,13 @@
     <string name="alert_feature_off">Wył.</string>
     <string name="same_direction_suppression_title">Cisza po alarmie trendu</string>
     <string name="same_direction_suppression_summary">Do następnego w tym kierunku</string>
+    <string name="alarm_routing_title">Gdzie dzwonią alarmy</string>
+    <string name="alarm_routing_both">Oba</string>
+    <string name="alarm_routing_watch">Zegarek, gdy połączony</string>
+    <string name="alarm_routing_phone">Tylko telefon</string>
+    <string name="alarm_routing_both_summary">Dzwonią i telefon, i zegarek.</string>
+    <string name="alarm_routing_watch_summary">Telefon dzwoni tylko, gdy zegarek jest poza zasięgiem lub się ładuje.</string>
+    <string name="alarm_routing_phone_summary">Zegarek milczy; dzwoni tylko telefon.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d godzina</item>
         <item quantity="few">%1$d godziny</item>

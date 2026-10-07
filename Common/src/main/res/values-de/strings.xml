@@ -2951,6 +2951,13 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="alert_feature_off">Aus</string>
     <string name="same_direction_suppression_title">Ruhezeit nach einem Trendalarm</string>
     <string name="same_direction_suppression_summary">Bis zum nächsten in dieser Richtung</string>
+    <string name="alarm_routing_title">Wo Alarme klingeln</string>
+    <string name="alarm_routing_both">Beide</string>
+    <string name="alarm_routing_watch">Uhr, wenn verbunden</string>
+    <string name="alarm_routing_phone">Nur Telefon</string>
+    <string name="alarm_routing_both_summary">Telefon und Uhr klingeln beide.</string>
+    <string name="alarm_routing_watch_summary">Das Telefon klingelt nur, wenn die Uhr außer Reichweite ist oder lädt.</string>
+    <string name="alarm_routing_phone_summary">Die Uhr bleibt still; nur das Telefon klingelt.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d Stunde</item>
         <item quantity="other">%1$d Stunden</item>

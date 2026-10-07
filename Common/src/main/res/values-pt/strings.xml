@@ -2836,6 +2836,13 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alert_feature_off">Desligado</string>
     <string name="same_direction_suppression_title">Período de silêncio após um alerta de tendência</string>
     <string name="same_direction_suppression_summary">Antes do próximo nessa direção</string>
+    <string name="alarm_routing_title">Onde tocam os alarmes</string>
+    <string name="alarm_routing_both">Ambos</string>
+    <string name="alarm_routing_watch">Relógio quando ligado</string>
+    <string name="alarm_routing_phone">Só o telemóvel</string>
+    <string name="alarm_routing_both_summary">Tocam o telemóvel e o relógio.</string>
+    <string name="alarm_routing_watch_summary">O telemóvel só toca se o relógio estiver fora de alcance ou a carregar.</string>
+    <string name="alarm_routing_phone_summary">O relógio fica em silêncio; só toca o telemóvel.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d hora</item>
         <item quantity="other">%1$d horas</item>

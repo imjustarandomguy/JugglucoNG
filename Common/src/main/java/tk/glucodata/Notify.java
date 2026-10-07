@@ -1830,6 +1830,12 @@ public class Notify {
                 cancelRetrySessionLocked("retry-limit-reached");
                 return;
             }
+            // Where alarms ring: decided again at each retry. Once the other
+            // device has the alarm, this one stops for the rest of the episode.
+            if (!tk.glucodata.alerts.AlarmRouting.ringsHere(alertType)) {
+                cancelRetrySessionLocked("rings-on-other-device");
+                return;
+            }
             activeRetrySession.retriesUsed += 1;
             activeRetrySession.lastFireStartedAtMs = System.currentTimeMillis();
             sessionSnapshot = new AlertRetrySession(
@@ -5241,6 +5247,13 @@ public class Notify {
             ;
         }
         ;
+        // Where alarms ring: the other device sounds the signal loss. The caller
+        // counts it as said either way, so it does not come back later.
+        if (!tk.glucodata.alerts.AlarmRouting.ringsHere(AlertType.LOSS)) {
+            Log.i(LOG_ID, "lossalarm held for the other device ("
+                    + tk.glucodata.alerts.AlarmRouting.describeInputs() + ")");
+            return;
+        }
         final String tformat = timef.format(time);
         final String message = "***  " + Applic.getContext().getString(R.string.nonewvalue) + tformat + " ***";
 

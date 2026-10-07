@@ -2936,6 +2936,13 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="alert_feature_off">Унтраах</string>
     <string name="same_direction_suppression_title">Чиг хандлагын дохионы дараах чимээгүй хугацаа</string>
     <string name="same_direction_suppression_summary">Тэр чиглэлийн дараагийнх хүртэл</string>
+    <string name="alarm_routing_title">Дохио хаана дуугарах</string>
+    <string name="alarm_routing_both">Хоёулаа</string>
+    <string name="alarm_routing_watch">Холбогдсон үед цаг</string>
+    <string name="alarm_routing_phone">Зөвхөн утас</string>
+    <string name="alarm_routing_both_summary">Утас, цаг хоёулаа дуугарна.</string>
+    <string name="alarm_routing_watch_summary">Цаг хүрээнээс гарсан эсвэл цэнэглэж байх үед л утас дуугарна.</string>
+    <string name="alarm_routing_phone_summary">Цаг чимээгүй; зөвхөн утас дуугарна.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d цаг</item>
         <item quantity="other">%1$d цаг</item>

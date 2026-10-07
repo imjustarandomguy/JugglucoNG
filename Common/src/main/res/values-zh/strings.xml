@@ -2851,6 +2851,13 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alert_feature_off">关闭</string>
     <string name="same_direction_suppression_title">趋势警报后的静默期</string>
     <string name="same_direction_suppression_summary">距同方向的下一次警报</string>
+    <string name="alarm_routing_title">警报响铃位置</string>
+    <string name="alarm_routing_both">两者</string>
+    <string name="alarm_routing_watch">连接时用手表</string>
+    <string name="alarm_routing_phone">仅手机</string>
+    <string name="alarm_routing_both_summary">手机和手表都会响铃。</string>
+    <string name="alarm_routing_watch_summary">仅当手表不在范围内或正在充电时，手机才响铃。</string>
+    <string name="alarm_routing_phone_summary">手表保持静音；只有手机响铃。</string>
     <plurals name="duration_hours">
         <item quantity="other">%1$d 小时</item>
     </plurals>

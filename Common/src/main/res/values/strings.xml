@@ -3088,6 +3088,13 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alert_feature_off">Off</string>
     <string name="same_direction_suppression_title">Quiet period after a trend alert</string>
     <string name="same_direction_suppression_summary">Before the next one in that direction</string>
+    <string name="alarm_routing_title">Where alarms ring</string>
+    <string name="alarm_routing_both">Both</string>
+    <string name="alarm_routing_watch">Watch when connected</string>
+    <string name="alarm_routing_phone">Phone only</string>
+    <string name="alarm_routing_both_summary">Phone and watch both ring.</string>
+    <string name="alarm_routing_watch_summary">The phone rings only when the watch is out of reach or charging.</string>
+    <string name="alarm_routing_phone_summary">The watch stays silent; only the phone rings.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d hour</item>
         <item quantity="other">%1$d hours</item>

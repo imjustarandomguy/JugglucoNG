@@ -2825,6 +2825,13 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alert_feature_off">Disattivato</string>
     <string name="same_direction_suppression_title">Periodo di silenzio dopo un avviso di tendenza</string>
     <string name="same_direction_suppression_summary">Prima del successivo nella stessa direzione</string>
+    <string name="alarm_routing_title">Dove suonano gli allarmi</string>
+    <string name="alarm_routing_both">Entrambi</string>
+    <string name="alarm_routing_watch">Orologio se connesso</string>
+    <string name="alarm_routing_phone">Solo telefono</string>
+    <string name="alarm_routing_both_summary">Suonano sia il telefono sia l\'orologio.</string>
+    <string name="alarm_routing_watch_summary">Il telefono suona solo se l\'orologio è fuori portata o in carica.</string>
+    <string name="alarm_routing_phone_summary">L\'orologio resta in silenzio; suona solo il telefono.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d ora</item>
         <item quantity="other">%1$d ore</item>
