@@ -5254,6 +5254,8 @@ public class Notify {
                     + tk.glucodata.alerts.AlarmRouting.describeInputs() + ")");
             return;
         }
+        // Dates this alarm for a dismissal made on the other device.
+        tk.glucodata.alerts.AlarmSilenceSync.onLossAlarmSounding();
         final String tformat = timef.format(time);
         final String message = "***  " + Applic.getContext().getString(R.string.nonewvalue) + tformat + " ***";
 
