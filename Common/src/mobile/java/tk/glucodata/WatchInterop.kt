@@ -32,11 +32,7 @@ object WatchInterop {
         /** What the user asked for, which the watch may not have honoured yet. */
         val directRequested: Boolean = false,
         val enterRequested: Boolean = false
-    ) {
-        /** True while the request is outstanding: asked for, not yet claimed. */
-        val directPending: Boolean
-            get() = directRequested && claimState != WearSensorClaimState.CONNECTED
-    }
+    )
 
     data class GarminSnapshot(
         val sdkReady: Boolean,

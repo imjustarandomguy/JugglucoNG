@@ -46,6 +46,11 @@ object SensorOwnershipPolicy {
         val lastReadingMs: Long,
         /** When we received this, our clock. Never compared with peer times. */
         val receivedAtMs: Long,
+        /**
+         * When the peer last read the sensor itself, on our clock. Only for the
+         * screens; the arbitration below never looks at it.
+         */
+        val directReading: DirectReadingFact = DirectReadingFact.UNKNOWN,
     )
 
     /**
