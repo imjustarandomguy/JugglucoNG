@@ -100,6 +100,22 @@ object AlertStateTracker {
     }
 
     /**
+     * A firing the other device sounds ([AlarmRouting]): spends the episode and
+     * its rearm cooldown here as [onAlertTriggered] does, so this device does
+     * not ring for it later, when the other one drops out of reach say. Arms no
+     * SMS watchdog: nothing shown here can be acknowledged here.
+     */
+    @Synchronized
+    fun onAlertHeld(type: AlertType, config: AlertConfig? = null) {
+        if (manualTests.isActive(type)) {
+            return
+        }
+        dismissedAlerts.remove(type)
+        lastTriggerTime[type] = System.currentTimeMillis()
+        cooldownUntilTime[type] = lastTriggerTime.getValue(type) + effectiveRearmCooldownMs(config)
+    }
+
+    /**
      * The rearm cooldown after a firing. The configured minimum re-arm
      * interval (forecast alerts) extends the built-in short cooldown, never
      * shortens it; unset/0 keeps today's behaviour.
