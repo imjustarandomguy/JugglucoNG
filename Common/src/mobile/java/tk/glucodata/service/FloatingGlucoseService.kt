@@ -57,6 +57,7 @@ import tk.glucodata.LiveReadingLanes
 import tk.glucodata.MultiSensorSelection
 import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
+import tk.glucodata.SensorSourceResolver
 import tk.glucodata.ui.optOutOfForceDark
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.GlucoseRepository
@@ -70,6 +71,7 @@ import tk.glucodata.ui.overlay.OverlayScreenArea
 import tk.glucodata.ui.overlay.clampOverlayPixels
 import tk.glucodata.ui.overlay.overlayPixels
 import tk.glucodata.ui.overlay.overlayPosition
+import tk.glucodata.ui.overlay.FloatingNextReading
 import tk.glucodata.ui.overlay.FloatingPillReading
 import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.ui.SecondarySensorDisplay
@@ -716,9 +718,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * since: then the stored one, resolved as it will be once current, instead of the
      * older live one for the minutes until that expires. The readings are the resolved
      * sensor's own; with none of them, the current value stands for the newest. With
-     * [includePeers] and no secondary value of its own, the current readings of the
-     * peer sensors selected beside it too, for the secondary slot; see
-     * SecondarySensorDisplay.fallback.
+     * the sensor's reading interval, for the time to the next reading, from its kind or
+     * the readings' spacing. With [includePeers] and no secondary value of its own, the
+     * current readings of the peer sensors selected beside it too, for the secondary
+     * slot; see SecondarySensorDisplay.fallback.
      */
     private fun resolvePillReading(
         points: List<GlucosePoint>,
@@ -728,9 +731,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val liveTime = liveReadingTime(sensorId)
         val live = runCatching { CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensorId) }.getOrNull()
         val resolvedSensorId = live?.sensorId ?: sensorId
-        val newest = points.lastOrNull {
+        val sensorPoints = points.filter {
             resolvedSensorId != null && SensorIdentity.matches(it.sensorSerial, resolvedSensorId)
         }
+        val newest = sensorPoints.lastOrNull()
         val snapshot = if (newest != null && FloatingPillWatchdog.storeIsAheadOfLive(liveTime, newest.timestamp)) {
             runCatching {
                 CurrentDisplaySource.resolveIncomingReading(
@@ -747,6 +751,13 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val point = newest ?: snapshot?.let {
             GlucosePoint(it.autoValue, "", it.timeMillis, it.rawValue, it.rate, it.sensorId)
         }
+        val sensorKind = runCatching {
+            SensorSourceResolver.resolveSensorKind(resolvedSensorId, SensorSourceResolver.SENSOR_KIND_UNKNOWN)
+        }.getOrDefault(SensorSourceResolver.SENSOR_KIND_UNKNOWN)
+        val interval = FloatingNextReading.intervalMillis(
+            sensorKind = sensorKind,
+            readingTimes = sensorPoints.takeLast(FloatingNextReading.SPACING_READINGS).map { it.timestamp },
+        )
         val peers = if (includePeers && snapshot?.secondaryStr.isNullOrBlank()) {
             runCatching {
                 SecondarySensorDisplay.resolvePeers(SecondarySensorDisplay.selectedPeers(resolvedSensorId))
@@ -754,8 +765,13 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         } else {
             emptyList()
         }
-        return FloatingPillReading(point = point, snapshot = snapshot, sensorId = resolvedSensorId, peers = peers) to
-            FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
+        return FloatingPillReading(
+            point = point,
+            snapshot = snapshot,
+            sensorId = resolvedSensorId,
+            intervalMillis = interval,
+            peers = peers,
+        ) to FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
     }
 
     /** Time of the live reading the current value is resolved with, or 0 when there is none. */
