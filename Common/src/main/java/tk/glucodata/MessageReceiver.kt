@@ -118,6 +118,10 @@ class MessageReceiver: WearableListenerService() {
                 // Both ways: a snooze, dismissal or quiet window from the other device.
                 tk.glucodata.alerts.AlarmSilenceSync.onPeerMessage(data)
             }
+            WearMessagePath.SYNC2_ALARM_TEST -> {
+                // A test alarm from the phone, or a test stopped on the other device.
+                tk.glucodata.alerts.AlarmTestSync.onPeerMessage(data)
+            }
             WearMessagePath.SYNC2_JOURNAL_REQ -> {
                 if (!isWearable) WearJournalSync.onRequest(
                     if (data != null && data.size >= 9) {

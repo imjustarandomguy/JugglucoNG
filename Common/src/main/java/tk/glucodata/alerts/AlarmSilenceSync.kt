@@ -409,9 +409,18 @@ object AlarmSilenceSync {
         }
         // The watch's alarm screen notification goes with the screen, once the sound is over too.
         Notify.cancelAlarmScreenNotification(type.id)
+        closeAlarmScreens(type.id)
+    }
+
+    /**
+     * Closes the alarm screens on show for the built-in alert [alertTypeId]: the other
+     * device snoozed or dismissed it, or stopped its test alarm ([AlarmTestSync]).
+     */
+    @JvmStatic
+    fun closeAlarmScreens(alertTypeId: Int) {
         screens.forEach { screen ->
             try {
-                screen.closeFor(type.id)
+                screen.closeFor(alertTypeId)
             } catch (t: Throwable) {
                 Log.stack(LOG_ID, "close alarm screen", t)
             }

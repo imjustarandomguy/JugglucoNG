@@ -147,6 +147,8 @@ object AlertStateTracker {
     @Synchronized
     fun onAlertDismissed(type: AlertType): Boolean {
         if (manualTests.consumeAction(type)) {
+            // A test alarm: nothing to record, but the test stops on the other device too.
+            if (!dismissingFromPeer) AlarmTestSync.onLocalTestStopped(type)
             return false
         }
         dismissedAlerts.add(type)
@@ -160,10 +162,22 @@ object AlertStateTracker {
         return true
     }
 
+    /** A snooze of [type]'s alarm: true, and nothing snoozed, when that alarm is a test. */
     @Synchronized
     fun consumeManualTestAction(type: AlertType): Boolean {
-        return manualTests.consumeAction(type)
+        if (!manualTests.consumeAction(type)) return false
+        // The test stops on the other device too ([AlarmTestSync]).
+        AlarmTestSync.onLocalTestStopped(type)
+        return true
     }
+
+    /**
+     * The other device stopped the test alarm of [type] ([AlarmTestSync]): it ends here
+     * as a dismissal of it here would, recording nothing and sending nothing back. False
+     * when no test of [type] is on here: a real alarm took over, or it was answered here.
+     */
+    @Synchronized
+    fun endManualTestFromPeer(type: AlertType): Boolean = manualTests.consumeAction(type)
 
     @Synchronized
     fun isWaitingForRearmCooldown(type: AlertType): Boolean {
