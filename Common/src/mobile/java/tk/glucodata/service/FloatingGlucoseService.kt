@@ -445,7 +445,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                         closeDetails()
                         openApp()
                     },
-                    onQuickEntry = if (tk.glucodata.ui.journal.journalQuickEntryEnabled(this@FloatingGlucoseService)) {
+                    onQuickEntry = if (tk.glucodata.quickLogButtonsEnabled(this@FloatingGlucoseService)) {
                         { type ->
                             closeDetails()
                             tk.glucodata.ui.overlay.openFloatingQuickEntry(this@FloatingGlucoseService, type)
