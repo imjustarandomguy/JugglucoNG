@@ -2858,6 +2858,15 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alarm_routing_both_summary">手机和手表都会响铃。</string>
     <string name="alarm_routing_watch_summary">仅当手表不在范围内或正在充电时，手机才响铃。</string>
     <string name="alarm_routing_phone_summary">手表保持静音；只有手机响铃。</string>
+    <string name="watch_alarm_style_title">手表上</string>
+    <string name="watch_alarm_style_same">与手机相同</string>
+    <string name="watch_alarm_style_vibrate">仅振动</string>
+    <string name="watch_alarm_style_sound">声音和振动</string>
+    <string name="watch_alarm_style_screen">仅屏幕</string>
+    <string name="watch_alarm_style_same_summary">手表使用每个警报自己的声音和振动设置。</string>
+    <string name="watch_alarm_style_vibrate_summary">手表只振动，不发声。</string>
+    <string name="watch_alarm_style_sound_summary">手表发声并振动。</string>
+    <string name="watch_alarm_style_screen_summary">手表显示警报，不发声也不振动。</string>
     <plurals name="duration_hours">
         <item quantity="other">%1$d 小时</item>
     </plurals>

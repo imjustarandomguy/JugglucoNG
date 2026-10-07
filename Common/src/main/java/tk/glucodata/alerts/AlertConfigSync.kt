@@ -47,13 +47,17 @@ import java.util.zip.Inflater
  *
  * After the alert lines comes one global line, for the settings every alert
  * shares that also change what the watch does ([GlobalAlertSettings]): where
- * alarms ring, the same-direction quiet period and acknowledged-high coverage.
+ * alarms ring, how the watch rings them, the same-direction quiet period and
+ * acknowledged-high coverage.
  *
  *     g:alerts=v1,<base64 of zlib of {"entries":{<store key>:<value>}}>
  *
  * Same body, same rules: recorded from the store's writer
  * ([AlertRepository.writeGlobalEntries]), read with its readers, and dropped by
  * an older watch, whose parsers want true/false after '=' or a "c:" scope.
+ * A watch that reads the line but predates one of its keys reads its own keys
+ * by name and never looks at the others, so a setting added here needs no new
+ * format: "how the watch rings them" (watch_alarm_style) came that way.
  */
 object AlertConfigSync {
     private const val LOG_ID = "AlertConfigSync"

@@ -23,6 +23,7 @@ object AlertRepository {
     private const val KEY_ACKNOWLEDGED_HIGH_COVERAGE = "acknowledged_high_coverage"
     private const val KEY_RETURN_TO_PREVIOUS_APP_AFTER_ALARM = "alarm_return_to_previous_app"
     private const val KEY_ALARM_ROUTING = "alarm_routing"
+    private const val KEY_WATCH_ALARM_STYLE = "watch_alarm_style"
     @Volatile
     private var hiddenLegacyAlertCleanupDone = false
     @Volatile
@@ -270,11 +271,28 @@ object AlertRepository {
         runCatching { tk.glucodata.WearToggleSync.push() }
     }
 
+    /**
+     * How the watch rings the alarms it rings ([WatchAlarmStyle]). A value this
+     * build cannot read, or none, reads as SAME_AS_PHONE: each alert's own
+     * sound and vibration.
+     */
+    fun loadWatchAlarmStyle(): WatchAlarmStyle {
+        return parseEnumPref(prefs.getString(KEY_WATCH_ALARM_STYLE, null), WatchAlarmStyle.SAME_AS_PHONE)
+    }
+
+    fun saveWatchAlarmStyle(style: WatchAlarmStyle) {
+        prefs.edit {
+            putString(KEY_WATCH_ALARM_STYLE, style.name)
+        }
+        runCatching { tk.glucodata.WearToggleSync.push() }
+    }
+
     /** The shared settings the watch mirrors through [AlertConfigSync]'s global line. */
     fun loadGlobalSettings(): GlobalAlertSettings = GlobalAlertSettings(
         alarmRouting = loadAlarmRouting(),
         sameDirectionSuppressionMinutes = loadSameDirectionSuppressionMinutes(),
         acknowledgedHighCoverage = loadAcknowledgedHighCoverageEnabled(),
+        watchAlarmStyle = loadWatchAlarmStyle(),
     )
 
     /** Stores all of [settings] at once: the watch, applying what the phone sent. */
@@ -294,6 +312,7 @@ object AlertRepository {
             sanitizeSameDirectionSuppressionMinutes(settings.sameDirectionSuppressionMinutes)
         )
         editor.putBoolean(KEY_ACKNOWLEDGED_HIGH_COVERAGE, settings.acknowledgedHighCoverage)
+        editor.putString(KEY_WATCH_ALARM_STYLE, settings.watchAlarmStyle.name)
     }
 
     /** After a full-screen alarm is dismissed or snoozed, return to the app that was open (default) instead of opening JugglucoNG. */

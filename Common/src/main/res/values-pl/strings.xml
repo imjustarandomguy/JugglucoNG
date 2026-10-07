@@ -2880,6 +2880,15 @@
     <string name="alarm_routing_both_summary">Dzwonią i telefon, i zegarek.</string>
     <string name="alarm_routing_watch_summary">Telefon dzwoni tylko, gdy zegarek jest poza zasięgiem lub się ładuje.</string>
     <string name="alarm_routing_phone_summary">Zegarek milczy; dzwoni tylko telefon.</string>
+    <string name="watch_alarm_style_title">Na zegarku</string>
+    <string name="watch_alarm_style_same">Jak telefon</string>
+    <string name="watch_alarm_style_vibrate">Tylko wibracje</string>
+    <string name="watch_alarm_style_sound">Dźwięk i wibracje</string>
+    <string name="watch_alarm_style_screen">Tylko ekran</string>
+    <string name="watch_alarm_style_same_summary">Zegarek używa dźwięku i wibracji każdego alarmu.</string>
+    <string name="watch_alarm_style_vibrate_summary">Zegarek wibruje, bez dźwięku.</string>
+    <string name="watch_alarm_style_sound_summary">Zegarek odtwarza dźwięk i wibruje.</string>
+    <string name="watch_alarm_style_screen_summary">Zegarek pokazuje alarm, bez dźwięku i wibracji.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d godzina</item>
         <item quantity="few">%1$d godziny</item>

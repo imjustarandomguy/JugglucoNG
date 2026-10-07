@@ -2832,6 +2832,15 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alarm_routing_both_summary">Suonano sia il telefono sia l\'orologio.</string>
     <string name="alarm_routing_watch_summary">Il telefono suona solo se l\'orologio è fuori portata o in carica.</string>
     <string name="alarm_routing_phone_summary">L\'orologio resta in silenzio; suona solo il telefono.</string>
+    <string name="watch_alarm_style_title">Sull\'orologio</string>
+    <string name="watch_alarm_style_same">Come il telefono</string>
+    <string name="watch_alarm_style_vibrate">Solo vibrazione</string>
+    <string name="watch_alarm_style_sound">Suono e vibrazione</string>
+    <string name="watch_alarm_style_screen">Solo schermo</string>
+    <string name="watch_alarm_style_same_summary">L\'orologio usa suono e vibrazione di ogni allarme.</string>
+    <string name="watch_alarm_style_vibrate_summary">L\'orologio vibra, senza suono.</string>
+    <string name="watch_alarm_style_sound_summary">L\'orologio suona e vibra.</string>
+    <string name="watch_alarm_style_screen_summary">L\'orologio mostra l\'allarme, senza suono né vibrazione.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d ora</item>
         <item quantity="other">%1$d ore</item>

@@ -2842,6 +2842,15 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alarm_routing_both_summary">Både telefonen och klockan ljuder.</string>
     <string name="alarm_routing_watch_summary">Telefonen ljuder bara när klockan är utom räckhåll eller laddas.</string>
     <string name="alarm_routing_phone_summary">Klockan är tyst; bara telefonen ljuder.</string>
+    <string name="watch_alarm_style_title">På klockan</string>
+    <string name="watch_alarm_style_same">Som telefonen</string>
+    <string name="watch_alarm_style_vibrate">Endast vibration</string>
+    <string name="watch_alarm_style_sound">Ljud och vibration</string>
+    <string name="watch_alarm_style_screen">Endast skärm</string>
+    <string name="watch_alarm_style_same_summary">Klockan använder varje larms eget ljud och vibration.</string>
+    <string name="watch_alarm_style_vibrate_summary">Klockan vibrerar, utan ljud.</string>
+    <string name="watch_alarm_style_sound_summary">Klockan ljuder och vibrerar.</string>
+    <string name="watch_alarm_style_screen_summary">Klockan visar larmet, utan ljud eller vibration.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d timme</item>
         <item quantity="other">%1$d timmar</item>

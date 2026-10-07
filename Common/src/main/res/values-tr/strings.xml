@@ -2870,6 +2870,15 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="alarm_routing_both_summary">Telefon ve saat birlikte çalar.</string>
     <string name="alarm_routing_watch_summary">Telefon yalnızca saat menzil dışındayken veya şarj olurken çalar.</string>
     <string name="alarm_routing_phone_summary">Saat sessiz kalır; yalnızca telefon çalar.</string>
+    <string name="watch_alarm_style_title">Saatte</string>
+    <string name="watch_alarm_style_same">Telefondaki gibi</string>
+    <string name="watch_alarm_style_vibrate">Yalnızca titreşim</string>
+    <string name="watch_alarm_style_sound">Ses ve titreşim</string>
+    <string name="watch_alarm_style_screen">Yalnızca ekran</string>
+    <string name="watch_alarm_style_same_summary">Saat, her alarmın kendi ses ve titreşimini kullanır.</string>
+    <string name="watch_alarm_style_vibrate_summary">Saat sessizce titrer.</string>
+    <string name="watch_alarm_style_sound_summary">Saat çalar ve titrer.</string>
+    <string name="watch_alarm_style_screen_summary">Saat alarmı sessiz ve titreşimsiz gösterir.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d saat</item>
         <item quantity="other">%1$d saat</item>

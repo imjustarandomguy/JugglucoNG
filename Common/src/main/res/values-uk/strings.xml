@@ -2918,6 +2918,15 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="alarm_routing_both_summary">Звучать і телефон, і годинник.</string>
     <string name="alarm_routing_watch_summary">Телефон звучить, лише коли годинник поза зоною дії або заряджається.</string>
     <string name="alarm_routing_phone_summary">Годинник мовчить; звучить лише телефон.</string>
+    <string name="watch_alarm_style_title">На годиннику</string>
+    <string name="watch_alarm_style_same">Як на телефоні</string>
+    <string name="watch_alarm_style_vibrate">Лише вібрація</string>
+    <string name="watch_alarm_style_sound">Звук і вібрація</string>
+    <string name="watch_alarm_style_screen">Лише екран</string>
+    <string name="watch_alarm_style_same_summary">Годинник використовує звук і вібрацію кожного сигналу.</string>
+    <string name="watch_alarm_style_vibrate_summary">Годинник вібрує без звуку.</string>
+    <string name="watch_alarm_style_sound_summary">Годинник звучить і вібрує.</string>
+    <string name="watch_alarm_style_screen_summary">Годинник показує сигнал без звуку й вібрації.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d година</item>
         <item quantity="few">%1$d години</item>
