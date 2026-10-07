@@ -1782,6 +1782,7 @@
     <string name="journal_source_api">Odebrano przez API</string>
     <string name="journal_source_health_connect">Z Health Connect</string>
     <string name="journal_source_meter">Z glukometru</string>
+    <string name="journal_time_locked_nightscout">Czasu wpisów z Nightscout nie można zmienić</string>
     <string name="journal_note_label">Notatka</string>
     <string name="journal_onset_label">Początek działania</string>
     <string name="journal_add_preset">Dodaj typ insuliny</string>

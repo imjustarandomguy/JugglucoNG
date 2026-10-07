@@ -1755,6 +1755,7 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="journal_source_api">API-аар хүлээн авсан</string>
     <string name="journal_source_health_connect">Health Connect-оос</string>
     <string name="journal_source_meter">Хэмжигчээс</string>
+    <string name="journal_time_locked_nightscout">Nightscout-оос ирсэн эмчилгээний цагийг өөрчлөх боломжгүй</string>
     <string name="journal_note_label">Note</string>
     <string name="journal_onset_label">Onset</string>
     <string name="journal_add_preset">Add insulin type</string>

@@ -408,7 +408,12 @@ fun JournalEntrySheet(
     var showTimePicker by remember(existingEntry?.id, initialType, selectedTimestamp) { mutableStateOf(false) }
     var noteFieldFocused by remember(existingEntry?.id) { mutableStateOf(false) }
     val selectedInsulinPreset = draft.insulinPresetId?.let(presetsById::get)
+    // A treatment received from Nightscout keeps the time it came with (timeEditableFor): the
+    // date and time are greyed out, and the edit is saved at the entry's own time regardless.
+    val timeEditable = timeEditableFor(existingEntry?.source)
+    val keptTimestamp = existingEntry?.timestamp?.takeUnless { timeEditable }
     val saveInputs = draft.toInputs(unit, sensorSerialProvider(), presetsById, foodMacrosEnabled)
+        .map { input -> keptTimestamp?.let { input.copy(timestamp = it) } ?: input }
     val canSave = saveInputs.isNotEmpty()
     val calculatorProfile = remember(doseProfile, draft.timestamp) {
         doseProfile?.at(draft.timestamp)?.takeIf {
@@ -566,12 +571,23 @@ fun JournalEntrySheet(
             }
 
             item(key = "date_time") {
-                JournalDateTimeCard(
-                    date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(draft.timestamp)),
-                    time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(draft.timestamp)),
-                    onDateClick = { showDatePicker = true },
-                    onTimeClick = { showTimePicker = true }
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    JournalDateTimeCard(
+                        date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(draft.timestamp)),
+                        time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(draft.timestamp)),
+                        onDateClick = { showDatePicker = true },
+                        onTimeClick = { showTimePicker = true },
+                        enabled = timeEditable
+                    )
+                    if (!timeEditable) {
+                        Text(
+                            text = stringResource(R.string.journal_time_locked_nightscout),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+                }
             }
 
             when (draft.type) {
@@ -2904,7 +2920,8 @@ private fun JournalDateTimeCard(
     date: String,
     time: String,
     onDateClick: () -> Unit,
-    onTimeClick: () -> Unit
+    onTimeClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -2922,7 +2939,8 @@ private fun JournalDateTimeCard(
                 icon = Icons.Default.Event,
                 contentDescription = stringResource(R.string.date),
                 value = date,
-                onClick = onDateClick
+                onClick = onDateClick,
+                enabled = enabled
             )
             Box(
                 modifier = Modifier
@@ -2935,7 +2953,8 @@ private fun JournalDateTimeCard(
                 icon = Icons.Default.AccessTime,
                 contentDescription = stringResource(R.string.time),
                 value = time,
-                onClick = onTimeClick
+                onClick = onTimeClick,
+                enabled = enabled
             )
         }
     }
@@ -2947,8 +2966,11 @@ private fun JournalDateTimeSegment(
     icon: ImageVector,
     contentDescription: String,
     value: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    enabled: Boolean = true
 ) {
+    // Material's disabled look: on-surface content at 38%.
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     Row(
         modifier = modifier
             .heightIn(min = 56.dp)
@@ -2956,20 +2978,21 @@ private fun JournalDateTimeSegment(
                 this.contentDescription = "$contentDescription, $value"
                 role = Role.Button
             }
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = if (enabled) MaterialTheme.colorScheme.primary else disabledColor,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) Color.Unspecified else disabledColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

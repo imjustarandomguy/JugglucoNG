@@ -1748,6 +1748,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_source_api">Recebido via API</string>
     <string name="journal_source_health_connect">Do Health Connect</string>
     <string name="journal_source_meter">Do medidor</string>
+    <string name="journal_time_locked_nightscout">A hora dos tratamentos do Nightscout não pode ser alterada</string>
     <string name="journal_note_label">Nota</string>
     <string name="journal_onset_label">Início da ação</string>
     <string name="journal_add_preset">Adicionar tipo de insulina</string>
