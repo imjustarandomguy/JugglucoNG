@@ -22,6 +22,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -176,6 +178,12 @@ fun AlertSettingsScreen(
         sameDirectionSuppressionMinutes = minutes
         AlertRepository.saveSameDirectionSuppressionMinutes(minutes)
     }
+    var alarmRouting by remember { mutableStateOf(AlertRepository.loadAlarmRouting()) }
+    fun persistAlarmRouting(mode: AlarmRoutingMode) {
+        if (mode == alarmRouting) return
+        alarmRouting = mode
+        AlertRepository.saveAlarmRouting(mode)
+    }
 
     // Collected outside the LazyColumn: the quiet-window card only exists while
     // something can be silenced, or while a window runs.
@@ -288,6 +296,12 @@ fun AlertSettingsScreen(
                     QuietWindowCard(anySound = anySound)
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+
+            // Which device sounds the glucose alarms: one choice for all of them.
+            item(key = "alarm-routing") {
+                AlarmRoutingCard(selected = alarmRouting, onSelect = { persistAlarmRouting(it) })
+                Spacer(Modifier.height(8.dp))
             }
 
             // === HIGH ALERTS SECTION ===
@@ -915,6 +929,54 @@ private fun GroupFootnote(
             contentPadding = ButtonDefaults.TextButtonContentPadding
         ) {
             Text(value)
+        }
+    }
+}
+
+/** "Where alarms ring": the three choices, and one line saying what the chosen one does. */
+@Composable
+private fun AlarmRoutingCard(
+    selected: AlarmRoutingMode,
+    onSelect: (AlarmRoutingMode) -> Unit
+) {
+    val choices = listOf(
+        AlarmRoutingMode.BOTH to R.string.alarm_routing_both,
+        AlarmRoutingMode.WATCH_WHEN_CONNECTED to R.string.alarm_routing_watch,
+        AlarmRoutingMode.PHONE_ONLY to R.string.alarm_routing_phone
+    )
+    val explanation = when (selected) {
+        AlarmRoutingMode.BOTH -> R.string.alarm_routing_both_summary
+        AlarmRoutingMode.WATCH_WHEN_CONNECTED -> R.string.alarm_routing_watch_summary
+        AlarmRoutingMode.PHONE_ONLY -> R.string.alarm_routing_phone_summary
+    }
+    SliderSettingsItem(
+        title = stringResource(R.string.alarm_routing_title),
+        subtitle = stringResource(explanation),
+        icon = Icons.Filled.Watch,
+        position = SettingsItemPosition.SINGLE
+    ) {
+        Column(Modifier.selectableGroup()) {
+            choices.forEach { (mode, label) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .selectable(
+                            selected = mode == selected,
+                            onClick = { onSelect(mode) },
+                            role = androidx.compose.ui.semantics.Role.RadioButton
+                        )
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = mode == selected, onClick = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
         }
     }
 }
@@ -2382,3 +2444,41 @@ internal fun CustomAlertConfig.soundPickerRequest(onSelect: (String?) -> Unit) =
         )
     ), onSelect
 )
+
+@Composable
+private fun SliderSettingsItem(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    position: SettingsItemPosition,
+    slider: @Composable () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = tk.glucodata.ui.components.cardShape(position),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            IconTile(icon = icon, tint = MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(8.dp))
+                slider()
+            }
+        }
+    }
+}
