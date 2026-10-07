@@ -226,6 +226,10 @@ class MessageReceiver: WearableListenerService() {
                     // phone says it reads the sensor; automatic switching needs
                     // it on. See AutoSensorSwitch.keepWatchRadioArmed.
                     if (isWearable) AutoSensorSwitch.keepWatchRadioArmed("netinfo handshake")
+                    // The phone's netinfo still says "the phone has the sensor", and
+                    // native answers that by clearing the watch's Bluetooth flag. A
+                    // watch told to read a sensor puts it back at once.
+                    if (isWearable) WatchSensorRadio.bluetoothWanted()
                     if(applied) {
                         sendnetinfo(sourceId)
                         if (isWearable) {

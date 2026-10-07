@@ -784,6 +784,12 @@ object SensorOwnershipRuntime {
                 shouldRead && autoSwitch && !holds -> nudge(serial)
             }
         }
+        // A watch told to read a sensor must still be reading it whatever was
+        // rebuilt, toggled or received since: put the radio and the driver back.
+        if (Applic.isWearable) {
+            runCatching { WatchSensorRadio.keepReading(releaseState::isReleased) }
+                .onFailure { Log.stack(LOG_ID, "keep reading", it) }
+        }
     }
 
     /**
