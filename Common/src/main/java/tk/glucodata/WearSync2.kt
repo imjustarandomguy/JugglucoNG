@@ -125,6 +125,7 @@ object WearSync2 {
     }
 
     private fun removeSensorRecord(serial: String) {
+        if (Applic.isWearable && endCloudRecord(serial)) return
         run {
             run {
                 // Resolve this while the managed record still exists; after it
@@ -147,6 +148,69 @@ object WearSync2 {
                 UiRefreshBus.requestDataRefresh()
                 if (doLog) Log.i(LOG_ID, "removed $serial")
             }
+        }
+    }
+
+    /**
+     * A watch told that a cloud source (NSF-/API-/MQF-) is gone: ends its native
+     * record, the way the phone ends a stopped follower's, so it stops being
+     * listed — its readings stay. False, touching nothing, when [serial] is no
+     * cloud source; a sensor that transmits never takes this path.
+     *
+     * Nothing else is torn down, because nothing else exists: the watch builds
+     * no callback for a cloud record. Above all the roster is not rebuilt —
+     * rebuilding it is what once took the watch's sensor Bluetooth down.
+     */
+    private fun endCloudRecord(serial: String): Boolean {
+        val fullName: (String) -> String? = { name ->
+            runCatching { Natives.resolveFullSensorName(name) }.getOrNull()
+        }
+        if (CloudSensorRecord.cloudRecordId(serial, fullName) == null) return false
+        val wasCurrent = runCatching {
+            SensorIdentity.matches(SensorIdentity.resolveMainSensor(), serial)
+        }.getOrDefault(false)
+        val records = CloudSensorRecord.recordsToEnd(
+            runCatching { Natives.activeSensors() }.getOrNull(),
+            serial,
+            fullName,
+        )
+        val now = System.currentTimeMillis()
+        // Chunks already on their way must not bring the record back.
+        removalTombstones[removalKey(serial)] = now
+        records.forEach { name ->
+            removalTombstones[removalKey(name)] = now
+            endNativeRecord(name)
+        }
+        runCatching {
+            tk.glucodata.drivers.ManagedSensorIdentityRegistry.removePersistedSensor(Applic.app, serial)
+        }.onFailure { Log.stack(LOG_ID, "endCloudRecord($serial) registry", it) }
+        runCatching {
+            val current = Natives.lastsensorname()
+            if (wasCurrent || records.any { SensorIdentity.matches(current, it) }) {
+                SensorBluetooth.setCurrentSensorSelection(
+                    SensorBluetooth.resolveReplacementSensorSerial(serial) ?: "",
+                )
+            }
+        }.onFailure { Log.stack(LOG_ID, "endCloudRecord($serial) current sensor", it) }
+        SensorIdentity.invalidateCaches()
+        UiRefreshBus.requestDataRefresh()
+        Log.i(LOG_ID, "cloud source $serial removed on the phone: ended ${records.size} record(s) $records")
+        return true
+    }
+
+    /** Native's finishSensor works on a stream, borrowed here only for that. */
+    private fun endNativeRecord(name: String) {
+        val dataptr = runCatching { Natives.getdataptr(name) }.getOrDefault(0L)
+        if (dataptr == 0L) {
+            Log.w(LOG_ID, "no native record to end for $name")
+            return
+        }
+        try {
+            Natives.finishSensor(dataptr)
+        } catch (t: Throwable) {
+            Log.stack(LOG_ID, "endNativeRecord($name)", t)
+        } finally {
+            runCatching { Natives.freedataptr(dataptr) }
         }
     }
 
