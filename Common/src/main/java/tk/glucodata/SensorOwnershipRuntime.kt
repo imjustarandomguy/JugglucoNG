@@ -406,6 +406,13 @@ object SensorOwnershipRuntime {
         return peerReadsCurrently(target)
     }
 
+    /** Whether both devices read [serial] at once, each over its own channel (a G7): [SuperGattCallback.readsAlongside]. */
+    @JvmStatic
+    fun readsAlongside(serial: String?): Boolean {
+        val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
+        return findGatt(target)?.readsAlongside() == true
+    }
+
     /** Whether the peer reads any sensor itself, so it can be asked for a reading this device missed. */
     @JvmStatic
     fun peerReadsAny(): Boolean =
