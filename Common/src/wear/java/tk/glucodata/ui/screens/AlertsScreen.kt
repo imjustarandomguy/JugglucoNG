@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
@@ -28,6 +29,8 @@ import tk.glucodata.UiRefreshBus
 import tk.glucodata.WearToggleSync
 import tk.glucodata.alerts.SnoozeManager
 import tk.glucodata.ui.WearSectionTitle
+import tk.glucodata.ui.components.formatAlertMinutes
+import tk.glucodata.ui.components.rememberActiveSnoozes
 
 /**
  * Alert enable/disable, thresholds and snooze cancel. Threshold *editing* stays
@@ -49,6 +52,10 @@ fun AlertsScreen() {
         UiRefreshBus.revision.collect { revision++ }
     }
 
+    val resources = LocalContext.current.resources
+    // This watch's own snoozes with their time left, kept current while shown.
+    val snoozes = rememberActiveSnoozes(refreshKey = revision)
+
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -61,9 +68,7 @@ fun AlertsScreen() {
                 val config = remember(type, revision) {
                     runCatching { AlertRepository.loadConfig(type) }.getOrNull()
                 } ?: return@items
-                val snoozed = remember(type, revision) {
-                    runCatching { SnoozeManager.isSnoozed(type) }.getOrDefault(false)
-                }
+                val snooze = snoozes.firstOrNull { it.type == type }
                 // The phone's reply is the truth; until it has one, show what
                 // this device holds so the list is never blank.
                 val known = remember(type, revision) {
@@ -88,13 +93,21 @@ fun AlertsScreen() {
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
-                if (snoozed) {
+                if (snooze != null) {
                     Button(
                         onClick = {
                             runCatching { SnoozeManager.clearSnooze(type) }
                             revision++
                         },
-                        label = { Text(stringResource(R.string.cancel)) },
+                        label = {
+                            Text(
+                                stringResource(
+                                    R.string.snoozed_time_left,
+                                    formatAlertMinutes(resources, snooze.minutesLeft)
+                                )
+                            )
+                        },
+                        secondaryLabel = { Text(stringResource(R.string.cancel)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
