@@ -1763,6 +1763,17 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">此剂量的注射时间</string>
     <string name="journal_reminder_add">添加时间</string>
     <string name="journal_reminder_remove">移除 %1$s</string>
+    <string name="journal_log_action">记录</string>
+    <string name="journal_quick_log_insulin">记录胰岛素</string>
+    <string name="journal_quick_log_food">记录食物</string>
+    <string name="insulin_reminder_channel">胰岛素提醒</string>
+    <string name="insulin_reminder_channel_desc">长效剂量未按时记录时提醒</string>
+    <string name="insulin_reminder_not_logged">%1$s 未记录</string>
+    <string name="insulin_reminder_not_logged_since">自 %1$s 起无剂量记录</string>
+    <string name="insulin_reminder_public_title">胰岛素提醒</string>
+    <string name="insulin_reminder_log_dose">记录 %1$s</string>
+    <string name="insulin_reminder_snooze">30 分钟后提醒</string>
+    <string name="insulin_reminder_logged">已记录 %1$s</string>
     <string name="journal_visible_events">可见事件</string>
     <string name="journal_empty">此时间窗口内还没有日志事件</string>
     <string name="journal_type_insulin">胰岛素</string>

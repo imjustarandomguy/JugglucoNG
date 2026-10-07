@@ -1790,6 +1790,17 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_reminders_desc">Tijden waarop deze dosis gepland is</string>
     <string name="journal_reminder_add">Tijd toevoegen</string>
     <string name="journal_reminder_remove">%1$s verwijderen</string>
+    <string name="journal_log_action">Invoeren</string>
+    <string name="journal_quick_log_insulin">Insuline invoeren</string>
+    <string name="journal_quick_log_food">Voeding invoeren</string>
+    <string name="insulin_reminder_channel">Insulineherinneringen</string>
+    <string name="insulin_reminder_channel_desc">Als een langwerkende dosis niet op tijd is ingevoerd</string>
+    <string name="insulin_reminder_not_logged">%1$s niet ingevoerd</string>
+    <string name="insulin_reminder_not_logged_since">Geen dosis sinds %1$s</string>
+    <string name="insulin_reminder_public_title">Insulineherinnering</string>
+    <string name="insulin_reminder_log_dose">%1$s invoeren</string>
+    <string name="insulin_reminder_snooze">30 min snoozen</string>
+    <string name="insulin_reminder_logged">Ingevoerd: %1$s</string>
     <string name="journal_visible_events">Zichtbare gebeurtenissen</string>
     <string name="journal_empty">Nog geen dagboekitems in dit venster</string>
     <string name="journal_type_insulin">Insuline</string>

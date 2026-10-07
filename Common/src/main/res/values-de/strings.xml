@@ -1879,6 +1879,17 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="journal_reminders_desc">Uhrzeiten, zu denen diese Dosis fällig ist</string>
     <string name="journal_reminder_add">Uhrzeit hinzufügen</string>
     <string name="journal_reminder_remove">%1$s entfernen</string>
+    <string name="journal_log_action">Eintragen</string>
+    <string name="journal_quick_log_insulin">Insulin eintragen</string>
+    <string name="journal_quick_log_food">Essen eintragen</string>
+    <string name="insulin_reminder_channel">Insulin-Erinnerungen</string>
+    <string name="insulin_reminder_channel_desc">Wenn eine Langzeitdosis nicht rechtzeitig eingetragen ist</string>
+    <string name="insulin_reminder_not_logged">%1$s nicht eingetragen</string>
+    <string name="insulin_reminder_not_logged_since">Keine Dosis seit %1$s</string>
+    <string name="insulin_reminder_public_title">Insulin-Erinnerung</string>
+    <string name="insulin_reminder_log_dose">%1$s eintragen</string>
+    <string name="insulin_reminder_snooze">30 Min. schlummern</string>
+    <string name="insulin_reminder_logged">Eingetragen: %1$s</string>
     <string name="notification_show_iob_title">Aktives Insulin</string>
     <string name="notification_show_iob_desc">Journal-IOB/eIOB in der Statuszeile anzeigen</string>
     <string name="notification_show_cob_title">Aktive Kohlenhydrate</string>

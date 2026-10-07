@@ -2013,6 +2013,17 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="journal_reminders_desc">Waqtiyada qiyaastan la qaato</string>
     <string name="journal_reminder_add">Ku dar waqti</string>
     <string name="journal_reminder_remove">Ka saar %1$s</string>
+    <string name="journal_log_action">Diiwaangeli</string>
+    <string name="journal_quick_log_insulin">Diiwaangeli insulin</string>
+    <string name="journal_quick_log_food">Diiwaangeli cunto</string>
+    <string name="insulin_reminder_channel">Xasuusinta insulinka</string>
+    <string name="insulin_reminder_channel_desc">Marka qiyaasta muddada dheer aan waqtigeeda la diiwaangelin</string>
+    <string name="insulin_reminder_not_logged">%1$s lama diiwaangelin</string>
+    <string name="insulin_reminder_not_logged_since">Qiyaas ma jirto tan iyo %1$s</string>
+    <string name="insulin_reminder_public_title">Xasuusinta insulinka</string>
+    <string name="insulin_reminder_log_dose">Diiwaangeli %1$s</string>
+    <string name="insulin_reminder_snooze">Hurdo 30 daqiiqo</string>
+    <string name="insulin_reminder_logged">La diiwaangeliyay: %1$s</string>
     <string name="notification_show_iob_title">Muuji insulin jirka ku jirta</string>
     <string name="notification_show_iob_desc">IOB/eIOB-ka joornaalka ee xariiqda xaaladda</string>
     <string name="notification_show_cob_title">Muuji karbohaydraytka jirka ku jira</string>

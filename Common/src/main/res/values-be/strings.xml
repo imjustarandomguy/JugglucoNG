@@ -1817,6 +1817,17 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Час, калі трэба ўвесці гэтую дозу</string>
     <string name="journal_reminder_add">Дадаць час</string>
     <string name="journal_reminder_remove">Выдаліць %1$s</string>
+    <string name="journal_log_action">Запісаць</string>
+    <string name="journal_quick_log_insulin">Запісаць інсулін</string>
+    <string name="journal_quick_log_food">Запісаць ежу</string>
+    <string name="insulin_reminder_channel">Напаміны пра інсулін</string>
+    <string name="insulin_reminder_channel_desc">Калі доза доўгага дзеяння не запісана своечасова</string>
+    <string name="insulin_reminder_not_logged">%1$s: доза не запісана</string>
+    <string name="insulin_reminder_not_logged_since">Няма дозы з %1$s</string>
+    <string name="insulin_reminder_public_title">Напамін пра інсулін</string>
+    <string name="insulin_reminder_log_dose">Запісаць %1$s</string>
+    <string name="insulin_reminder_snooze">Адкласці на 30 хв</string>
+    <string name="insulin_reminder_logged">Запісана: %1$s</string>
     <string name="journal_visible_events">Бачныя падзеі</string>
     <string name="journal_empty">У гэтым акне пакуль няма падзей журнала</string>
     <string name="journal_type_insulin">Інсулін</string>

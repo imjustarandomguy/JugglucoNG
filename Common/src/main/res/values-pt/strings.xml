@@ -1748,6 +1748,17 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Horas a que esta dose é devida</string>
     <string name="journal_reminder_add">Adicionar hora</string>
     <string name="journal_reminder_remove">Remover %1$s</string>
+    <string name="journal_log_action">Registar</string>
+    <string name="journal_quick_log_insulin">Registar insulina</string>
+    <string name="journal_quick_log_food">Registar alimento</string>
+    <string name="insulin_reminder_channel">Lembretes de insulina</string>
+    <string name="insulin_reminder_channel_desc">Quando uma dose de ação prolongada não é registada a tempo</string>
+    <string name="insulin_reminder_not_logged">%1$s: dose não registada</string>
+    <string name="insulin_reminder_not_logged_since">Nenhuma dose desde as %1$s</string>
+    <string name="insulin_reminder_public_title">Lembrete de insulina</string>
+    <string name="insulin_reminder_log_dose">Registar %1$s</string>
+    <string name="insulin_reminder_snooze">Adiar 30 min</string>
+    <string name="insulin_reminder_logged">Registado: %1$s</string>
     <string name="journal_visible_events">Eventos visíveis</string>
     <string name="journal_empty">Ainda não há eventos do diário nesta janela</string>
     <string name="journal_type_insulin">Insulina</string>

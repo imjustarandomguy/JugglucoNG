@@ -2255,6 +2255,17 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Times of day this dose is due</string>
     <string name="journal_reminder_add">Add time</string>
     <string name="journal_reminder_remove">Remove %1$s</string>
+    <string name="journal_log_action">Log</string>
+    <string name="journal_quick_log_insulin">Log insulin</string>
+    <string name="journal_quick_log_food">Log food</string>
+    <string name="insulin_reminder_channel">Insulin reminders</string>
+    <string name="insulin_reminder_channel_desc">When a long-acting dose is not logged by its time</string>
+    <string name="insulin_reminder_not_logged">%1$s not logged</string>
+    <string name="insulin_reminder_not_logged_since">No dose since %1$s</string>
+    <string name="insulin_reminder_public_title">Insulin reminder</string>
+    <string name="insulin_reminder_log_dose">Log %1$s</string>
+    <string name="insulin_reminder_snooze">Snooze 30 min</string>
+    <string name="insulin_reminder_logged">Logged %1$s</string>
     <string name="notification_show_iob_title">Insulin on board</string>
     <string name="notification_show_iob_desc">Show Journal IOB/eIOB in the status line</string>
     <string name="notification_show_cob_title">Carbs on board</string>

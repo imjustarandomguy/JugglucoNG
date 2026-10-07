@@ -1755,6 +1755,17 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="journal_reminders_desc">Энэ тунг хийх цагууд</string>
     <string name="journal_reminder_add">Цаг нэмэх</string>
     <string name="journal_reminder_remove">%1$s устгах</string>
+    <string name="journal_log_action">Бүртгэх</string>
+    <string name="journal_quick_log_insulin">Инсулин бүртгэх</string>
+    <string name="journal_quick_log_food">Хоол бүртгэх</string>
+    <string name="insulin_reminder_channel">Инсулины сануулга</string>
+    <string name="insulin_reminder_channel_desc">Удаан үйлчилгээтэй тунг цагт нь бүртгээгүй үед</string>
+    <string name="insulin_reminder_not_logged">%1$s бүртгэгдээгүй</string>
+    <string name="insulin_reminder_not_logged_since">%1$s-аас хойш тун алга</string>
+    <string name="insulin_reminder_public_title">Инсулины сануулга</string>
+    <string name="insulin_reminder_log_dose">%1$s бүртгэх</string>
+    <string name="insulin_reminder_snooze">30 мин хойшлуулах</string>
+    <string name="insulin_reminder_logged">Бүртгэсэн: %1$s</string>
     <string name="journal_visible_events">Visible events</string>
     <string name="journal_empty">No journal events in this window yet</string>
     <string name="journal_type_insulin">Insulin</string>

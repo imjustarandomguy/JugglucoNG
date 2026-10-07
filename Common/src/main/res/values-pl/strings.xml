@@ -1782,6 +1782,17 @@
     <string name="journal_reminders_desc">Godziny, o których należy podać tę dawkę</string>
     <string name="journal_reminder_add">Dodaj godzinę</string>
     <string name="journal_reminder_remove">Usuń %1$s</string>
+    <string name="journal_log_action">Zapisz</string>
+    <string name="journal_quick_log_insulin">Zapisz insulinę</string>
+    <string name="journal_quick_log_food">Zapisz jedzenie</string>
+    <string name="insulin_reminder_channel">Przypomnienia o insulinie</string>
+    <string name="insulin_reminder_channel_desc">Gdy dawka długodziałająca nie została zapisana na czas</string>
+    <string name="insulin_reminder_not_logged">%1$s: nie zapisano dawki</string>
+    <string name="insulin_reminder_not_logged_since">Brak dawki od %1$s</string>
+    <string name="insulin_reminder_public_title">Przypomnienie o insulinie</string>
+    <string name="insulin_reminder_log_dose">Zapisz %1$s</string>
+    <string name="insulin_reminder_snooze">Odłóż o 30 min</string>
+    <string name="insulin_reminder_logged">Zapisano: %1$s</string>
     <string name="journal_visible_events">Widoczne zdarzenia</string>
     <string name="journal_empty">Brak zdarzeń dziennika w tym oknie</string>
     <string name="journal_type_insulin">Insulina</string>

@@ -1747,6 +1747,17 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Tider då dosen ska tas</string>
     <string name="journal_reminder_add">Lägg till tid</string>
     <string name="journal_reminder_remove">Ta bort %1$s</string>
+    <string name="journal_log_action">Logga</string>
+    <string name="journal_quick_log_insulin">Logga insulin</string>
+    <string name="journal_quick_log_food">Logga mat</string>
+    <string name="insulin_reminder_channel">Insulinpåminnelser</string>
+    <string name="insulin_reminder_channel_desc">När en långverkande dos inte loggats i tid</string>
+    <string name="insulin_reminder_not_logged">%1$s inte loggad</string>
+    <string name="insulin_reminder_not_logged_since">Ingen dos sedan %1$s</string>
+    <string name="insulin_reminder_public_title">Insulinpåminnelse</string>
+    <string name="insulin_reminder_log_dose">Logga %1$s</string>
+    <string name="insulin_reminder_snooze">Snooza 30 min</string>
+    <string name="insulin_reminder_logged">Loggat: %1$s</string>
     <string name="journal_visible_events">Synliga händelser</string>
     <string name="journal_empty">Inga journalhändelser i det här fönstret ännu</string>
     <string name="journal_type_insulin">Insulin</string>
