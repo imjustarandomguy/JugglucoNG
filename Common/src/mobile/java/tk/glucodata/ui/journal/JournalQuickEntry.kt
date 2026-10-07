@@ -33,7 +33,6 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import tk.glucodata.Applic
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
@@ -48,25 +47,6 @@ import tk.glucodata.ui.util.GlucoseFormatter
  * never resizes it. A type that needs less leaves room; one that needs more scrolls.
  */
 internal const val JOURNAL_ENTRY_SHEET_HEIGHT_FRACTION = 0.85f
-
-/** The entry type the dashboard's + opens the sheet on: the type of the last entry added. */
-internal object JournalQuickEntryPrefs {
-    private const val PREFS_NAME = "tk.glucodata_preferences"
-    private const val LAST_TYPE_KEY = "journal_quick_entry_last_type"
-
-    fun lastType(context: Context = Applic.app): JournalEntryType =
-        parseLastType(prefs(context).getString(LAST_TYPE_KEY, null))
-
-    fun rememberType(type: JournalEntryType, context: Context = Applic.app) {
-        prefs(context).edit().putString(LAST_TYPE_KEY, type.storageValue).apply()
-    }
-
-    /** Insulin until something else has been added: it is what gets logged most. */
-    internal fun parseLastType(stored: String?): JournalEntryType =
-        JournalEntryType.entries.firstOrNull { it.storageValue == stored } ?: JournalEntryType.INSULIN
-
-    private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-}
 
 private val quickEntryRepository by lazy { JournalRepository() }
 
