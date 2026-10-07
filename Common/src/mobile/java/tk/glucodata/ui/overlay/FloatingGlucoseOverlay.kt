@@ -597,6 +597,8 @@ fun FloatingDetailsCard(
     nowFlow: StateFlow<Long>,
     isDark: Boolean,
     onOpenApp: () -> Unit,
+    // "+ Insulin" / "+ Food" under the details; null hides them (journal off).
+    onQuickEntry: ((tk.glucodata.data.journal.JournalEntryType) -> Unit)? = null,
     backgroundOpacity: Float = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY,
 ) {
     val reading by readingFlow.collectAsState()
@@ -658,6 +660,7 @@ fun FloatingDetailsCard(
                 Spacer(Modifier.fillMaxWidth().height(chartHeight))
             }
             details?.iobLine?.let { Text(it, color = textColor.copy(alpha = 0.8f), fontSize = 13.sp) }
+            onQuickEntry?.let { FloatingQuickEntryButtons(textColor = textColor, onLog = it) }
         }
     }
 }
