@@ -15,6 +15,13 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
     private const val LOG_ID = "NightscoutJournalFollowerImporter"
     private const val SOURCE_RECORD_IDS_PER_STATEMENT = 500
 
+    /**
+     * How the sourceRecordId of every row received from the server [sensorId] names begins
+     * ([tk.glucodata.drivers.nightscout.NightscoutFollowerRegistry.deriveSensorId] of its URL),
+     * followed by ":" and the document's id.
+     */
+    internal fun sourcePrefix(sensorId: String): String = "nightscout:${sensorId.trim().ifBlank { "unknown" }}"
+
     @Keep
     override fun importTreatments(sensorId: String, treatmentsJson: String): Int = runBlocking {
         withContext(Dispatchers.IO) {
@@ -52,7 +59,7 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
         val ownV1Rows = journalDao
             .getOwnUploadedNightscoutRows()
             .associate { JournalTreatmentUploader.v1Identifier(it.id) to it.timestamp }
-        val sourcePrefix = "nightscout:${sensorId.trim().ifBlank { "unknown" }}"
+        val sourcePrefix = sourcePrefix(sensorId)
         var imported = 0
         var deleted = 0
         val context = Applic.app
@@ -82,9 +89,10 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
                 continue
             }
 
+            // A row the user edited keeps the edit until the server has it (or changed since).
+            val serverModifiedAt = JournalTreatmentTransfer.serverModifiedMillis(treatment)
             for (input in parsed.inputs) {
-                repository.upsertEntry(input)
-                imported++
+                if (repository.upsertReceivedNightscoutEntry(input, serverModifiedAt) != null) imported++
             }
             val importedIds = parsed.inputs.mapNotNull { it.sourceRecordId }.toSet()
             val staleIds = parsed.candidateSourceRecordIds.filterNot { it in importedIds }

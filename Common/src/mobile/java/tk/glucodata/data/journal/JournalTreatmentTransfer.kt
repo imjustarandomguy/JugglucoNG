@@ -7,11 +7,16 @@ import java.security.MessageDigest
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.abs
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 object JournalTreatmentTransfer {
     private const val SOURCE_KIND_CARBS = "carbs"
@@ -31,6 +36,20 @@ object JournalTreatmentTransfer {
         SOURCE_KIND_ACTIVITY,
         SOURCE_KIND_NOTE
     )
+
+    // The names a received document may carry each value under, in the order they are read.
+    // An edit of a received treatment is written back under the name it was read from, so the
+    // two must not drift apart: both use these.
+    private val INSULIN_KEYS = arrayOf("insulin", "enteredInsulin", "enteredinsulin", "bolus")
+    private val CARB_KEYS = arrayOf("carbs", "carb", "enteredCarbs", "enteredcarbs", "grams", "carbsGrams")
+    private val PROTEIN_KEYS = arrayOf("protein", "proteinGrams")
+    private val FAT_KEYS = arrayOf("fat", "fatGrams")
+    private val MGDL_KEYS = arrayOf("glucoseValueMgDl", "glucose_mgdl", "mgdl", "mbg")
+    private val MMOL_KEYS = arrayOf("glucose_mmol", "mmol")
+    private val DURATION_MINUTES_KEYS = arrayOf("durationMinutes", "absorptionTime", "absorptionMinutes")
+    private val EPOCH_TIME_KEYS = listOf("date", "mills", "millis", "timestamp", "time", "createdAt", "created_at_millis")
+    private val DATE_STRING_KEYS = listOf("created_at", "dateString", "createdAt", "timestamp", "time")
+    private const val MAX_UTC_OFFSET_MINUTES = 18 * 60
 
     data class ParsedTreatment(
         val inputs: List<JournalEntryInput>,
@@ -204,7 +223,7 @@ object JournalTreatmentTransfer {
         val eventKey = eventType.orEmpty().lowercase(Locale.US)
         val safeTimestamp = timestamp ?: return null
 
-        val carbs = treatment.optFiniteFloat("carbs", "carb", "enteredCarbs", "enteredcarbs", "grams", "carbsGrams")
+        val carbs = treatment.optFiniteFloat(*CARB_KEYS)
             ?: treatment.optFiniteFloat("amount").takeIf {
                 explicitType == JournalEntryType.CARBS || eventKey.contains("carb")
             }
@@ -217,8 +236,8 @@ object JournalTreatmentTransfer {
                     note = note,
                     amount = carbs,
                     durationMinutes = treatment.optDurationMinutes(),
-                    proteinGrams = treatment.optPositiveFloat("protein", "proteinGrams"),
-                    fatGrams = treatment.optPositiveFloat("fat", "fatGrams"),
+                    proteinGrams = treatment.optPositiveFloat(*PROTEIN_KEYS),
+                    fatGrams = treatment.optPositiveFloat(*FAT_KEYS),
                     source = source,
                     sourceRecordId = sourceRecordId(sourcePrefix, baseId, SOURCE_KIND_CARBS),
                     nsRemoteId = nightscoutRemoteId,
@@ -227,7 +246,7 @@ object JournalTreatmentTransfer {
             )
         }
 
-        val insulin = treatment.optPositiveFloat("insulin", "enteredInsulin", "enteredinsulin", "bolus")
+        val insulin = treatment.optPositiveFloat(*INSULIN_KEYS)
             ?: treatment.optPositiveFloat("amount").takeIf { explicitType == JournalEntryType.INSULIN }
         if (insulin != null) {
             val preset = chooseInsulinPreset(insulinPresets, treatment)
@@ -356,6 +375,107 @@ object JournalTreatmentTransfer {
         return abs(time - rowTime) <= OWN_V1_DOCUMENT_TIME_TOLERANCE_MILLIS
     }
 
+    /**
+     * When [treatment] was last changed, as far as it says: API v3's srvModified, which v3 sets on
+     * every write, else an `updated_at` its writer kept. Null when it says nothing; a document only
+     * ever written over v1 usually carries neither.
+     */
+    fun serverModifiedMillis(treatment: JSONObject): Long? =
+        treatment.optEpochMillis("srvModified")
+            ?: treatment.optEpochMillis("updated_at")
+            ?: treatment.optNonBlankString("updated_at")?.let(::parseDateString)
+
+    /** Whether the app that wrote [treatment] marked it as not to be changed; v3 refuses (422) to. */
+    fun isReadOnlyDocument(treatment: JSONObject): Boolean =
+        treatment.optBoolean("isReadOnly", false) ||
+            treatment.optBoolean("readOnly", false) ||
+            treatment.optBoolean("readonly", false)
+
+    /**
+     * What an edit of a treatment received from Nightscout changes on the document it came from.
+     *
+     * @property fields what to set, each under the name the document already reads it from
+     * @property timestampMillis the edited time when it is not the document's, else null
+     */
+    data class ReceivedEditChanges(val fields: JSONObject, val timestampMillis: Long?)
+
+    /**
+     * What has to change on [document], the treatment [entry] was received from, for it to say what
+     * the edited row says; null when the document no longer holds a part of the row's kind (marked
+     * deleted, or changed so that the part is gone), which leaves the server's copy to stand.
+     *
+     * Only what the journal lets the user edit is compared: the amount, the time, the note and the
+     * fields of the row's own kind. Each change goes under the name this parser read the value
+     * from, so the next receive reads the edit back and nothing else of the other app's is renamed
+     * or rewritten. Titles and the insulin preset are the journal's own reading of a document and
+     * are not sent. A value the row no longer has is not cleared on the server either: the editor
+     * drops some fields (macros with macros off) without the user having asked to.
+     */
+    fun receivedEditChanges(entry: JournalEntryEntity, document: JSONObject): ReceivedEditChanges? {
+        val kind = JournalEntryType.fromStorage(entry.entryType)
+        val parsed = parseTreatment(
+            treatment = document,
+            source = JournalEntrySource.NIGHTSCOUT,
+            sourcePrefix = "edit",
+            insulinPresets = emptyList(),
+            stringResource = { "" }
+        ) ?: return null
+        if (parsed.deleteOnly) return null
+        val server = parsed.inputs.firstOrNull { it.type == kind } ?: return null
+        val fields = JSONObject()
+        when (kind) {
+            JournalEntryType.INSULIN ->
+                fields.putChangedValue(document, entry.amount, server.amount, INSULIN_KEYS)
+            JournalEntryType.CARBS -> {
+                fields.putChangedValue(document, entry.amount, server.amount, CARB_KEYS)
+                // Not "duration": in an AAPS document that is how long extended carbs last.
+                fields.putChangedDuration(document, entry.durationMinutes, server.durationMinutes, "absorptionTime")
+                fields.putChangedValue(document, entry.proteinGrams, server.proteinGrams, PROTEIN_KEYS)
+                fields.putChangedValue(document, entry.fatGrams, server.fatGrams, FAT_KEYS)
+            }
+            JournalEntryType.FINGERSTICK ->
+                fields.putChangedGlucose(document, entry.glucoseValueMgDl, server.glucoseValueMgDl)
+            JournalEntryType.ACTIVITY -> {
+                fields.putChangedDuration(document, entry.durationMinutes, server.durationMinutes, "duration")
+                val intensity = JournalIntensity.fromStorage(entry.intensity)
+                if (intensity != null && intensity != server.intensity) fields.put("intensity", intensity.storageValue)
+            }
+            JournalEntryType.NOTE -> Unit
+        }
+        val note = entry.note.normalizedNote()
+        if (note != server.note.normalizedNote()) {
+            // The receive shows who entered a treatment as the note's last part; that part is the
+            // document's enteredBy, not its notes, and writing it into them would repeat it.
+            val source = document.optNonBlankString("enteredBy", "device", "app")
+            fields.put("notes", withoutSourceLabel(note, source).orEmpty())
+        }
+        return ReceivedEditChanges(fields, entry.timestamp.takeIf { it != server.timestamp })
+    }
+
+    /**
+     * [document] as API v1 must be sent to change it. v1's PUT replaces the stored document whole
+     * (by its _id), so everything the other app wrote goes back as it was, enteredBy, app and
+     * identifier included, with only [changes] applied.
+     */
+    fun receivedEditV1Document(document: JSONObject, changes: ReceivedEditChanges, nowMillis: Long): JSONObject {
+        val updated = JSONObject(document.toString())
+        for (key in changes.fields.keys()) {
+            updated.put(key, changes.fields.get(key))
+        }
+        changes.timestampMillis?.let { updated.putTimestamp(it) }
+        // v1 recomputes utcOffset from the zone created_at is written in on every save, so a time
+        // in UTC would reset the other app's offset to zero. Written in that offset, it is kept.
+        val offset = updated.optUtcOffsetMinutes()
+        val millis = changes.timestampMillis ?: updated.optTreatmentTimestampMillis()
+        if (offset != null && offset != 0 && millis != null) {
+            updated.put("created_at", formatIso8601(millis, offset))
+        }
+        // v1 keeps no modification time of its own. A document v3 also serves carries v3's, and a
+        // v3 reader (AAPS's sync among them) only sees a change that moves it.
+        if (updated.has("srvModified")) updated.put("srvModified", nowMillis)
+        return updated
+    }
+
     private fun sourceRecordId(sourcePrefix: String, baseId: String, kind: String): String =
         "$sourcePrefix:$baseId:$kind"
 
@@ -411,11 +531,11 @@ object JournalTreatmentTransfer {
     }
 
     private fun JSONObject.optTreatmentTimestampMillis(): Long? {
-        for (key in listOf("date", "mills", "millis", "timestamp", "time", "createdAt", "created_at_millis")) {
+        for (key in EPOCH_TIME_KEYS) {
             val normalized = optEpochMillis(key)
             if (normalized != null) return normalized
         }
-        for (key in listOf("created_at", "dateString", "createdAt", "timestamp", "time")) {
+        for (key in DATE_STRING_KEYS) {
             val parsed = optNonBlankString(key)?.let(::parseDateString)
             if (parsed != null) return parsed
         }
@@ -466,7 +586,7 @@ object JournalTreatmentTransfer {
         optFiniteFloat("durationInMilliseconds")?.let { millis ->
             if (millis > 0f) return (millis / 60_000f).toInt().coerceIn(1, 24 * 60)
         }
-        optFiniteFloat("durationMinutes", "absorptionTime", "absorptionMinutes")?.let { minutes ->
+        optFiniteFloat(*DURATION_MINUTES_KEYS)?.let { minutes ->
             if (minutes > 0f) return minutes.toInt().coerceIn(1, 24 * 60)
         }
         val duration = optFiniteFloat("duration") ?: return null
@@ -494,8 +614,8 @@ object JournalTreatmentTransfer {
     }
 
     private fun JSONObject.optGlucoseMgdl(): Float? {
-        firstFiniteField("glucoseValueMgDl", "glucose_mgdl", "mgdl", "mbg")?.let { return it }
-        firstFiniteField("glucose_mmol", "mmol")?.let { return it * MGDL_PER_MMOLL }
+        firstFiniteField(*MGDL_KEYS)?.let { return it }
+        firstFiniteField(*MMOL_KEYS)?.let { return it * MGDL_PER_MMOLL }
         val glucose = firstFiniteField("glucose") ?: return null
         val units = optNonBlankString("units", "unit")
             ?.lowercase(Locale.US)
@@ -554,6 +674,84 @@ object JournalTreatmentTransfer {
     }
 
     private fun buildNote(vararg parts: String?): String? = mergedNotes(*parts)
+
+    /** The first of [keys] holding a number, which is the one [optFiniteFloat] reads. */
+    private fun JSONObject.firstFiniteKey(keys: Array<String>): String? =
+        keys.firstOrNull { optFiniteFloat(it) != null }
+
+    /**
+     * Puts [edited] under the name [document] reads it from (the first of [keys] it holds a number
+     * under, else the first of [keys]) when it differs from what the document says.
+     */
+    private fun JSONObject.putChangedValue(document: JSONObject, edited: Float?, server: Float?, keys: Array<String>) {
+        if (edited == null || !edited.isFinite() || edited <= 0f || sameValue(edited, server)) return
+        put(document.firstFiniteKey(keys) ?: keys.first(), edited.toCleanDouble())
+    }
+
+    private fun JSONObject.putChangedDuration(document: JSONObject, edited: Int?, server: Int?, defaultKey: String) {
+        if (edited == null || edited <= 0 || edited == server) return
+        val (key, inMillis) = document.durationField() ?: (defaultKey to false)
+        put(key, if (inMillis) edited * 60_000L else edited.toLong())
+    }
+
+    /** The field [optDurationMinutes] reads, and whether it holds milliseconds. */
+    private fun JSONObject.durationField(): Pair<String, Boolean>? {
+        if ((optFiniteFloat("durationInMilliseconds") ?: 0f) > 0f) return "durationInMilliseconds" to true
+        val minutesKey = firstFiniteKey(DURATION_MINUTES_KEYS)
+        if (minutesKey != null && (optFiniteFloat(minutesKey) ?: 0f) > 0f) return minutesKey to false
+        val duration = optFiniteFloat("duration") ?: return null
+        return if (duration > 0f) "duration" to (duration > 24f * 60f) else null
+    }
+
+    /** As [optGlucoseMgdl] reads it: the first positive mg/dL field, else mmol/L, else glucose. */
+    private fun JSONObject.putChangedGlucose(document: JSONObject, editedMgdl: Float?, serverMgdl: Float?) {
+        if (editedMgdl == null || !editedMgdl.isFinite() || editedMgdl <= 0f || sameValue(editedMgdl, serverMgdl)) return
+        fun positive(key: String) = (document.optFiniteFloat(key) ?: 0f) > 0f
+        val mmol = (editedMgdl / MGDL_PER_MMOLL * 100f).roundToLong() / 100.0
+        MGDL_KEYS.firstOrNull(::positive)?.let { put(it, editedMgdl.toCleanDouble()); return }
+        MMOL_KEYS.firstOrNull(::positive)?.let { put(it, mmol); return }
+        val inMmol = document.optNonBlankString("units", "unit")?.lowercase(Locale.US)?.contains("mmol") == true
+        put("glucose", if (inMmol) mmol else editedMgdl.toCleanDouble())
+    }
+
+    private fun sameValue(a: Float, b: Float?): Boolean = b != null && abs(a - b) < 0.001f
+
+    /** 0.1f as 0.1 rather than 0.10000000149011612. */
+    private fun Float.toCleanDouble(): Double = toString().toDouble()
+
+    private fun String?.normalizedNote(): String? = this?.trim()?.takeIf { it.isNotBlank() }
+
+    /** [note] without the trailing " | [source]" [buildNote] adds to a received treatment's note. */
+    internal fun withoutSourceLabel(note: String?, source: String?): String? {
+        if (note == null || source.isNullOrBlank()) return note
+        if (note == source) return null
+        return note.removeSuffix(" | $source").trim().takeIf { it.isNotBlank() }
+    }
+
+    /** Moves every time field [optTreatmentTimestampMillis] could read, and created_at, to [millis]. */
+    private fun JSONObject.putTimestamp(millis: Long) {
+        for (key in EPOCH_TIME_KEYS) {
+            if (optEpochMillis(key) != null) put(key, millis)
+        }
+        val iso = formatIso8601(millis)
+        for (key in DATE_STRING_KEYS) {
+            if (optEpochMillis(key) == null && optNonBlankString(key)?.let(::parseDateString) != null) put(key, iso)
+        }
+        put("created_at", iso)
+    }
+
+    /** Nightscout's utcOffset, in minutes; null when absent or out of range. */
+    private fun JSONObject.optUtcOffsetMinutes(): Int? {
+        val value = optFiniteFloat("utcOffset") ?: return null
+        val minutes = value.roundToInt()
+        return minutes.takeIf { abs(it) <= MAX_UTC_OFFSET_MINUTES }
+    }
+
+    private fun formatIso8601(epochMillis: Long, offsetMinutes: Int): String =
+        OffsetDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.ofTotalSeconds(offsetMinutes * 60))
+            .format(ISO_WITH_OFFSET)
+
+    private val ISO_WITH_OFFSET: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
 
     private fun defaultAbsorptionMinutes(grams: Float, protein: Float?, fat: Float?): Int {
         val macroExtra = ((protein ?: 0f) * 1.5f) + ((fat ?: 0f) * 2.5f)

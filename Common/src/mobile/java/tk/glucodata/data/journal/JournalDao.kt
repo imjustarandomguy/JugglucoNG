@@ -227,11 +227,27 @@ interface JournalDao {
     @Query("UPDATE journal_entries SET nsUploadedAt = :uploadedAt, nsRemoteId = :remoteId WHERE id = :id")
     suspend fun markEntryUploadedToNightscout(id: Long, remoteId: String, uploadedAt: Long)
 
-    @Query("SELECT nsRemoteId FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL")
+    /**
+     * Settles the user's edit of a row received from Nightscout: [nsUploadedAt] at or after
+     * [updatedAt] when the server took it, null when the server's copy stands. Only while the row
+     * still holds the edit that was sent; one made meanwhile stays pending for the next pass.
+     */
+    @Query("UPDATE journal_entries SET nsUploadedAt = :nsUploadedAt WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun settleReceivedNightscoutEdit(id: Long, updatedAt: Long, nsUploadedAt: Long?): Int
+
+    // Rows received from Nightscout are left out: the documents they stand for are other apps',
+    // and an edit of one sets nsUploadedAt only to mark the edit (see nightscoutUploadedAtAfterWrite).
+    @Query(
+        "SELECT nsRemoteId FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL " +
+            "AND source != 'nightscout'"
+    )
     suspend fun getOwnUploadedNightscoutRemoteIds(): List<String>
 
     /** The same rows as [getOwnUploadedNightscoutRemoteIds], by row id and time. */
-    @Query("SELECT id, timestamp FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL")
+    @Query(
+        "SELECT id, timestamp FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL " +
+            "AND source != 'nightscout'"
+    )
     suspend fun getOwnUploadedNightscoutRows(): List<JournalUploadedRow>
 
     @Query(
