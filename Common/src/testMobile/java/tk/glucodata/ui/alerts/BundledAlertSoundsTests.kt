@@ -29,7 +29,7 @@ class BundledAlertSoundsTests {
             AlertType.PRE_HIGH to "rising", AlertType.MISSED_READING to "signal",
             AlertType.PERSISTENT_HIGH to "high", AlertType.SENSOR_EXPIRY to "reminder",
             AlertType.FALLING_FAST to "falling", AlertType.RISING_FAST to "rising",
-            AlertType.SIGNAL_RESTORED to "reminder"
+            AlertType.SIGNAL_RESTORED to "reminder", AlertType.PERSISTENT_LOW to "low"
         )
         assertEquals(AlertType.entries.toSet(), expected.keys)
         BundledAlertSounds.styles.forEach { style ->

@@ -647,6 +647,7 @@ public class Notify {
     private static String alertChannelForKind(int kind) {
         switch (kind) {
             case 0:
+            case 15: // Persistent low
                 return CHANNEL_LOW;
             case 1:
                 return CHANNEL_HIGH;
@@ -863,6 +864,7 @@ public class Notify {
             case 0:
             case 5:
             case 7:
+            case 15:
                 return value.isBlank() ? message : "LOW " + value;
             case 1:
             case 6:
@@ -2352,6 +2354,8 @@ public class Notify {
                 return 100;
             case 0: // Low
                 return 90;
+            case 15: // Persistent low: still a hypo, so above every high
+                return 88;
             case 6: // Very high
                 return 85;
             case 4: // Loss
@@ -2513,7 +2517,7 @@ public class Notify {
         long[] timings;
         int[] amplitudes;
 
-        if (kind == 0) { // LOW: SOS-like (short-short-long)
+        if (kind == 0 || kind == 15) { // LOW / PERSISTENT_LOW: SOS-like (short-short-long)
             timings = new long[] { 0, 200, 100, 200, 100, 800, 200 };
             amplitudes = new int[] { 0, 255, 0, 255, 0, 255, 0 };
         } else if (kind == 1) { // HIGH: Rapid pulses
@@ -4125,7 +4129,7 @@ public class Notify {
     }
 
     private static boolean isLowFamilyAlert(int alertTypeId) {
-        return alertTypeId == 0 || alertTypeId == 5 || alertTypeId == 7;
+        return alertTypeId == 0 || alertTypeId == 5 || alertTypeId == 7 || alertTypeId == 15;
     }
 
     private static boolean isHighFamilyAlert(int alertTypeId) {
