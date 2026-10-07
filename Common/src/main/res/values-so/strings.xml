@@ -2502,6 +2502,7 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="wear_direct_sensor_watch_desc">Saacaddu waxay raadisaa dareemaha waxayna la wareegtaa Bluetooth ka dib akhriska ugu horreeya ee la aqbalo.</string>
     <string name="wear_claim_state_phone_owns">Telefoonku wuxuu maamulaa dareemaha</string>
     <string name="wear_claim_state_requesting">Saacaddu waxay codsanaysaa dareemaha</string>
+    <string name="wear_stop_reading_on_watch">Jooji akhrinta saacadda</string>
     <string name="direct_status_phone_and_watch">Telefoonka + saacadda</string>
     <string name="direct_status_phone">Telefoonka</string>
     <string name="direct_status_watch">Saacadda</string>

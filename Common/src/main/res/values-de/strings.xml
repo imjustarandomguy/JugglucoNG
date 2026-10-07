@@ -1586,6 +1586,7 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="wear_direct_sensor_phone_desc">Begleitmodus: Das Smartphone scannt und sendet Messwerte.</string>
     <string name="wear_claim_state_phone_owns">Smartphone steuert Sensor</string>
     <string name="wear_claim_state_requesting">Uhr fordert Sensor an</string>
+    <string name="wear_stop_reading_on_watch">Lesen auf der Uhr beenden</string>
     <string name="direct_status_phone_and_watch">Smartphone + Uhr</string>
     <string name="direct_status_phone">Smartphone</string>
     <string name="direct_status_watch">Uhr</string>

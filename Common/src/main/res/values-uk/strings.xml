@@ -1479,6 +1479,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="wear_direct_sensor_phone_desc">Режим компаньйона: телефон сканує й надсилає показання.</string>
     <string name="wear_claim_state_phone_owns">Датчиком керує телефон</string>
     <string name="wear_claim_state_requesting">Годинник запитує датчик</string>
+    <string name="wear_stop_reading_on_watch">Зупинити зчитування на годиннику</string>
     <string name="direct_status_phone_and_watch">Телефон + годинник</string>
     <string name="direct_status_phone">Телефон</string>
     <string name="direct_status_watch">Годинник</string>

@@ -377,11 +377,17 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
             }
             if (tk.glucodata.WearSensorClaim.currentState() != tk.glucodata.WearSensorClaimState.PHONE_OWNS) {
                 item {
+                    val alongside = remember(currentSensor, revision) {
+                        runCatching {
+                            tk.glucodata.SensorOwnershipRuntime.readsAlongside(currentSensor)
+                        }.getOrDefault(false)
+                    }
                     WearNavigationRow(
-                        stringResource(R.string.wear_return_sensor_to_phone),
+                        stringResource(stopDirectLabel(alongside)),
                         onClick = {
-                            tk.glucodata.WearSensorClaim.setDirectRequested(false)
-                            // setDirectRequested publishes both the claim state and netinfo.
+                            // Publishes the claim state and netinfo, and tells
+                            // the phone, whose "Direct sensor on watch" follows.
+                            tk.glucodata.WearSensorClaim.stopOnWatch()
                         },
                     )
                 }
@@ -389,6 +395,14 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
         }
     }
 }
+
+/**
+ * The words on the button that turns "Direct sensor on watch" off; it does the
+ * same either way. A sensor both devices read at once (a G7) never stopped
+ * reading on the phone, so nothing goes back to it: the watch stops reading.
+ */
+internal fun stopDirectLabel(readsAlongside: Boolean): Int =
+    if (readsAlongside) R.string.wear_stop_reading_on_watch else R.string.wear_return_sensor_to_phone
 
 /** A "Phone: …" / "Watch: …" line under a sensor; [alert] when the watch should be reading it and is not. */
 @Composable
