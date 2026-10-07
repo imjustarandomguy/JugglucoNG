@@ -168,4 +168,18 @@ class HistoryDatabaseSafetyTests {
         assertFalse(source.contains("DROP TABLE clone_journal_tombstones"))
         assertFalse(source.contains("DROP TABLE journal_entries"))
     }
+
+    @Test
+    fun insulinDosingColumnsArriveAtV33ByGuardedAddsOnly() {
+        val source = historyDatabaseSource()
+
+        assertTrue(source.contains("Migration(32, 33)"))
+        assertTrue(source.contains("MIGRATION_32_33"))
+        // Every preset gets a whole-unit step; no default dose and no reminders until set.
+        assertTrue(source.contains("ADD COLUMN doseStep REAL NOT NULL DEFAULT 1"))
+        assertTrue(source.contains("ADD COLUMN defaultDose REAL\""))
+        assertTrue(source.contains("ADD COLUMN reminderTimes TEXT NOT NULL DEFAULT ''"))
+        assertTrue(source.contains("hasColumn(db, \"journal_insulin_presets\", \"doseStep\")"))
+        assertFalse(source.contains("DROP TABLE journal_insulin_presets"))
+    }
 }
