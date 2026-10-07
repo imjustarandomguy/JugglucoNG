@@ -31,16 +31,31 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import androidx.compose.runtime.snapshots.Snapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import tk.glucodata.CurrentDisplaySource
+import tk.glucodata.CurrentGlucoseSource
+import tk.glucodata.HistoryRepositoryAccess
+import tk.glucodata.LiveReadingLanes
+import tk.glucodata.Notify
+import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.GlucoseRepository
 import tk.glucodata.data.settings.FloatingSettingsRepository
@@ -48,11 +63,13 @@ import tk.glucodata.ui.overlay.FloatingDetailsCard
 import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
 import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
+import tk.glucodata.ui.overlay.FloatingPillReading
 import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.Natives
 
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
     private companion object {
+        private const val LOG_ID = "FloatingGlucose"
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
         /** How long the details card stays open on its own. */
         private const val DETAILS_TIMEOUT_MS = 10_000L
@@ -95,6 +112,25 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     // The pill's readings, followed only while the screen is on; see loadHistory.
     private val history = MutableStateFlow<List<GlucosePoint>>(emptyList())
     private var historyJob: Job? = null
+    // Whether the readings arrived since the screen came on; see resolveReadings.
+    private var readingsArrived = false
+
+    // The reading the pill shows, resolved here from the readings and the live value;
+    // see resolvePillReading. Asked for on each change of either, and by the self-check.
+    private val reading = MutableStateFlow(FloatingPillReading.NONE)
+    private val resolveRequests = Channel<Unit>(Channel.CONFLATED)
+    private var resolvedInputs: FloatingPillWatchdog.ResolveInputs? = null
+    // The resolver, the refresh bus and the self-check: like the readings, screen on only.
+    private var screenJob: Job? = null
+
+    // The pill's check on itself; see FloatingPillWatchdog and checkPill.
+    private val watchdog = FloatingPillWatchdog()
+    // The revision of the reading the pill last drew; written from its draw pass.
+    private var drawnRevision = -1L
+    private val frameRequests = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
 
     // The pill's window is removed while the screen is off and when it changes host,
     // but its composition stays, so that it comes back with its settings instead of a
@@ -207,6 +243,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 FloatingGlucoseOverlay(
                     repository = settingsRepository,
                     historyFlow = history,
+                    readingFlow = reading,
+                    frameRequests = frameRequests,
+                    onReadingDrawn = { drawnRevision = it },
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
@@ -555,20 +594,26 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     /**
      * While the screen is off the pill's window is removed (an accessibility overlay
      * would also draw on the always-on display, where a fixed pill burns in), its
-     * frames are paused and its readings are not followed: nothing runs for it. When
-     * the screen comes on, its frames resume, the readings are loaded again, and the
-     * pill goes back in a new window once they are in; see FloatingPillPresence. The
-     * lock screen keeps it.
+     * frames are paused and its readings are not followed: nothing runs for it, the
+     * self-check included. When the screen comes on, its frames resume, the readings
+     * are loaded again, and the pill goes back in a new window once they are in and
+     * resolved; see FloatingPillPresence. The lock screen keeps it.
      */
     private fun updateForScreen() {
         val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-        if (presence.onScreen(power.isInteractive)) {
-            pillFrameClock.resume()
+        val turnedOn = presence.onScreen(power.isInteractive)
+        // Set from the state, not only on its changes, so the frames can never stay
+        // paused under a pill on screen.
+        if (presence.screenOn) pillFrameClock.resume() else pillFrameClock.pause()
+        if (turnedOn) {
+            readingsArrived = false
             loadHistory()
+            followReadings()
         } else if (!presence.screenOn) {
-            pillFrameClock.pause()
             historyJob?.cancel()
             historyJob = null
+            screenJob?.cancel()
+            screenJob = null
         }
         updatePillWindow()
     }
@@ -582,9 +627,163 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 Natives.getunit() == 1
             ).collect { points ->
                 history.value = points
+                readingsArrived = true
+                resolveRequests.trySend(Unit)
+            }
+        }
+    }
+
+    /**
+     * Until the screen goes off: resolves the pill's reading whenever it may have
+     * changed, and has the pill check itself; see checkPill.
+     */
+    private fun followReadings() {
+        screenJob?.cancel()
+        screenJob = serviceScope.launch {
+            launch { resolveReadings() }
+            // Every reading path ends in a refresh request: a new live value, a reading
+            // stored from the watch, a calibration. The current value is skipped: the
+            // readings, loading now, ask for the first resolution.
+            launch { UiRefreshBus.revision.drop(1).collect { resolveRequests.trySend(Unit) } }
+            launch { checkPillPeriodically() }
+        }
+    }
+
+    /**
+     * Resolves the pill's reading on each request, one at a time, off the main thread.
+     * The pill goes on screen after the first resolution from the readings loaded since
+     * the screen came on, so its first frame already shows them.
+     */
+    private suspend fun resolveReadings() {
+        while (true) {
+            resolveRequests.receive()
+            val points = history.value
+            val loaded = readingsArrived
+            val (resolved, inputs) = withContext(Dispatchers.IO) { resolvePillReading(points) }
+            val current = reading.value
+            if (resolved.copy(revision = current.revision) != current) {
+                reading.value = resolved.copy(revision = current.revision + 1)
+            }
+            resolvedInputs = inputs
+            if (loaded) {
                 presence.onReadingsLoaded()
                 updatePillWindow()
             }
+        }
+    }
+
+    /**
+     * The newest reading and the current value as the notification resolves it,
+     * except while the live source still holds an older reading than one stored
+     * since: then the stored one, resolved as it will be once current, instead of the
+     * older live one for the minutes until that expires.
+     */
+    private fun resolvePillReading(
+        points: List<GlucosePoint>,
+    ): Pair<FloatingPillReading, FloatingPillWatchdog.ResolveInputs> {
+        val sensorId = SensorIdentity.resolveMainSensor()
+        val newest = points.lastOrNull()
+        val liveTime = liveReadingTime(sensorId)
+        val snapshot = runCatching {
+            if (newest != null && FloatingPillWatchdog.storeIsAheadOfLive(liveTime, newest.timestamp)) {
+                CurrentDisplaySource.resolveIncomingReading(
+                    reading = LiveReadingLanes.stock(newest.value, newest.rawValue),
+                    rate = Float.NaN,
+                    targetTimeMillis = newest.timestamp,
+                    preferredSensorId = sensorId,
+                    source = "history",
+                )
+            } else {
+                CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensorId)
+            }
+        }.getOrNull()
+        return FloatingPillReading(point = newest, snapshot = snapshot, sensorId = sensorId) to
+            FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
+    }
+
+    /** Time of the live reading the current value is resolved with, or 0 when there is none. */
+    private fun liveReadingTime(sensorId: String?): Long =
+        runCatching { CurrentGlucoseSource.getFresh(Notify.glucosetimeout, sensorId)?.timeMillis }
+            .getOrNull() ?: 0L
+
+    /**
+     * While the screen is on: checks the pill every CHECK_INTERVAL_MS, and VERIFY_DELAY_MS
+     * after each new reading it is handed and after each repair, so a reading that does
+     * not reach the screen is noticed at once and a missed event is caught within the
+     * interval. Plain delays on the main looper: they never wake the device, and the
+     * screen-off path cancels them with the rest.
+     */
+    private suspend fun checkPillPeriodically() {
+        var verified = reading.value.revision
+        var wait = FloatingPillWatchdog.CHECK_INTERVAL_MS
+        while (true) {
+            val handed = withTimeoutOrNull(wait) { reading.first { it.revision != verified } }
+            if (handed != null) {
+                verified = handed.revision
+                delay(FloatingPillWatchdog.VERIFY_DELAY_MS)
+            }
+            wait = if (checkPill()) {
+                FloatingPillWatchdog.VERIFY_DELAY_MS
+            } else {
+                FloatingPillWatchdog.CHECK_INTERVAL_MS
+            }
+        }
+    }
+
+    /** One check of the pill; true when something was repaired, to look again soon. */
+    private suspend fun checkPill(): Boolean {
+        // A missed SCREEN_OFF would otherwise keep the pill and this check going.
+        val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        if (power.isInteractive != presence.screenOn) updateForScreen()
+        if (!presence.shown || hostWindowManager == null) return false
+
+        val serial = glucoseRepository.currentSerial.value
+        val storedNewest = if (serial.isBlank()) 0L else withContext(Dispatchers.IO) {
+            HistoryRepositoryAccess.getLatestTimestampForSensorBlocking(serial)
+        }
+        val sensorId = SensorIdentity.resolveMainSensor()
+        val action = watchdog.check(
+            storedNewest = storedNewest,
+            loadedNewest = history.value.lastOrNull()?.timestamp ?: 0L,
+            inputsNow = FloatingPillWatchdog.ResolveInputs(sensorId, liveReadingTime(sensorId)),
+            inputsResolved = resolvedInputs,
+            handed = reading.value.revision,
+            drawn = drawnRevision,
+        )
+        if (action != FloatingPillWatchdog.Action.NONE) {
+            tk.glucodata.Log.i(LOG_ID, "pill behind: $action")
+        }
+        when (action) {
+            FloatingPillWatchdog.Action.NONE -> return false
+            // Its emission asks for a resolution.
+            FloatingPillWatchdog.Action.RELOAD -> loadHistory()
+            FloatingPillWatchdog.Action.RESOLVE -> resolveRequests.trySend(Unit)
+            FloatingPillWatchdog.Action.REDRAW -> redrawPill()
+            FloatingPillWatchdog.Action.REATTACH -> {
+                detachPill()
+                attachPill()
+            }
+        }
+        return true
+    }
+
+    /**
+     * What a tap does to the pill, without the tap: pending state changes are applied
+     * and its recomposer runs a frame, then its window redraws from the root down (an
+     * invalidation from the root also redraws a child whose own was lost).
+     */
+    private fun redrawPill() {
+        Snapshot.sendApplyNotifications()
+        frameRequests.tryEmit(Unit)
+        val root = overlayRoot ?: return
+        invalidateTree(root)
+        root.requestLayout()
+    }
+
+    private fun invalidateTree(view: View) {
+        view.invalidate()
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) invalidateTree(view.getChildAt(i))
         }
     }
 
