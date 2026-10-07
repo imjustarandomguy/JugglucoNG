@@ -28,7 +28,6 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -87,6 +86,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -146,8 +146,6 @@ import tk.glucodata.data.journal.JournalQuickEntryPolicy
 import tk.glucodata.data.prediction.PredictionModelProfile
 import tk.glucodata.data.journal.LegacyJournalFoodDatabase
 import tk.glucodata.ui.GlucosePoint
-import tk.glucodata.ui.components.CompactSheetDragHandle
-import tk.glucodata.ui.components.StableModalBottomSheet
 import tk.glucodata.ui.util.ConnectedButtonGroup
 import tk.glucodata.ui.util.GlucoseFormatter
 import kotlinx.coroutines.Dispatchers
@@ -373,7 +371,9 @@ fun JournalEntrySheet(
     sensorSerialProvider: () -> String?,
     recentAmountsLoader: suspend (JournalEntryType, Long?, Long) -> List<Float> = ::loadRecentJournalAmounts,
     // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
-    initialInsulinPresetId: Long? = null
+    initialInsulinPresetId: Long? = null,
+    // The form alone, never shown: the sheet measures one per type to choose its height.
+    sizingOnly: Boolean = false
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -567,21 +567,48 @@ fun JournalEntrySheet(
         }
     }
 
-    StableModalBottomSheet(
-        onDismissRequest = onDismiss,
-        // One height for every type, so switching tabs does not move the sheet; what does not
-        // fit scrolls above the Save button.
-        modifier = Modifier.fillMaxHeight(JOURNAL_ENTRY_SHEET_HEIGHT_FRACTION),
+    JournalEntrySheetFrame(
+        sizingOnly = sizingOnly,
+        onDismiss = onDismiss,
         sheetState = sheetState,
-        dragHandle = { CompactSheetDragHandle() },
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        contentKey = draft.type,
+        // One height for every type, so switching tabs does not move the sheet: the tallest
+        // form, of every type as it opens (of the entry itself when editing); what does not fit
+        // scrolls above the Save button.
+        sizingForms = {
+            val sizingTypes = if (existingEntry != null) listOf(existingEntry.type) else JournalEntryType.entries
+            sizingTypes.forEach { type ->
+                key(type) {
+                    JournalEntrySheet(
+                        unit = unit,
+                        selectedTimestamp = selectedTimestamp,
+                        suggestedGlucoseMgDl = suggestedGlucoseMgDl,
+                        suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
+                        suggestedAmountFraction = suggestedAmountFraction,
+                        insulinPresets = insulinPresets,
+                        foods = foods,
+                        foodMacrosEnabled = foodMacrosEnabled,
+                        doseJournalEntries = doseJournalEntries,
+                        doseProfile = doseProfile,
+                        initialType = type,
+                        existingEntry = existingEntry,
+                        onDismiss = {},
+                        onSave = {},
+                        // Shapes the food picker; never called from a form that is not shown.
+                        onSaveFood = onSaveFood,
+                        sensorSerialProvider = sensorSerialProvider,
+                        recentAmountsLoader = recentAmountsLoader,
+                        initialInsulinPresetId = initialInsulinPresetId,
+                        sizingOnly = true
+                    )
+                }
+            }
+        }
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                // The space Save leaves on screen; its own height when measured for the sheet's.
+                .weight(1f, fill = !sizingOnly)
                 .padding(horizontal = 20.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
