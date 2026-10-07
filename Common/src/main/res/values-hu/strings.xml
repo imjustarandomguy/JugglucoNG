@@ -2170,6 +2170,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="journal_source_api">API-n keresztül érkezett</string>
     <string name="journal_source_health_connect">Health Connect rendszerből</string>
     <string name="journal_source_meter">Vércukormérőből</string>
+    <string name="journal_time_locked_nightscout">A Nightscoutból érkezett kezelések ideje nem módosítható</string>
     <string name="journal_note_label">Megjegyzés</string>
     <string name="journal_onset_label">Hatáskezdet</string>
     <string name="journal_add_preset">Inzulintípus hozzáadása</string>
