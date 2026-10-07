@@ -271,4 +271,173 @@ class SensorIdentityTests {
         assertNull(SensorIdentity.aliasOf("SIBI:P225043JMV"))
     }
 
+    // --- one G7 under its three names (2026-10-07: the watch reported "739749") ---
+
+    /** The phone's record. */
+    private val g7Full = "8958912147739749"
+
+    /** Its alias: the watch's record, the phone's card and driver. */
+    private val g7Alias = "12147739749"
+
+    /** How native lists a record named after the alias: the watch's driver and report. */
+    private val g7Listing = "739749"
+
+    /** Another G7 whose names end in the same six characters. */
+    private val otherFull = "8958999999739749"
+    private val otherAlias = "99999739749"
+
+    private val cloud = "NSF-3073E464C8CB"
+
+    /** A sensor whose alias is the same as the cloud record's native listing. */
+    private val sensorLikeCloud = "E07A3073E464C8CB"
+
+    @Test
+    fun nativeNameForms_runFromTheFullNameDownToTheWatchListing() {
+        assertEquals(listOf(g7Full, g7Alias, g7Listing), SensorIdentity.nativeNameForms(g7Full))
+        assertEquals(listOf(g7Alias, g7Listing), SensorIdentity.nativeNameForms(g7Alias))
+        assertEquals(listOf(g7Listing), SensorIdentity.nativeNameForms(g7Listing))
+    }
+
+    @Test
+    fun nativeNameForms_noneForCloudAidexOrManagedIds() {
+        assertEquals(listOf(cloud), SensorIdentity.nativeNameForms(cloud))
+        assertEquals(listOf("API-3073E464C8CB"), SensorIdentity.nativeNameForms("API-3073E464C8CB"))
+        assertEquals(listOf("MQF-3073E464C8CB"), SensorIdentity.nativeNameForms("MQF-3073E464C8CB"))
+        assertEquals(listOf("X-1234567890123"), SensorIdentity.nativeNameForms("X-1234567890123"))
+        assertEquals(listOf("SIBI:P225043JMV"), SensorIdentity.nativeNameForms("SIBI:P225043JMV"))
+        assertEquals(emptyList<String>(), SensorIdentity.nativeNameForms(" "))
+    }
+
+    @Test
+    fun sameNativeSensor_allThreeNamesOfOneG7() {
+        val names = listOf(g7Full, g7Alias, g7Listing)
+        names.forEach { left ->
+            names.forEach { right ->
+                assertTrue("$left ~ $right", SensorIdentity.sameNativeSensor(left, right))
+            }
+        }
+        // Libre names carry letters: case does not matter.
+        assertTrue(SensorIdentity.sameNativeSensor("1P2250671014ATR8", "0671014atr8"))
+        assertTrue(SensorIdentity.sameNativeSensor("0671014ATR8", "14atr8"))
+    }
+
+    @Test
+    fun sameNativeSensor_aDifferentSensorSharingASuffixIsNot() {
+        assertFalse(SensorIdentity.sameNativeSensor(g7Alias, otherAlias))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, otherFull))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, otherAlias))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Alias, otherFull))
+        // Only whole five-character prefixes come off, never any suffix.
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "2147739749"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "47739749"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Alias, "39749"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, null))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "?"))
+    }
+
+    @Test
+    fun sameNativeSensor_aCloudRecordIsNeverARealSensor() {
+        assertFalse(SensorIdentity.sameNativeSensor(cloud, sensorLikeCloud))
+        assertFalse(SensorIdentity.sameNativeSensor(cloud, "073E464C8CB"))
+        assertFalse(SensorIdentity.sameNativeSensor("073E464C8CB", cloud))
+        assertFalse(SensorIdentity.sameNativeSensor(cloud, "64C8CB"))
+        assertFalse(SensorIdentity.sameNativeSensor("API-3073E464C8CB", sensorLikeCloud))
+        assertFalse(SensorIdentity.sameNativeSensor("MQF-3073E464C8CB", sensorLikeCloud))
+        assertFalse(SensorIdentity.sameNativeSensor(cloud, "API-3073E464C8CB"))
+        assertTrue(SensorIdentity.sameNativeSensor(cloud, cloud.lowercase()))
+    }
+
+    @Test
+    fun nativeMatchesOfOne_findsTheSensorAShortNameBelongsTo() {
+        assertEquals(listOf(g7Alias), SensorIdentity.nativeMatchesOfOne(g7Listing, listOf("0M0008MEK0U", g7Alias)))
+        assertEquals(listOf(g7Full, g7Alias), SensorIdentity.nativeMatchesOfOne(g7Listing, listOf(g7Full, g7Alias)))
+        assertEquals(listOf(g7Full), SensorIdentity.nativeMatchesOfOne(g7Alias, listOf(otherFull, g7Full)))
+    }
+
+    @Test
+    fun nativeMatchesOfOne_nothingWhenTwoSensorsShareTheShortName() {
+        assertEquals(emptyList<String>(), SensorIdentity.nativeMatchesOfOne(g7Listing, listOf(g7Full, otherFull)))
+        assertEquals(emptyList<String>(), SensorIdentity.nativeMatchesOfOne(g7Listing, listOf(g7Alias, otherAlias)))
+        assertEquals(emptyList<String>(), SensorIdentity.nativeMatchesOfOne(g7Listing, listOf("0M0008MEK0U")))
+    }
+
+    @Test
+    fun nativeMatchesOfOne_anExactNameIsThatSensor() {
+        assertEquals(listOf(g7Alias), SensorIdentity.nativeMatchesOfOne(g7Alias, listOf(g7Alias, otherAlias)))
+    }
+
+    @Test
+    fun nativeMatchesOfOne_neverPicksARealSensorForACloudRecord() {
+        assertEquals(emptyList<String>(), SensorIdentity.nativeMatchesOfOne(cloud, listOf(sensorLikeCloud)))
+        assertEquals(emptyList<String>(), SensorIdentity.nativeMatchesOfOne("64C8CB", listOf(cloud)))
+        assertEquals(listOf(sensorLikeCloud), SensorIdentity.nativeMatchesOfOne("64C8CB", listOf(cloud, sensorLikeCloud)))
+    }
+
+    @Test
+    fun distinctNativeSensors_theWatchListsItsG7OnceUnderItsRecordName() {
+        // Its driver "739749", native's listing "739749", native's record 12147739749.
+        assertEquals(listOf(g7Alias), SensorIdentity.distinctNativeSensors(listOf(g7Listing, g7Listing, g7Alias)))
+    }
+
+    @Test
+    fun distinctNativeSensors_prefersTheFullestName() {
+        assertEquals(
+            listOf(g7Full),
+            SensorIdentity.distinctNativeSensors(listOf(g7Alias, g7Alias, g7Full, g7Listing)),
+        )
+    }
+
+    @Test
+    fun distinctNativeSensors_keepsFirstSeenOrder() {
+        assertEquals(
+            listOf("0M0008MEK0U", g7Full, otherAlias),
+            SensorIdentity.distinctNativeSensors(listOf("0M0008MEK0U", g7Alias, otherAlias, g7Full)),
+        )
+    }
+
+    @Test
+    fun distinctNativeSensors_aShortFormTwoSensorsShareJoinsNeither() {
+        assertEquals(
+            listOf(g7Full, otherFull),
+            SensorIdentity.distinctNativeSensors(listOf(g7Listing, g7Full, otherFull)),
+        )
+        assertEquals(
+            listOf(g7Alias, otherAlias),
+            SensorIdentity.distinctNativeSensors(listOf(g7Alias, g7Listing, otherAlias)),
+        )
+    }
+
+    @Test
+    fun distinctNativeSensors_keepsACloudRecordApartFromARealSensor() {
+        assertEquals(
+            listOf(sensorLikeCloud, cloud),
+            SensorIdentity.distinctNativeSensors(listOf(sensorLikeCloud, cloud, "073E464C8CB")),
+        )
+    }
+
+    @Test
+    fun distinctNativeSensors_aManagedIdIsNotSwappedForANativeShellName() {
+        val managed = "SIBI:P225043JMV"
+        val shell = "ABCDE12345678901"
+        val sameDriver = { a: String, b: String -> setOf(a, b) == setOf(managed, shell) }
+        assertEquals(listOf(managed), SensorIdentity.distinctNativeSensors(listOf(managed, shell), sameDriver))
+    }
+
+    @Test
+    fun crossDeviceName_isTheAliasBothDevicesResolve() {
+        assertEquals(g7Alias, SensorIdentity.crossDeviceName(g7Full))
+        assertEquals(g7Alias, SensorIdentity.crossDeviceName(g7Alias))
+        assertEquals(cloud, SensorIdentity.crossDeviceName(cloud))
+        assertEquals("X-1234567890123", SensorIdentity.crossDeviceName("X-1234567890123"))
+        assertEquals("SIBI:P225043JMV", SensorIdentity.crossDeviceName("SIBI:P225043JMV"))
+        assertNull(SensorIdentity.crossDeviceName("?"))
+    }
+
+    @Test
+    fun crossDeviceKey_theFullNameAndTheAliasKeyAlike() {
+        assertEquals(g7Alias, SensorIdentity.crossDeviceKey(g7Full))
+        assertEquals(g7Alias, SensorIdentity.crossDeviceKey(g7Alias))
+        assertEquals("0671014atr8", SensorIdentity.crossDeviceKey("1P2250671014ATR8"))
+        assertEquals(cloud.lowercase(), SensorIdentity.crossDeviceKey(cloud))
+    }
 }
