@@ -452,6 +452,8 @@ private fun ChartMenuItem(
  * button: End for a corner FAB, CenterHorizontally for a centred one. As in a menu, pressing the
  * button and sliding off it, or holding it, opens the menu under the finger: the item it is
  * over lights up, and lifting there picks it; lifting anywhere else leaves the menu open.
+ * With [tapType], a tap opens no menu: it picks the type [tapType] returns, as the menu would;
+ * holding the button or sliding off it still opens the menu.
  */
 @Composable
 fun BoxScope.JournalExpandableFab(
@@ -459,6 +461,7 @@ fun BoxScope.JournalExpandableFab(
     onExpandedChange: (Boolean) -> Unit,
     onTypeSelected: (JournalEntryType) -> Unit,
     modifier: Modifier = Modifier,
+    tapType: (() -> JournalEntryType)? = null,
     horizontalAlignment: Alignment.Horizontal = Alignment.End
 ) {
     val view = LocalView.current
@@ -487,7 +490,8 @@ fun BoxScope.JournalExpandableFab(
                 checked = expanded,
                 onCheckedChange = {
                     view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    onExpandedChange(it)
+                    val tapped = if (it) tapType?.invoke() else null
+                    if (tapped != null) onTypeSelected(tapped) else onExpandedChange(it)
                 },
                 modifier = Modifier
                     .onGloballyPositioned { buttonCoordinates = it }
