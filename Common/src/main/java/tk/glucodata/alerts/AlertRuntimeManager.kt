@@ -36,6 +36,7 @@ object AlertRuntimeManager {
     private var preLowSuppressionReason: String? = null
     private var preHighIobSuppressed = false
     private var preHighCoverageSkipLogged: String? = null
+    private var persistentHighLastReason: String? = null
     private val standardEpisodes = AlertEpisodeState<AlertType>()
     private val sensorExpiryState = SensorExpiryAlertState(AlertRepository.sensorExpiryWarnedStore)
     private val fallingDeltaState = DeltaAlarmState(falling = true)
@@ -551,49 +552,55 @@ object AlertRuntimeManager {
         triggerAlert(type, glucoseValue, currentRateLocked(), message)
     }
 
+    /**
+     * The rules live in [PersistentHighPolicy]. The duration is measured between reading
+     * times: [nowMs] is the wall clock on the 15 s tick, and a tick must not fire before
+     * the reading that completes the duration, or phone and watch, each on its own tick,
+     * ring at different times for the same G7 reading. [nowMs] is only the start time of
+     * last resort, when no reading time is known at all.
+     */
     private fun evaluatePersistentHighLocked(nowMs: Long) {
         val type = AlertType.PERSISTENT_HIGH
         val config = AlertRepository.loadConfig(type)
-        val threshold = config.threshold
-        val durationMs = (config.durationMinutes ?: 0) * 60_000L
         val glucoseValue = currentGlucoseValueLocked()
-
-        if (!config.enabled || threshold == null || durationMs <= 0L || glucoseValue == null) {
-            persistentHighStartedAtMs = 0L
-            clearRuntimeAlert(type, "persistent-high-disabled")
-            return
+        val readingTimeMs = lastDisplaySnapshot?.timeMillis?.takeIf { it > 0L }
+            ?: lastReadingTimeMs.takeIf { it > 0L }
+            ?: nowMs
+        val wasStartedAtMs = persistentHighStartedAtMs
+        val decision = PersistentHighPolicy.decide(
+            startedAtMs = wasStartedAtMs,
+            config = config,
+            activeNow = config.isActiveNow(),
+            value = glucoseValue,
+            readingTimeMs = readingTimeMs,
+            rate = currentRateLocked(),
+            snoozed = SnoozeManager.isSnoozed(type)
+        )
+        persistentHighStartedAtMs = decision.startedAtMs
+        if (decision.reason != persistentHighLastReason &&
+            (wasStartedAtMs != 0L || decision.startedAtMs != 0L)
+        ) {
+            Log.i(
+                LOG_ID,
+                "PERSISTENT_HIGH ${decision.action} (${decision.reason}) value=$glucoseValue " +
+                    "startedAt=${decision.startedAtMs} reading=$readingTimeMs"
+            )
         }
+        persistentHighLastReason = decision.reason
 
-        if (glucoseValue <= threshold) {
-            persistentHighStartedAtMs = 0L
-            clearRuntimeAlert(type, "persistent-high-cleared")
-            return
+        when (decision.action) {
+            // HOLD: a steep fall is proof the correction works - suppress, cancel any
+            // running retries, but do NOT reset the timer: if the value stagnates
+            // above the threshold again, the high phase was continuous and the
+            // alarm must not wait out a fresh full duration.
+            PersistentHighAction.RESET, PersistentHighAction.HOLD -> {
+                clearRuntimeAlert(type, decision.reason)
+                return
+            }
+            PersistentHighAction.WAIT -> return
+            PersistentHighAction.FIRE -> Unit
         }
-
-        if (persistentHighStartedAtMs == 0L) {
-            persistentHighStartedAtMs = lastReadingTimeMs.takeIf { it > 0L } ?: nowMs
-        }
-
-        if (!config.isActiveNow()) {
-            persistentHighStartedAtMs = 0L
-            clearRuntimeAlert(type, "persistent-high-time-inactive")
-            return
-        }
-
-        // A steep fall is proof the correction works - suppress, cancel any
-        // running retries, but do NOT reset the timer: if the value stagnates
-        // above the threshold again, the high phase was continuous and the
-        // alarm must not wait out a fresh full duration.
-        if (FallSuppressionPolicy.fallingSuppresses(currentRateLocked(), config.fallRateSuppress)) {
-            clearRuntimeAlert(type, "persistent-high-falling")
-            return
-        }
-
-        if (SnoozeManager.isSnoozed(type)) {
-            return
-        }
-
-        if (nowMs - persistentHighStartedAtMs < durationMs) {
+        if (glucoseValue == null) {
             return
         }
 
