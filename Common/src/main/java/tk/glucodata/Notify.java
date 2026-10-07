@@ -725,6 +725,20 @@ public class Notify {
             channelSensorExpiry.setShowBadge(false);
             channelSensorExpiry.setLockscreenVisibility(VISIBILITY_PUBLIC);
             notificationManager.createNotificationChannel(channelSensorExpiry);
+
+            if (isWearable) {
+                // The watch's alarm screen notification (postWearAlarmNotification). Its own
+                // channel, so its importance is high whatever was done to the others. Silent
+                // and without vibration: Notify plays the alarm's sound and vibration itself.
+                NotificationChannel channelWearAlarm = new NotificationChannel(CHANNEL_WEAR_ALARM,
+                        context.getString(R.string.alarms), NotificationManager.IMPORTANCE_HIGH);
+                channelWearAlarm.setDescription(context.getString(R.string.alarm_description));
+                channelWearAlarm.setSound(null, null);
+                channelWearAlarm.enableVibration(false);
+                channelWearAlarm.setShowBadge(false);
+                channelWearAlarm.setLockscreenVisibility(VISIBILITY_PUBLIC);
+                notificationManager.createNotificationChannel(channelWearAlarm);
+            }
         }
 
     }
@@ -1769,6 +1783,28 @@ public class Notify {
     public static void cancelAlertNotification() {
         if (onenot != null && onenot.notificationManager != null) {
             onenot.notificationManager.cancel(glucosealarmid);
+        }
+        cancelAlarmScreenNotification(-1);
+    }
+
+    /**
+     * Watch: removes the alarm screen notification (postWearAlarmNotification) unless it
+     * is known to show an alert other than [kind]; a negative [kind] removes it whatever
+     * it shows. No-op elsewhere.
+     */
+    public static void cancelAlarmScreenNotification(int kind) {
+        if (!isWearable || onenot == null || onenot.notificationManager == null) {
+            return;
+        }
+        final int shown = wearAlarmNotificationKind;
+        if (kind >= 0 && shown >= 0 && shown != kind) {
+            return;
+        }
+        try {
+            onenot.notificationManager.cancel(wearAlarmNotificationId);
+            wearAlarmNotificationKind = -1;
+        } catch (Throwable th) {
+            Log.stack(LOG_ID, "cancelAlarmScreenNotification", th);
         }
     }
 
@@ -3180,6 +3216,85 @@ public class Notify {
         }
     }
 
+    private static final String CHANNEL_WEAR_ALARM = "WEAR_ALARM_SCREEN";
+    static private final int wearAlarmNotificationId = 81433;
+    /** The alert the watch's alarm screen notification shows, -1 for none known. */
+    private static volatile int wearAlarmNotificationKind = -1;
+
+    /**
+     * Watch: brings the alarm screen up the way Wear OS alarm apps do.
+     *
+     * The watch used to start its AlarmActivity directly (showpopupalarm, and the
+     * AlarmManager backup through AlarmLaunchReceiver). From the background that is a
+     * background activity start, which Android refuses unless the app may draw over other
+     * apps (SYSTEM_ALERT_WINDOW), and the watch does not grant that: it rang and vibrated
+     * with nothing on screen, and appops showed SYSTEM_ALERT_WINDOW rejected at the alarm.
+     *
+     * The path the system keeps open, with USE_FULL_SCREEN_INTENT granted, is a
+     * notification in the alarm category on a high-importance channel with the alarm
+     * screen as its full-screen intent: the system starts the screen when the display is
+     * off or ambient, and otherwise shows the alarm with Snooze and Dismiss, its tap
+     * opening the screen. The direct start is still tried after it and works whenever the
+     * app may start activities (in front, or with the overlay permission).
+     *
+     * The channel is silent and does not vibrate: sound and vibration stay Notify's own.
+     * The notification has no delete intent, so swiping it away acknowledges nothing; it
+     * goes when the alarm is answered, here or on the phone (cancelAlertNotification,
+     * cancelAlarmScreenNotification). A retry posts it again, and the screen comes back.
+     */
+    private void postWearAlarmNotification(int kind, float glvalue, String glucoseValue, String message,
+            float rate, int sensorgen2, String deliveryMode) {
+        if (!isWearable) {
+            return;
+        }
+        try {
+            final PendingIntent alarmScreen = mkAlarmPendingIntent(glucoseValue, message, rate, kind, null,
+                    deliveryMode);
+            final Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? new Notification.Builder(Applic.app, CHANNEL_WEAR_ALARM)
+                    : new Notification.Builder(Applic.app);
+            final AlertType alertType = AlertType.Companion.fromId(kind);
+            final String text = message != null ? message : "";
+            final String title = alertType == AlertType.LOSS
+                    ? Applic.app.getString(alertType.getNameResId())
+                    : AlertDisplayText.notificationBadge(alertType, false, text);
+            builder.setContentTitle(title)
+                    .setContentText(glucoseValue)
+                    .setContentIntent(alarmScreen)
+                    .setFullScreenIntent(alarmScreen, true)
+                    .setCategory(Notification.CATEGORY_ALARM)
+                    .setPriority(Notification.PRIORITY_MAX)
+                    .setVisibility(VISIBILITY_PUBLIC)
+                    .setShowWhen(true)
+                    .setOnlyAlertOnce(false)
+                    .setAutoCancel(false)
+                    .setLocalOnly(true);
+            setIcon(builder, glvalue, sensorgen2);
+
+            final Intent snoozeIntent = new Intent(Applic.app, tk.glucodata.receivers.AlarmActionReceiver.class);
+            snoozeIntent.setAction(tk.glucodata.receivers.AlarmActionReceiver.ACTION_SNOOZE);
+            snoozeIntent.putExtra(tk.glucodata.receivers.AlarmActionReceiver.EXTRA_ALERT_TYPE_ID, kind);
+            builder.addAction(R.drawable.ic_snooze, Applic.app.getString(R.string.snooze),
+                    PendingIntent.getBroadcast(Applic.app, alarmPendingRequestCode(300_000, kind, null),
+                            snoozeIntent, PendingIntent.FLAG_UPDATE_CURRENT | penmutable));
+            final Intent dismissIntent = new Intent(Applic.app, tk.glucodata.receivers.AlarmActionReceiver.class);
+            dismissIntent.setAction(tk.glucodata.receivers.AlarmActionReceiver.ACTION_DISMISS);
+            dismissIntent.putExtra(tk.glucodata.receivers.AlarmActionReceiver.EXTRA_ALERT_TYPE_ID, kind);
+            builder.addAction(R.drawable.ic_dismiss,
+                    Applic.app.getString(R.string.notification_dismiss_action_dismiss),
+                    PendingIntent.getBroadcast(Applic.app, alarmPendingRequestCode(400_000, kind, null),
+                            dismissIntent, PendingIntent.FLAG_UPDATE_CURRENT | penmutable));
+
+            notificationManager.notify(wearAlarmNotificationId, builder.build());
+            wearAlarmNotificationKind = kind;
+            if (doLog) {
+                Log.i(LOG_ID, "Wear alarm screen notification kind=" + kind + " mode=" + deliveryMode);
+            }
+        } catch (Throwable th) {
+            Log.stack(LOG_ID, "postWearAlarmNotification", th);
+        }
+    }
+
     private void deliverTriggeredAlert(int kind, float glvalue, String message, notGlucose strglucose, String type) {
         AlarmLaunchResult alarmLaunchResult = new AlarmLaunchResult(false, false);
         boolean skipBanner = false;
@@ -3197,6 +3312,12 @@ public class Notify {
             if (forceLaunch) {
                 float rate = (strglucose != null) ? strglucose.rate : Float.NaN;
                 final String alarmGlucoseValue = alarmDisplayGlucoseValue(glvalue, strglucose);
+                if (isWearable) {
+                    // The watch may not start the alarm screen from the background; its
+                    // full-screen notification can (postWearAlarmNotification).
+                    postWearAlarmNotification(kind, glvalue, alarmGlucoseValue, message, rate,
+                            strglucose != null ? strglucose.sensorgen2 : 0, deliveryMode);
+                }
                 alarmLaunchResult = launchOrQueueAlarmActivityResult(alarmGlucoseValue, message, rate, kind, null,
                         deliveryMode);
                 if (doLog)
@@ -3234,6 +3355,9 @@ public class Notify {
                 boolean isBoth = AlertDeliveryPolicy.BOTH.equals(deliveryMode);
 
                 if (isSystem || isBoth) {
+                    if (isWearable) {
+                        postWearAlarmNotification(kind, Float.NaN, message, message, Float.NaN, 0, deliveryMode);
+                    }
                     launchOrQueueAlarmActivityResult(message, message, Float.NaN, kind, null, deliveryMode);
                 }
             }
