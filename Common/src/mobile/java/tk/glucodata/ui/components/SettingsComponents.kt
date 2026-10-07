@@ -288,6 +288,8 @@ fun SettingsItem(
     animatePosition: Boolean = false,
     modifier: Modifier = Modifier,
     subtitleStyle: TextStyle? = null,
+    /** Below the subtitle, for lines that need their own colour. */
+    supportingContent: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         onClick = onClick ?: {},
@@ -335,6 +337,7 @@ fun SettingsItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                supportingContent?.invoke()
             }
 
             if (trailingContent != null) {
