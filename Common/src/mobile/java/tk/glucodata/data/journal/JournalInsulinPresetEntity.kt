@@ -27,5 +27,16 @@ data class JournalInsulinPresetEntity(
     @ColumnInfo(defaultValue = "0")
     val curveModelVersion: Int = 0,
     @ColumnInfo(defaultValue = "'unverified'")
-    val curveEvidence: String = JournalCurveEvidence.UNVERIFIED.storageValue
+    val curveEvidence: String = JournalCurveEvidence.UNVERIFIED.storageValue,
+    /** Units the entry sheet's -/+ buttons move by: the dial step of the pen this insulin is in. */
+    @ColumnInfo(defaultValue = "1")
+    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    /** Filled in when this insulin is chosen in the entry sheet; null when none is set. */
+    val defaultDose: Float? = null,
+    /**
+     * Times of day to be reminded of this dose, long-acting insulin only
+     * ([JournalInsulinDosing.encodeReminderTimes]); empty when there are none.
+     */
+    @ColumnInfo(defaultValue = "''")
+    val reminderTimes: String = ""
 )
