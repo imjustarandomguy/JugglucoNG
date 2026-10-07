@@ -300,7 +300,8 @@ object AlertRuntimeManager {
         }
         return AlertRuntimeEvaluation(
             standardGlucoseAlertHandled = true,
-            standardGlucoseAlertStarted = triggered
+            // A firing held for the other device sounded and said nothing here.
+            standardGlucoseAlertStarted = triggered && AlarmRouting.ringsHere(type)
         )
     }
 
@@ -799,6 +800,9 @@ object AlertRuntimeManager {
         }
     }
     private fun triggerAlert(type: AlertType, glucoseValue: Float, rate: Float, message: String): Boolean {
+        if (!AlarmRouting.ringsHere(type)) {
+            return holdForOtherDevice(type)
+        }
         try {
             val triggered = Notify.triggerSupplementalGlucoseAlert(type.id, glucoseValue, rate, message)
             if (triggered) {
@@ -818,6 +822,32 @@ object AlertRuntimeManager {
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "triggerAlert ${type.name}", t)
             return false
+        }
+    }
+
+    /**
+     * Where alarms ring ([AlarmRouting]) gives [type] to the other device, so
+     * this one stays silent: no sound, vibration, alarm screen, banner or
+     * retry. The firing still passes Notify's first-fire gate and spends the
+     * episode as a delivery would ([AlertStateTracker.onAlertHeld]), so it does
+     * not ring here later in the same episode. It opens no same-direction quiet
+     * period and arms no SMS watchdog: nothing here was shown to acknowledge.
+     * Returns what a delivery would have, so every caller's bookkeeping
+     * (pending delivery, delta latch) treats it as handled.
+     */
+    private fun holdForOtherDevice(type: AlertType): Boolean {
+        return try {
+            val config = AlertRepository.loadConfig(type)
+            if (!AlertStateTracker.shouldTrigger(type, config)) {
+                false
+            } else {
+                AlertStateTracker.onAlertHeld(type, config)
+                Log.i(LOG_ID, "Held ${type.name} for the other device (${AlarmRouting.describeInputs()})")
+                true
+            }
+        } catch (t: Throwable) {
+            Log.stack(LOG_ID, "holdForOtherDevice ${type.name}", t)
+            false
         }
     }
 

@@ -44,6 +44,16 @@ import java.util.zip.Inflater
  * ([AlertRepository.deviceLocalKeys]), and state, which is not configuration.
  * Snoozes and the sensor-expiry warnings already given live in other stores,
  * so they stay per device.
+ *
+ * After the alert lines comes one global line, for the settings every alert
+ * shares that also change what the watch does ([GlobalAlertSettings]): where
+ * alarms ring, the same-direction quiet period and acknowledged-high coverage.
+ *
+ *     g:alerts=v1,<base64 of zlib of {"entries":{<store key>:<value>}}>
+ *
+ * Same body, same rules: recorded from the store's writer
+ * ([AlertRepository.writeGlobalEntries]), read with its readers, and dropped by
+ * an older watch, whose parsers want true/false after '=' or a "c:" scope.
  */
 object AlertConfigSync {
     private const val LOG_ID = "AlertConfigSync"
@@ -53,6 +63,11 @@ object AlertConfigSync {
 
     /** This build's line format. */
     const val FORMAT = "v1"
+
+    /** The global line's scope and id: `g:alerts=`. */
+    const val GLOBAL_SCOPE = "g"
+    const val GLOBAL_ID = "alerts"
+    private const val GLOBAL_PREFIX = "$GLOBAL_SCOPE:$GLOBAL_ID="
 
     private const val KEY_UNIT = "unit"
     private const val KEY_ENTRIES = "entries"
@@ -68,18 +83,25 @@ object AlertConfigSync {
 
     // ------------------------------------------------------------- phone side
 
-    /** Phone: one line per alert the settings show, from the configuration in force. */
+    /**
+     * Phone: one line per alert the settings show, from the configuration in
+     * force, then the global line.
+     */
     @JvmStatic
     fun currentLines(): List<String> {
         // The stored unit rather than Applic.unit, which reads 0 until Notify
         // has started: a line claiming mg/dL over mmol/L values would arm the
         // watch's low alarm at 3.6 mg/dL.
         val unit = runCatching { Natives.getunit() }.getOrDefault(Applic.unit)
-        return AlertType.settingsEntries.mapNotNull { type ->
+        val alertLines = AlertType.settingsEntries.mapNotNull { type ->
             runCatching { encodeLine(AlertRepository.loadConfig(type), unit) }
                 .onFailure { Log.stack(LOG_ID, "encode ${type.id}", it) }
                 .getOrNull()
         }
+        val globalLine = runCatching { encodeGlobalLine(AlertRepository.loadGlobalSettings()) }
+            .onFailure { Log.stack(LOG_ID, "encode global", it) }
+            .getOrNull()
+        return alertLines + listOfNotNull(globalLine)
     }
 
     /** What the store holds for [config], less this device's own keys. */
@@ -99,6 +121,22 @@ object AlertConfigSync {
             .put(KEY_UNIT, unit)
             .put(KEY_ENTRIES, encodeEntries(entries))
         return "$SCOPE:$typeId=$FORMAT,${packBody(json.toString())}"
+    }
+
+    /** What the store holds for [settings], recorded from its own writer. */
+    @JvmStatic
+    fun globalEntriesOf(settings: GlobalAlertSettings): Map<String, Any?> {
+        val recorder = RecordingEditor()
+        AlertRepository.writeGlobalEntries(settings, recorder)
+        return recorder.entries
+    }
+
+    @JvmStatic
+    fun encodeGlobalLine(settings: GlobalAlertSettings): String = encodeGlobalLine(globalEntriesOf(settings))
+
+    internal fun encodeGlobalLine(entries: Map<String, Any?>): String {
+        val json = JSONObject().put(KEY_ENTRIES, encodeEntries(entries))
+        return "$GLOBAL_PREFIX$FORMAT,${packBody(json.toString())}"
     }
 
     /** base64(zlib(utf8)): no newline, ':' or '=' before the padding, and checksummed. */
@@ -170,7 +208,54 @@ object AlertConfigSync {
                 applied++
             }.onFailure { Log.stack(LOG_ID, "apply ${received.type.id}", it) }
         }
+        applyGlobal(data)
         return applied
+    }
+
+    /** Watch: stores the global line's settings, when the message has a usable one. Never throws. */
+    private fun applyGlobal(data: ByteArray?) {
+        runCatching {
+            val entries = decodeGlobal(data) ?: return
+            val incoming = globalSettingsFrom(entries, AlertRepository.storedPreferences())
+            if (incoming != AlertRepository.loadGlobalSettings()) {
+                AlertRepository.saveGlobalSettings(incoming)
+                Log.i(LOG_ID, "following the phone's shared alert settings: $incoming")
+            }
+        }.onFailure { Log.stack(LOG_ID, "apply global", it) }
+    }
+
+    /**
+     * The shared settings the global line's [entries] describe, read over
+     * [base]: a key the line lacks keeps [base]'s value. A value of the wrong
+     * type throws, rejecting the line rather than half reading it.
+     */
+    @JvmStatic
+    fun globalSettingsFrom(entries: Map<String, Any?>, base: SharedPreferences?): GlobalAlertSettings =
+        AlertRepository.readGlobalSettings(OverlayPreferences(base, entries))
+
+    /** The entries of a state message's global line, or null when it has no usable one. */
+    @JvmStatic
+    fun decodeGlobal(data: ByteArray?): Map<String, Any?>? {
+        if (data == null || data.isEmpty()) return null
+        val text = runCatching { data.toString(Charsets.UTF_8) }.getOrNull() ?: return null
+        if (!WearProtocol.accepts(WearProtocol.declaredVersion(text))) return null
+        return text.lineSequence().firstNotNullOfOrNull(::decodeGlobalLine)
+    }
+
+    /** The entries of one global line, or null when [line] is not one this build can read. Never throws. */
+    @JvmStatic
+    fun decodeGlobalLine(line: String): Map<String, Any?>? {
+        if (!line.startsWith(GLOBAL_PREFIX)) return null
+        val value = line.substring(GLOBAL_PREFIX.length)
+        val formatSplit = value.indexOf(',')
+        if (formatSplit < 0 || value.substring(0, formatSplit) != FORMAT) {
+            Log.w(LOG_ID, "skipping shared alert settings: line format is not $FORMAT")
+            return null
+        }
+        return runCatching {
+            decodeEntries(JSONObject(unpackBody(value.substring(formatSplit + 1))).getJSONObject(KEY_ENTRIES))
+        }.onFailure { Log.w(LOG_ID, "skipping unreadable shared alert settings: $it") }
+            .getOrNull()
     }
 
     /**

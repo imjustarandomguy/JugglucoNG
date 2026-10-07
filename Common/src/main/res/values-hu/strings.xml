@@ -2918,6 +2918,13 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="alert_feature_off">Ki</string>
     <string name="same_direction_suppression_title">Csendes időszak trendriasztás után</string>
     <string name="same_direction_suppression_summary">A következő azonos irányú riasztásig</string>
+    <string name="alarm_routing_title">Hol szólnak a riasztások</string>
+    <string name="alarm_routing_both">Mindkettő</string>
+    <string name="alarm_routing_watch">Óra, ha csatlakozik</string>
+    <string name="alarm_routing_phone">Csak a telefon</string>
+    <string name="alarm_routing_both_summary">A telefon és az óra is szól.</string>
+    <string name="alarm_routing_watch_summary">A telefon csak akkor szól, ha az óra nincs elérhető közelségben, vagy töltődik.</string>
+    <string name="alarm_routing_phone_summary">Az óra néma marad; csak a telefon szól.</string>
     <plurals name="duration_hours">
         <item quantity="one">%1$d óra</item>
         <item quantity="other">%1$d óra</item>
