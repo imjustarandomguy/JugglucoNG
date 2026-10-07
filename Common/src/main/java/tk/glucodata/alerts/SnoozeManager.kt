@@ -39,12 +39,17 @@ object SnoozeManager {
      * @param alertType The type of alert to snooze
      * @param durationMinutes How long to snooze (in minutes)
      * @param preemptive If true, this is a preemptive snooze before alert triggered
+     * @param fromPeer The other device made this snooze ([AlarmSilenceSync]); it is not sent back
+     * @param untilMs With [fromPeer], the end the other device set, on this device's clock
      */
-    fun snooze(alertType: AlertType, durationMinutes: Int, preemptive: Boolean = false) {
-        snoozeUntil(alertType, System.currentTimeMillis() + (durationMinutes * 60 * 1000L), preemptive)
+    @JvmOverloads
+    fun snooze(alertType: AlertType, durationMinutes: Int, preemptive: Boolean = false, fromPeer: Boolean = false, untilMs: Long = 0L) {
+        val until = if (untilMs > 0L) untilMs else System.currentTimeMillis() + (durationMinutes * 60 * 1000L)
+        snoozeUntil(alertType, until, preemptive, fromPeer)
     }
 
-    fun snoozeUntil(alertType: AlertType, snoozeUntil: Long, preemptive: Boolean = false) {
+    @JvmOverloads
+    fun snoozeUntil(alertType: AlertType, snoozeUntil: Long, preemptive: Boolean = false, fromPeer: Boolean = false) {
         
         // Save snooze state
         prefs.edit()
@@ -60,6 +65,8 @@ object SnoozeManager {
         // Acknowledged: a quiet window's silenced episode must not break through now.
         QuietWindow.clearSilencedEpisode(alertType.id)
         scheduleSnoozeExpirySafely(alertType, snoozeUntil)
+        // The other device holds the same snooze; one it sent is not sent back.
+        if (!fromPeer) AlarmSilenceSync.onLocalSnoozeChanged(alertType)
         
         Log.i(LOG_ID, "Snoozed ${alertType.name} until $snoozeUntil (preemptive=$preemptive)")
     }
@@ -99,9 +106,12 @@ object SnoozeManager {
     
     /**
      * Clear snooze for an alert type (dismiss or expired).
+     *
+     * @param fromPeer The other device cancelled it ([AlarmSilenceSync]); it is not sent back
      */
     @JvmOverloads
-    fun clearSnooze(alertType: AlertType, recordCancellation: Boolean = true) {
+    fun clearSnooze(alertType: AlertType, recordCancellation: Boolean = true, fromPeer: Boolean = false) {
+        val wasSnoozed = isSnoozed(alertType)
         if (recordCancellation) tk.glucodata.WearAlertSync.onSnoozeCleared(alertType.id)
         prefs.edit()
             .remove(keySnoozeUntil(alertType))
@@ -109,6 +119,9 @@ object SnoozeManager {
             .apply()
         
         cancelSnoozeExpiry(alertType)
+        // A snooze cancelled here ends on the other device too. Clearing a snooze that
+        // had already run out, or none (every dismissal clears), changes nothing there.
+        if (wasSnoozed && !fromPeer) AlarmSilenceSync.onLocalSnoozeChanged(alertType)
         
         Log.i(LOG_ID, "Cleared snooze for ${alertType.name}")
     }
