@@ -1,6 +1,7 @@
 package tk.glucodata
 
 import java.util.LinkedHashSet
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import tk.glucodata.drivers.ManagedBluetoothSensorDriver
 import tk.glucodata.drivers.ManagedSensorIdentityRegistry
@@ -100,6 +101,147 @@ object SensorIdentity {
         // "X-" names have no alias; "SIBI:" and the like are managed ids.
         if (raw.length <= 11 || raw.startsWith("X-") || raw.contains(':')) return null
         return raw.substring(NATIVE_PREFIX_LENGTH)
+    }
+
+    /** How long the alias of a sensor's full name is: a G7's or a Libre's, 16 characters less 5. */
+    private const val NATIVE_ALIAS_LENGTH = 11
+
+    /**
+     * Every name [sensorId]'s sensor can arrive under from the other device,
+     * fullest first, worked out from the name alone: the name itself, its
+     * [aliasOf], and the alias less its own five-character prefix.
+     *
+     * That last one is how native lists a record named after the alias
+     * (Natives.activeSensors, sensoren.hpp shortsensorname_chars). A watch
+     * holds a G7 handed over from the phone under its alias, "12147739749" for
+     * 8958912147739749, so it lists — and once reported — the G7 as "739749".
+     *
+     * A cloud record (NSF-, API-, MQF-), an "X-" name and a managed id
+     * ("SIBI:") have no other names here.
+     */
+    internal fun nativeNameForms(sensorId: String?): List<String> {
+        val raw = normalized(sensorId) ?: return emptyList()
+        if (raw.startsWith("X-") || raw.contains(':') || CloudSensorRecord.isCloudSensorId(raw)) {
+            return listOf(raw)
+        }
+        val forms = ArrayList<String>(3)
+        forms.add(raw)
+        aliasOf(raw)?.let(forms::add)
+        forms.lastOrNull { it.length == NATIVE_ALIAS_LENGTH }
+            ?.let { forms.add(it.substring(NATIVE_PREFIX_LENGTH)) }
+        return forms
+    }
+
+    /**
+     * Whether [a] and [b] name one sensor by native's naming alone: equal, or
+     * one is among the other's [nativeNameForms]. No record is needed, which is
+     * the point: each device can only resolve the spellings of records it holds,
+     * and the phone holds no record named "739749".
+     *
+     * A sensor that merely shares a suffix is not the same one: only whole
+     * five-character prefixes come off. A cloud record matches only itself.
+     */
+    @JvmStatic
+    fun sameNativeSensor(a: String?, b: String?): Boolean {
+        val left = normalized(a) ?: return false
+        val right = normalized(b) ?: return false
+        if (left.equals(right, ignoreCase = true)) return true
+        if (CloudSensorRecord.isCloudSensorId(left) || CloudSensorRecord.isCloudSensorId(right)) return false
+        return nativeNameForms(left).any { it.equals(right, ignoreCase = true) } ||
+            nativeNameForms(right).any { it.equals(left, ignoreCase = true) }
+    }
+
+    /**
+     * The names in [candidates] that are [reported]'s sensor, when they are all
+     * one sensor ([sameNativeSensor]): empty when none is, and when [reported] is
+     * a short form two different sensors share — it is one of them, and which
+     * cannot be told. A candidate spelled exactly as [reported] is that sensor.
+     */
+    internal fun nativeMatchesOfOne(reported: String?, candidates: Iterable<String?>): List<String> {
+        val target = normalized(reported) ?: return emptyList()
+        val hits = candidates
+            .mapNotNull(::normalized)
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .filter { sameNativeSensor(it, target) }
+        val exact = hits.firstOrNull { it.equals(target, ignoreCase = true) }
+        if (exact != null) return hits.filter { sameNativeSensor(it, exact) }
+        val oneSensor = hits.all { left -> hits.all { right -> sameNativeSensor(left, right) } }
+        return if (oneSensor) hits else emptyList()
+    }
+
+    /** The longest of [names], the first of those as long; null for none. */
+    internal fun fullestName(names: Iterable<String>): String? =
+        names.fold(null as String?) { best, name -> if (best == null || name.length > best.length) name else best }
+
+    /**
+     * [names] with each sensor once, under the fullest name it is given.
+     *
+     * Two names are one sensor when [sameNativeSensor] says so or [alsoSame]
+     * does — the device's own knowledge: its native records and managed drivers.
+     * Each sensor keeps its first-seen name unless a longer one is a native form
+     * of it ([nativeNameForms]), so a managed id is never swapped for a native
+     * shell's name. A short form that several of the sensors share is left out:
+     * it is already listed under a fuller name, and which one cannot be told.
+     */
+    internal fun distinctNativeSensors(
+        names: Iterable<String?>,
+        alsoSame: (String, String) -> Boolean = { _, _ -> false },
+    ): List<String> {
+        val ordered = names
+            .mapNotNull(::normalized)
+            .distinctBy { it.lowercase(Locale.ROOT) }
+        val same = { left: String, right: String -> sameNativeSensor(left, right) || alsoSame(left, right) }
+        // Fuller names first, so a short form cannot join two sensors into one
+        // before both have been seen.
+        val groups = ArrayList<MutableList<IndexedValue<String>>>()
+        ordered.withIndex().sortedByDescending { it.value.length }.forEach { entry ->
+            val hits = groups.filter { group -> group.any { same(it.value, entry.value) } }
+            when (hits.size) {
+                0 -> groups.add(mutableListOf(entry))
+                1 -> hits[0].add(entry)
+                else -> Unit
+            }
+        }
+        return groups
+            .sortedBy { group -> group.minOf { it.index } }
+            .map { group ->
+                val first = group.minByOrNull { it.index }!!.value
+                fullestName(group.map { it.value }.filter { it == first || sameNativeSensor(it, first) }) ?: first
+            }
+    }
+
+    /**
+     * The name a sensor goes by between the two devices: its native alias when
+     * it has one, as calibrations are keyed (SyncedWearCalibrationProvider), or
+     * itself. Every build on either device resolves it — the phone finds its
+     * full-named record by it, a watch the record it named after it — which
+     * neither the full name (no such record on the watch) nor the watch's
+     * six-character listing (none on the phone) is. A cloud record keeps its id,
+     * and so does a managed driver's sensor, by whichever of its ids it came.
+     */
+    @JvmStatic
+    fun crossDeviceName(sensorId: String?): String? {
+        val raw = normalized(sensorId) ?: return null
+        if (CloudSensorRecord.isCloudSensorId(raw)) return raw
+        val app = runCatching { resolveAppSensorId(raw) }.getOrNull()
+        if (app != null && !app.equals(raw, ignoreCase = true)) return raw
+        return runCatching { nativeAlias(raw) }.getOrNull() ?: raw
+    }
+
+    /**
+     * One key per sensor for state shared with the other device, whichever of
+     * its names arrives: the canonical id ([canonicalSensorId]) as its
+     * [crossDeviceName], lowercased. 8958912147739749 and 12147739749 key alike
+     * on both devices, record or not, and so does "739749" where native holds a
+     * record named 12147739749 — on the watch. On the phone nothing here
+     * explains "739749", and it keys as itself.
+     */
+    @JvmStatic
+    fun crossDeviceKey(sensorId: String?): String? {
+        val raw = normalized(sensorId) ?: return null
+        if (CloudSensorRecord.isCloudSensorId(raw)) return raw.lowercase(Locale.ROOT)
+        val canonical = runCatching { canonicalSensorId(raw) }.getOrNull() ?: raw
+        return (crossDeviceName(canonical) ?: canonical).lowercase(Locale.ROOT)
     }
 
     /**

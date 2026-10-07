@@ -65,9 +65,12 @@ object DirectSensorReadings {
         val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return 0L
         load()
         bySensor[key(target)]?.let { return it }
-        // One sensor, several spellings: match by identity, as the peer reports are.
+        // One sensor, several spellings: match by identity, as the peer reports
+        // are — and by native's naming, for a spelling no record here explains
+        // (a watch that holds a G7 as 12147739749 asked about 8958912147739749).
+        val byName = SensorIdentity.nativeMatchesOfOne(target, bySensor.keys).toSet()
         return bySensor.entries
-            .filter { (id, _) -> SensorIdentity.matches(id, target) }
+            .filter { (id, _) -> id in byName || SensorIdentity.matches(id, target) }
             .maxOfOrNull { it.value } ?: 0L
     }
 }

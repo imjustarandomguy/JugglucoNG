@@ -2,6 +2,7 @@ package tk.glucodata
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -95,6 +96,36 @@ internal fun resolvePeerStandDownConfirmation(
     val since = previousFalseSinceMs ?: nowMs
     return PeerStandDownConfirmation(falseSinceMs = since, confirmed = nowMs - since >= confirmMs)
 }
+
+/**
+ * The key this device files [serial] under, the same for every name of one
+ * sensor: [crossDeviceKey] (SensorIdentity.crossDeviceKey), or — for a name
+ * shorter than any alias that it leaves as it is — the key of the one sensor
+ * in [localNames] the name is a native form of
+ * ([SensorIdentity.nativeMatchesOfOne]); itself when that is none, or several.
+ *
+ * The second step is for a watch that reports a G7 it holds as "12147739749"
+ * under the name native lists that record by, "739749". No record on the
+ * phone has that name, so it was filed apart from 12147739749: the phone's
+ * card never found the watch's reports, and its arbitration stood down from
+ * a sensor that did not exist.
+ */
+internal fun resolveOwnershipKey(
+    serial: String,
+    crossDeviceKey: (String) -> String?,
+    localNames: () -> Iterable<String?>,
+): String {
+    val raw = serial.trim()
+    val direct = crossDeviceKey(raw) ?: raw.lowercase(Locale.ROOT)
+    if (raw.length >= OWNERSHIP_ALIAS_LENGTH || !direct.equals(raw, ignoreCase = true)) return direct
+    val local = SensorIdentity.nativeMatchesOfOne(raw, localNames())
+    if (local.isEmpty() || local.any { it.equals(raw, ignoreCase = true) }) return direct
+    val fullest = SensorIdentity.fullestName(local) ?: return direct
+    return crossDeviceKey(fullest) ?: fullest.lowercase(Locale.ROOT)
+}
+
+/** A sensor's native alias is 11 characters; only a shorter name can be a listing of one. */
+private const val OWNERSHIP_ALIAS_LENGTH = 11
 
 /** The state of one sensor's handover window; see [resolveYieldWindow]. */
 internal data class SensorYieldWindow(
@@ -283,8 +314,58 @@ object SensorOwnershipRuntime {
 
     @Volatile private var started = false
 
-    private fun key(serial: String): String =
-        (runCatching { SensorIdentity.canonicalSensorId(serial) }.getOrNull() ?: serial).lowercase()
+    /**
+     * One key per sensor, whichever of its names arrives — the phone's full
+     * 8958912147739749, the alias 12147739749 both devices go by, or the
+     * watch's listing "739749" — so a report, a release or a reading filed
+     * under one name is found under the others. See [resolveOwnershipKey].
+     */
+    private fun key(serial: String): String {
+        val raw = serial.trim()
+        val now = System.currentTimeMillis()
+        keyCache[raw]?.takeIf { now - it.atMs in 0L until KEY_CACHE_MS }?.let { return it.key }
+        val computed = resolveOwnershipKey(
+            raw,
+            crossDeviceKey = { runCatching { SensorIdentity.crossDeviceKey(it) }.getOrNull() },
+            localNames = ::localSensorNames,
+        )
+        if (keyCache.size >= KEY_CACHE_MAX_ENTRIES) keyCache.clear()
+        keyCache[raw] = CachedKey(computed, now)
+        return computed
+    }
+
+    /**
+     * [key]'s answers, briefly. It is asked on every route to connectGatt and
+     * for every synced reading, and a managed driver's identity check behind it
+     * reads preferences; a record appearing is picked up within the half minute.
+     */
+    private class CachedKey(val key: String, val atMs: Long)
+    private val keyCache = ConcurrentHashMap<String, CachedKey>()
+    private const val KEY_CACHE_MS = 30_000L
+    private const val KEY_CACHE_MAX_ENTRIES = 256
+
+    /** Whether [a] and [b] are one sensor, however each device named it: by [key], or by [SensorIdentity.matches]. */
+    private fun sameSensor(a: String?, b: String?): Boolean {
+        val left = a?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
+        val right = b?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
+        return key(left) == key(right) || SensorIdentity.matches(left, right)
+    }
+
+    /**
+     * The names this device holds sensors under: its drivers' serials, and each
+     * record native lists, by that listing and by the full name native keeps it
+     * under. A watch lists a record named after a G7's alias by a shorter name
+     * still ("739749" for 12147739749), and that is what it used to report.
+     */
+    private fun localSensorNames(): List<String?> {
+        val names = ArrayList<String?>()
+        runCatching { SensorBluetooth.mygatts()?.forEach { names.add(it.SerialNumber) } }
+        runCatching { Natives.activeSensors() }.getOrNull()?.forEach { listed ->
+            names.add(listed)
+            names.add(runCatching { SensorIdentity.canonicalSensorId(listed) }.getOrNull())
+        }
+        return names
+    }
 
     /** Starts announcing and reconciling. Safe to call repeatedly. */
     @JvmStatic
@@ -527,8 +608,11 @@ object SensorOwnershipRuntime {
         // Hearing from the peer is proof it is there, whatever the last send said.
         peerDeliverable = true
         val receivedAt = System.currentTimeMillis()
-        peerSerials[key(report.serial)] = report.serial
-        peerReports[key(report.serial)] = SensorOwnershipPolicy.PeerReport(
+        // Filed under this device's key for the sensor, whichever name the peer
+        // used: an older watch names a G7 by its six-character listing.
+        val id = key(report.serial)
+        peerSerials.merge(id, report.serial, ::fullerSpelling)
+        peerReports[id] = SensorOwnershipPolicy.PeerReport(
             owns = report.owns,
             lastReadingMs = report.lastReadingMs,
             receivedAtMs = receivedAt,
@@ -538,7 +622,7 @@ object SensorOwnershipRuntime {
             Log.i(
                 LOG_ID,
                 "peer holds ${report.serial}=${report.owns} newest=${report.lastReadingMs} " +
-                    "direct age=${report.directAgeMs ?: "unsent"}",
+                    "direct age=${report.directAgeMs ?: "unsent"}${filedAs(report.serial, id)}",
             )
         }
         bumpRevision()
@@ -557,6 +641,14 @@ object SensorOwnershipRuntime {
         }
     }
 
+    /** The peer's name for a sensor to keep: the fuller of two names of it, else the newer. */
+    private fun fullerSpelling(kept: String, arrived: String): String =
+        if (kept.length > arrived.length && SensorIdentity.sameNativeSensor(kept, arrived)) kept else arrived
+
+    /** For the log: the key a peer's name was filed under, when it is not that name. */
+    private fun filedAs(serial: String, id: String): String =
+        if (serial.trim().equals(id, ignoreCase = true)) "" else " (here $id)"
+
     /**
      * The peer's report for a sensor, matched by identity rather than by an
      * exact key.
@@ -571,7 +663,7 @@ object SensorOwnershipRuntime {
         peerReports[key(serial)]?.let { return it }
         return peerSerials.entries
             .asSequence()
-            .filter { (_, spelling) -> SensorIdentity.matches(spelling, serial) }
+            .filter { (_, spelling) -> sameSensor(spelling, serial) }
             .mapNotNull { (id, _) -> peerReports[id] }
             // Several spellings of one sensor: trust the most recent word.
             .maxByOrNull { it.receivedAtMs }
@@ -856,12 +948,12 @@ object SensorOwnershipRuntime {
         requestedNodes.any { nodeId ->
             val assigned = prefs.getString("sensor.$nodeId", null)
             if (!assigned.isNullOrBlank()) {
-                SensorIdentity.matches(assigned, serial)
+                sameSensor(assigned, serial)
             } else {
                 // Absence-only migration for requests saved by older builds:
                 // they meant the sensor selected when direct mode was enabled,
                 // not every sensor on the phone.
-                SensorIdentity.matches(SensorIdentity.resolveMainSensor(), serial)
+                sameSensor(SensorIdentity.resolveMainSensor(), serial)
             }
         }
     }.getOrDefault(false)
@@ -993,7 +1085,7 @@ object SensorOwnershipRuntime {
 
     private fun forgetPeerReport(serial: String) {
         val matchingKeys = peerSerials.entries
-            .filter { (id, spelling) -> id == key(serial) || SensorIdentity.matches(spelling, serial) }
+            .filter { (id, spelling) -> id == key(serial) || sameSensor(spelling, serial) }
             .map { it.key }
             .toMutableSet()
         matchingKeys.add(key(serial))
@@ -1012,30 +1104,28 @@ object SensorOwnershipRuntime {
      * between "I do not hold it" and "I am not here". Both ends therefore answer
      * about the union: what they hold, what the store knows, and whatever the
      * peer has mentioned.
+     *
+     * Each sensor once, however many names it came under, and by the name both
+     * devices resolve ([SensorIdentity.crossDeviceName], from the fullest one
+     * known): the reports go out under it, and every log line says it. A watch
+     * holding a G7 as 12147739749 used to answer under its driver's name, the
+     * listing "739749", which the phone filed as a sensor of its own.
      */
     private fun sensors(): List<String> {
-        val seen = HashSet<String>()
-        val out = ArrayList<String>()
-        fun add(candidate: String?) {
-            val serial = candidate?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return
-            if (seen.add(key(serial))) out.add(serial)
-        }
-        runCatching {
-            SensorBluetooth.mygatts()?.forEach { add(it.SerialNumber) }
-        }
-        runCatching { Natives.activeSensors() }.getOrNull()?.forEach(::add)
-        peerSerials.values.forEach(::add)
-        return out
+        val names = localSensorNames() + peerSerials.values
+        return SensorIdentity.distinctNativeSensors(names) { a, b -> sameSensor(a, b) }
+            .map { SensorIdentity.crossDeviceName(it) ?: it }
+            .distinctBy(::key)
     }
 
     private fun findGatt(serial: String): SuperGattCallback? = runCatching {
-        SensorBluetooth.mygatts()?.firstOrNull { SensorIdentity.matches(it.SerialNumber, serial) }
+        SensorBluetooth.mygatts()?.firstOrNull { sameSensor(it.SerialNumber, serial) }
     }.getOrNull()
 
     private fun holdsLiveConnection(serial: String): Boolean = runCatching {
         val now = System.currentTimeMillis()
         SensorBluetooth.mygatts()?.any {
-            it.holdsSensor(now) && SensorIdentity.matches(it.SerialNumber, serial)
+            it.holdsSensor(now) && sameSensor(it.SerialNumber, serial)
         } == true
     }.getOrDefault(false)
 
