@@ -2133,6 +2133,7 @@ class DashboardViewModel(
         viewModelScope.launch {
             journalRepository.upsertEntry(input)
         }
+        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, listOf(input))
     }
 
     fun deleteJournalEntry(entryId: Long) {
@@ -2149,6 +2150,8 @@ class DashboardViewModel(
         viewModelScope.launch {
             onSaved(inputs.map { journalRepository.upsertEntry(it) })
         }
+        // A basal dose logged here answers its "not logged" reminder.
+        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, inputs)
     }
 
     /**
