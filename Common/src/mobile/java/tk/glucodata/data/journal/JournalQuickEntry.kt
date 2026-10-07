@@ -212,21 +212,31 @@ object JournalQuickEntryPolicy {
         return (60f + grams * 2f + macroExtra).toInt().coerceIn(30, 360)
     }
 
+    /**
+     * Below this a past time reads as time ago, across midnight too: at 00:20, a dose at 23:50
+     * is "30 min ago", not "yesterday 23:50".
+     */
+    const val RELATIVE_TIME_LIMIT_MILLIS = 12L * 60 * 60 * 1000
+
     /** How a past time reads in the context line. */
     sealed interface Elapsed {
-        /** On the calendar day before today: "yesterday 21:38". */
+        /** [RELATIVE_TIME_LIMIT_MILLIS] or more ago, on the calendar day before today: "yesterday 21:38". */
         data class Yesterday(val timestampMillis: Long) : Elapsed
 
-        /** Any other time: "1 h 20 min ago", in whole minutes since. */
+        /**
+         * Any other time, in whole minutes since: "2 h 10 min ago" under 12 hours, whatever the
+         * day; earlier today; "2 d 3 h ago" before yesterday.
+         */
         data class Ago(val minutes: Long) : Elapsed
     }
 
     fun elapsed(timestampMillis: Long, nowMillis: Long, timeZone: TimeZone = TimeZone.getDefault()): Elapsed {
-        val minutes = ((nowMillis - timestampMillis) / 60_000L).coerceAtLeast(0L)
-        return if (dayIndex(timestampMillis, timeZone) == dayIndex(nowMillis, timeZone) - 1) {
+        val sinceMillis = (nowMillis - timestampMillis).coerceAtLeast(0L)
+        val yesterday = dayIndex(timestampMillis, timeZone) == dayIndex(nowMillis, timeZone) - 1
+        return if (sinceMillis >= RELATIVE_TIME_LIMIT_MILLIS && yesterday) {
             Elapsed.Yesterday(timestampMillis)
         } else {
-            Elapsed.Ago(minutes)
+            Elapsed.Ago(sinceMillis / 60_000L)
         }
     }
 

@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.WideNavigationRailItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,7 +45,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,8 +82,10 @@ import tk.glucodata.ui.journal.JournalEntrySheet
 import tk.glucodata.ui.journal.JournalFoodLibraryScreen
 import tk.glucodata.ui.journal.JournalInsulinLibraryScreen
 import tk.glucodata.ui.journal.JournalCalculationsSettingsScreen
+import tk.glucodata.ui.journal.JournalQuickEntryPrefs
 import tk.glucodata.ui.journal.JournalScreen
 import tk.glucodata.ui.journal.JournalSettingsScreen
+import tk.glucodata.ui.journal.rememberJournalSaveWithUndo
 import tk.glucodata.ui.viewmodel.DashboardViewModel
 
 sealed class CalibrationSheetState {
@@ -184,7 +186,11 @@ private fun HistoryRoute(
     val predictionDoseTargetMgDl by dashboardViewModel.predictionDoseTargetMgDl.collectAsStateWithLifecycle()
     val calibrations by tk.glucodata.data.calibration.CalibrationManager.calibrations.collectAsStateWithLifecycle()
     var journalEditorRequest by remember { mutableStateOf<JournalEditorRequest?>(null) }
-    var lastJournalType by rememberSaveable { mutableStateOf(JournalEntryType.INSULIN) }
+    val context = LocalContext.current
+    val journalSnackbarHostState = remember { SnackbarHostState() }
+    val journalPresetsById = remember(journalInsulinPresets) { journalInsulinPresets.associateBy { it.id } }
+    val saveJournalEntriesWithUndo =
+        rememberJournalSaveWithUndo(dashboardViewModel, journalSnackbarHostState, journalPresetsById, unit)
 
     // Journal entries are time-bound user events (insulin, food, fingersticks);
     // they must stay visible across sensor swaps. The History route deliberately
@@ -235,11 +241,12 @@ private fun HistoryRoute(
             dashboardViewModel.deleteHistoryReading(point, sensorName)
         },
         onJournalEntryClick = { entry ->
-            lastJournalType = entry.type
             journalEditorRequest = JournalEditorRequest(entry.type, entry.timestamp, entry)
         },
+        // Every + opens the sheet on the one type the list is filtered to, else on the type
+        // last added, as the dashboard's does.
         onAddJournalEntry = { timestamp, suggestedType, suggestedDisplayGlucose ->
-            val type = suggestedType ?: lastJournalType
+            val type = suggestedType ?: JournalQuickEntryPrefs.lastType(context)
             val suggestedGlucoseMgDl = suggestedDisplayGlucose?.let {
                 if (tk.glucodata.ui.util.GlucoseFormatter.isMmol(unit)) {
                     tk.glucodata.ui.util.GlucoseFormatter.mmolToMg(it)
@@ -247,7 +254,6 @@ private fun HistoryRoute(
                     it
                 }
             }
-            lastJournalType = type
             journalEditorRequest = JournalEditorRequest(
                 type = type,
                 timestamp = timestamp,
@@ -255,7 +261,8 @@ private fun HistoryRoute(
                 suggestedChartAnchorGlucoseMgDl = suggestedGlucoseMgDl
                     .takeIf { type == JournalEntryType.FINGERSTICK }
             )
-        }
+        },
+        snackbarHostState = journalSnackbarHostState
     )
 
     journalEditorRequest?.let { request ->
@@ -281,13 +288,11 @@ private fun HistoryRoute(
             existingEntry = request.existingEntry,
             onDismiss = { journalEditorRequest = null },
             onSave = { input ->
-                dashboardViewModel.saveJournalEntry(input)
-                lastJournalType = input.type
+                saveJournalEntriesWithUndo(listOf(input), request.existingEntry)
                 journalEditorRequest = null
             },
             onSaveEntries = { inputs ->
-                inputs.forEach(dashboardViewModel::saveJournalEntry)
-                inputs.firstOrNull()?.let { lastJournalType = it.type }
+                saveJournalEntriesWithUndo(inputs, request.existingEntry)
                 journalEditorRequest = null
             },
             onSaveFood = dashboardViewModel::saveJournalFood,
@@ -352,15 +357,21 @@ private fun JournalRoute(
     val predictionDoseTargetMgDl by dashboardViewModel.predictionDoseTargetMgDl.collectAsStateWithLifecycle()
     val calibrations by tk.glucodata.data.calibration.CalibrationManager.calibrations.collectAsStateWithLifecycle()
     var journalEditorRequest by remember { mutableStateOf<JournalEditorRequest?>(null) }
-    var lastJournalType by rememberSaveable { mutableStateOf(JournalEntryType.INSULIN) }
+    val context = LocalContext.current
+    val journalSnackbarHostState = remember { SnackbarHostState() }
+    val journalPresetsById = remember(journalInsulinPresets) { journalInsulinPresets.associateBy { it.id } }
+    val saveJournalEntriesWithUndo =
+        rememberJournalSaveWithUndo(dashboardViewModel, journalSnackbarHostState, journalPresetsById, unit)
 
+    // A + with no type of its own (a row's) opens the sheet on the type last added, as the
+    // dashboard's does.
     fun openJournalEditor(
         timestamp: Long,
         suggestedType: JournalEntryType?,
         suggestedDisplayGlucose: Float?,
         suggestedAmountFraction: Float? = null
     ) {
-        val type = suggestedType ?: lastJournalType
+        val type = suggestedType ?: JournalQuickEntryPrefs.lastType(context)
         val suggestedGlucoseMgDl = suggestedDisplayGlucose?.let {
             if (tk.glucodata.ui.util.GlucoseFormatter.isMmol(unit)) {
                 tk.glucodata.ui.util.GlucoseFormatter.mmolToMg(it)
@@ -368,7 +379,6 @@ private fun JournalRoute(
                 it
             }
         }
-        lastJournalType = type
         journalEditorRequest = JournalEditorRequest(
             type = type,
             timestamp = timestamp,
@@ -406,7 +416,6 @@ private fun JournalRoute(
             )
         },
         onJournalEntryClick = { entry ->
-            lastJournalType = entry.type
             journalEditorRequest = JournalEditorRequest(entry.type, entry.timestamp, entry)
         },
         onAddJournalEntry = { timestamp, suggestedType, suggestedDisplayGlucose, suggestedAmountFraction ->
@@ -423,7 +432,8 @@ private fun JournalRoute(
         quickAddAlwaysNow = journalQuickAddAlwaysNow,
         glucoseAnchors = journalGlucoseAnchors,
         timelineExtents = timelineExtents,
-        onVisibleRangeChanged = dashboardViewModel::onChartViewportChanged
+        onVisibleRangeChanged = dashboardViewModel::onChartViewportChanged,
+        snackbarHostState = journalSnackbarHostState
     )
 
     journalEditorRequest?.let { request ->
@@ -449,13 +459,11 @@ private fun JournalRoute(
             existingEntry = request.existingEntry,
             onDismiss = { journalEditorRequest = null },
             onSave = { input ->
-                dashboardViewModel.saveJournalEntry(input)
-                lastJournalType = input.type
+                saveJournalEntriesWithUndo(listOf(input), request.existingEntry)
                 journalEditorRequest = null
             },
             onSaveEntries = { inputs ->
-                inputs.forEach(dashboardViewModel::saveJournalEntry)
-                inputs.firstOrNull()?.let { lastJournalType = it.type }
+                saveJournalEntriesWithUndo(inputs, request.existingEntry)
                 journalEditorRequest = null
             },
             onSaveFood = dashboardViewModel::saveJournalFood,
