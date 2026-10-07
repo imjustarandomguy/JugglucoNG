@@ -2834,7 +2834,19 @@ public class Notify {
         if (now - lastTestTime < 2000)
             return; // Debounce 2s
         lastTestTime = now;
+        // Where alarms ring: a test from the phone's alert settings rings where that
+        // alarm would, so on the watch instead of here, or on both (AlarmTestSync).
+        if (tk.glucodata.alerts.AlarmTestSync.startTest(kind)) {
+            testTriggerHere(kind);
+        }
+    }
 
+    /**
+     * The test alarm on this device: the phone's own, or, on the watch, the one the phone
+     * sent it (AlarmTestSync). It runs the real alarm path as a manual test, so it records
+     * nothing, arms no SMS watchdog and starts no retries.
+     */
+    public static void testTriggerHere(int kind) {
         // Run on main thread to be safe with UI/Toasts
         new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
             boolean isMmol = tk.glucodata.Applic.unit == 1;
@@ -2862,6 +2874,12 @@ public class Notify {
                 allowNextAlertEffectsForTest();
 
                 if (kind == 4) {
+                    // The others take the test bypass at arrowglucosealarm's first-fire gate.
+                    // The signal loss has no such gate, so it is taken here; otherwise its
+                    // dismissal counts as a real one, recorded and sent to the other device.
+                    if (alertType != null && config != null) {
+                        AlertStateTracker.INSTANCE.shouldTrigger(alertType, config);
+                    }
                     onenot.lossofsignalalarm(kind, R.drawable.loss, message, typeStr, true);
                 } else {
                     notGlucose dummyGlucose = new notGlucose(System.currentTimeMillis(), String.valueOf(dummyValue), 0f,
