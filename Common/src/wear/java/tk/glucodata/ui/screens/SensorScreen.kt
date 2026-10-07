@@ -144,6 +144,12 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
     LaunchedEffect(Unit) {
         launch { UiRefreshBus.revision.collect { revision = it; now = System.currentTimeMillis() } }
         launch { tk.glucodata.WearSensorClaim.revision.collect { revision += 1L } }
+        launch {
+            tk.glucodata.SensorOwnershipRuntime.revision.collect {
+                revision += 1L
+                now = System.currentTimeMillis()
+            }
+        }
         while (true) { delay(SENSOR_TICK_MS); now = System.currentTimeMillis() }
     }
 
@@ -240,11 +246,29 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                         )
                     }
-                    val connection = details.connectionStatus.ifEmpty {
+                    // A G7 this watch and the phone both read: which of them
+                    // reads it, as on the phone's sensor card, in place of a
+                    // "Connected" that held whichever one was reading.
+                    val readers = remember(row, revision, now / SENSOR_TICK_MS) {
+                        runCatching {
+                            tk.glucodata.SensorOwnershipRuntime.directReadingView(row.serial, now)
+                        }.getOrNull()?.takeIf { it.readByBoth }
+                    }
+                    val readersStatus = readers?.let {
+                        tk.glucodata.DirectReadingText.summary(context, it.summary)
+                    }
+                    val connection = readersStatus ?: details.connectionStatus.ifEmpty {
                         if (row.isConnected) stringResource(R.string.status_connected) else ""
                     }
                     if (connection.isNotEmpty()) {
                         SensorDetailRow(stringResource(R.string.connection_label), connection)
+                    }
+                    readers?.let { view ->
+                        DirectReadingRow(tk.glucodata.DirectReadingText.phone(context, view, compact = true))
+                        DirectReadingRow(
+                            tk.glucodata.DirectReadingText.watch(context, view, compact = true),
+                            alert = view.watchAlert,
+                        )
                     }
                     details.detailedStatus
                         .takeIf { it.isNotEmpty() && !it.equals(connection, ignoreCase = true) }
@@ -331,6 +355,8 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                 // of an automatic takeover — including while this watch was the
                 // one reading the sensor. Ownership itself is the honest answer;
                 // the claim state only fills in the phases it alone knows about.
+                // Its CONNECTED never expires while both read a G7, so it says
+                // "waiting" here, never "reading": that stays with ownership.
                 val readsHere = remember(currentSensor, revision) {
                     runCatching {
                         tk.glucodata.SensorOwnershipRuntime.readsLocally(currentSensor)
@@ -340,8 +366,7 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                     text = stringResource(
                         when {
                             readsHere -> R.string.wear_claim_watch_owns
-                            claim == tk.glucodata.WearSensorClaimState.CONNECTED -> R.string.wear_claim_watch_owns
-                            claim == tk.glucodata.WearSensorClaimState.REQUESTING -> R.string.wear_claim_waiting
+                            claim != tk.glucodata.WearSensorClaimState.PHONE_OWNS -> R.string.wear_claim_waiting
                             else -> R.string.wear_claim_state_phone_owns
                         },
                     ),
@@ -363,6 +388,17 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
             }
         }
     }
+}
+
+/** A "Phone: …" / "Watch: …" line under a sensor; [alert] when the watch should be reading it and is not. */
+@Composable
+private fun DirectReadingRow(text: String, alert: Boolean = false) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (alert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    )
 }
 
 @Composable
