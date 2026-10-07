@@ -8,7 +8,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,13 +21,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bloodtype
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Vaccines
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -199,99 +195,6 @@ fun JournalFloatingActionMenu(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/**
- * The quick-add FAB and its menu, as an overlay: place it last in the Box it
- * covers, with Modifier.matchParentSize(). It fills that Box so the scrim
- * behind the open menu dims the whole page; the FAB sits at the bottom end,
- * above the scrim.
- */
-@Composable
-fun JournalExpandableFab(
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onTypeSelected: (JournalEntryType) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val view = LocalView.current
-    val density = LocalDensity.current
-    val actionTypes = remember { journalReachActionTypes() }
-    val menuReveal = remember { Animatable(0f) }
-    LaunchedEffect(expanded) {
-        menuReveal.animateTo(
-            targetValue = if (expanded) 1f else 0f,
-            animationSpec = if (expanded) {
-                spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessLow
-                )
-            } else {
-                tween(durationMillis = 140)
-            }
-        )
-    }
-    val menuProgress = menuReveal.value
-    val rowTravelPx = with(density) { 18.dp.toPx() }
-    val itemLiftPx = with(density) { 18.dp.toPx() }
-    val menuShown = expanded || menuProgress > 0.01f
-    Box(modifier = modifier) {
-        if (menuShown) {
-            JournalFabMenuScrim(
-                menuProgress = menuProgress,
-                onDismissRequest = { onExpandedChange(false) }
-            )
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp)
-        ) {
-            if (menuShown) {
-                JournalFabMenuPopup(
-                    menuProgress = menuProgress,
-                    onDismissRequest = { onExpandedChange(false) },
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    actionTypes.forEachIndexed { index, actionType ->
-                        val itemProgress = ((menuProgress - (index * 0.07f)) / 0.72f).coerceIn(0f, 1f)
-                        JournalActionMenuRow(
-                            actionType = actionType,
-                            placeIconAfterLabel = true,
-                            itemProgress = itemProgress,
-                            rowTravelPx = rowTravelPx,
-                            itemLiftPx = itemLiftPx,
-                            onClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                                onTypeSelected(actionType)
-                                onExpandedChange(false)
-                            }
-                        )
-                    }
-                }
-            }
-            FloatingActionButton(
-                onClick = {
-                    view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    onExpandedChange(!expanded)
-                },
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(20.dp),
-                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 2.dp),
-                modifier = Modifier.graphicsLayer {
-                    scaleX = 1f + (0.04f * menuProgress)
-                    scaleY = 1f + (0.04f * menuProgress)
-                }
-            ) {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.Close else Icons.Default.Add,
-                    contentDescription = stringResource(if (expanded) R.string.close else R.string.additem),
-                    modifier = Modifier.size(24.dp)
-                )
             }
         }
     }
