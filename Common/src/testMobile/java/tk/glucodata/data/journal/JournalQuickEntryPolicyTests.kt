@@ -53,11 +53,11 @@ class JournalQuickEntryPolicyTests {
     }
 
     @Test
-    fun atMostSixValues() {
+    fun atMostFiveValues() {
         val rows = (1..9).map { units -> row(units.toFloat(), units * hour) }
         val chips = recentInsulin(rows)
-        assertEquals(6, chips.size)
-        assertEquals(listOf(1f, 2f, 3f, 4f, 5f, 6f), chips)
+        assertEquals(5, chips.size)
+        assertEquals(listOf(1f, 2f, 3f, 4f, 5f), chips)
     }
 
     @Test

@@ -114,7 +114,7 @@ data class JournalAmountRow(
 /** Pure rules behind the entry sheet's quick-entry helpers. */
 object JournalQuickEntryPolicy {
     const val RECENT_WINDOW_MILLIS = 7L * 24 * 60 * 60 * 1000
-    const val RECENT_CHIP_COUNT = 6
+    const val RECENT_CHIP_COUNT = 5
 
     /**
      * The values offered as chips: the [limit] amounts used most often in the [windowMillis]
