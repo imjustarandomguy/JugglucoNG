@@ -633,8 +633,9 @@ private val FabMenuItemPaddingTrim = 8.dp
 private val FabMenuItemExtraGap = 2.dp
 private const val PressedStateLayerAlpha = 0.1f
 
-// Material's modal scrim opacity, the same the app's bottom sheets use.
-private const val FabMenuScrimAlpha = 0.32f
+// Darker than Material's 0.32 modal scrim: at 0.32 the dashboard's chart and colours
+// still competed with the menu items.
+private const val FabMenuScrimAlpha = 0.55f
 
 private fun Modifier.reachIntoPadding(start: Dp = 0.dp, end: Dp = 0.dp) = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
