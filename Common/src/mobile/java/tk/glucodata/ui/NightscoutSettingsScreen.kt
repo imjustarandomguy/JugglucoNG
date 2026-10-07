@@ -188,7 +188,6 @@ internal fun setNightscoutActive(context: android.content.Context, active: Boole
     )
     val url = Natives.getnightuploadurl().orEmpty()
     val secret = Natives.getnightuploadsecret().orEmpty()
-    val normalizedUrl = NightscoutFollowerRegistry.normalizeUrl(url)
     val uploadActive = active && mode == NightscoutModePreference.Mode.UPLOAD
     val followActive = active && mode == NightscoutModePreference.Mode.FOLLOW
 
@@ -196,22 +195,14 @@ internal fun setNightscoutActive(context: android.content.Context, active: Boole
     // The stored failure describes the old settings; keep it off the screen until the next
     // attempt has run under the new ones.
     NightPost.clearDeviceStatusOutcome()
-    when {
-        followActive && normalizedUrl.isNotBlank() ->
-            NightscoutFollowerRegistry.enableFollowerSensor(
-                context, normalizedUrl, secret, useV3 = config.useV3
-            )
-        followActive ->
-            NightscoutFollowerRegistry.saveConfig(
-                context, enabled = true, url = normalizedUrl, secret = secret, useV3 = config.useV3
-            )
-        else -> {
-            if (config.enabled) NightscoutFollowerRegistry.disableFollowerSensor(context)
-            NightscoutFollowerRegistry.saveConfig(
-                context, enabled = false, url = normalizedUrl, secret = secret, useV3 = config.useV3
-            )
-        }
-    }
+    NightscoutFollowerRegistry.applyFollowerSettings(
+        context,
+        follow = followActive,
+        url = url,
+        secret = secret,
+        useV3 = config.useV3,
+        connectNow = true,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -260,7 +251,6 @@ fun NightscoutSettingsScreen(navController: NavController) {
         NightscoutModePreference.save(context, mode)
         val uploadActive = isActive && mode == NightscoutModePreference.Mode.UPLOAD
         val followActive = isActive && mode == NightscoutModePreference.Mode.FOLLOW
-        val normalizedUrl = NightscoutFollowerRegistry.normalizeUrl(url)
 
         Natives.setNightUploader(url.trim(), secret.trim(), uploadActive, isV3)
         // The old device-status failure describes the old settings; keep it off the screen
@@ -270,20 +260,16 @@ fun NightscoutSettingsScreen(navController: NavController) {
         Natives.setpostTreatments(sendTreatments)
         JournalTreatmentUploader.setSendLongInsulin(sendLongInsulin)
         JournalTreatmentUploader.setReceiveTreatments(receiveTreatments)
-        if (followActive) {
-            if (normalizedUrl.isBlank()) {
-                NightscoutFollowerRegistry.saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = followerV3)
-            } else if (connectFollower) {
-                NightscoutFollowerRegistry.enableFollowerSensor(context, normalizedUrl, secret, useV3 = followerV3)
-            } else {
-                NightscoutFollowerRegistry.saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = followerV3)
-            }
-        } else {
-            if (NightscoutFollowerRegistry.loadConfig(context).enabled) {
-                NightscoutFollowerRegistry.disableFollowerSensor(context)
-            }
-            NightscoutFollowerRegistry.saveConfig(context, enabled = false, url = normalizedUrl, secret = secret, useV3 = followerV3)
-        }
+        // Stops any follower but the one for this URL, in every mode, and starts that one
+        // in Follow mode even without connectFollower when the URL now names another server.
+        NightscoutFollowerRegistry.applyFollowerSettings(
+            context,
+            follow = followActive,
+            url = url,
+            secret = secret,
+            useV3 = followerV3,
+            connectNow = connectFollower,
+        )
     }
 
     fun refreshStatus() {
