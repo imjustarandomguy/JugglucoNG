@@ -263,6 +263,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // sensor cleared its own Clone flag on every import.
         if (hasLocallyConnectedGatt()) {
             CloneSensorRegistry.markLocalSensor(SerialNumber);
+            // The same proof is what both devices' screens show as "reading the
+            // sensor": readings synced from the other device look no different.
+            SensorOwnershipRuntime.noteDirectReading(SerialNumber, System.currentTimeMillis());
         }
     }
 

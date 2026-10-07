@@ -35,6 +35,11 @@ object WearRoutingRequest {
     fun enterRequested(nodeId: String): Boolean =
         prefs()?.getBoolean(KEY_ENTER + nodeId, false) ?: false
 
+    /** The sensor the watch was told to read, or null when none was recorded. */
+    @JvmStatic
+    fun assignedSensor(nodeId: String): String? =
+        prefs()?.getString(KEY_SENSOR + nodeId, null)?.takeIf { it.isNotBlank() }
+
     @JvmStatic
     fun record(nodeId: String, direct: Boolean, enter: Boolean) {
         val editor = prefs()?.edit()
