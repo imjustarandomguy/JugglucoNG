@@ -29,6 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Sync state is tracked per-row on JournalEntryEntity (nsUploadedAt, nsRemoteId);
  * deletes are queued in journal_pending_deletes so they survive process death.
+ *
+ * Rows mirrored from elsewhere are not sent, with one exception: the user's edit of a treatment
+ * received from Nightscout goes back to the document it came from (see sendReceivedEdit).
  */
 @Keep
 object JournalTreatmentUploader : JournalTreatmentUploadBridge {
@@ -465,8 +468,42 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val sinceMillis = System.currentTimeMillis() - LOOKBACK_MILLIS
         if (sendEnabled) {
             val pending = dao.getEntriesNeedingNightscoutUpload(sinceMillis)
+            val receivedPrefix = NightscoutJournalFollowerImporter.sourcePrefix(
+                NightscoutFollowerRegistry.deriveSensorId(baseUrl)
+            )
             for (entry in pending) {
                 if (!isSendableType(entry.entryType)) continue
+                if (hasPendingNightscoutEdit(entry.source, entry.updatedAt, entry.nsUploadedAt)) {
+                    // The user edited a treatment received from Nightscout: the edit goes back to
+                    // that document. Not subject to "send long insulin", which keeps this app from
+                    // putting long-acting doses on the server; this one is there already.
+                    if (receivedEditHold(entry, receivedPrefix) != null) continue
+                    if (sendBackoff.shouldHold(entry.id, System.currentTimeMillis())) {
+                        uploadOk = false
+                        break
+                    }
+                    val result = sendReceivedEdit(entry, baseUrl, rawSecret, secretHashed, useV3)
+                    val now = System.currentTimeMillis()
+                    if (result.action == ReceivedEditAction.FAIL) {
+                        Log.e(
+                            LOG_ID,
+                            "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} not taken " +
+                                "code=${failureText(result.code, result.message)}; kept pending"
+                        )
+                        sendBackoff.recordFailure(entry.id, now)
+                        uploadFailureCode = result.code
+                        uploadOk = false
+                        break
+                    }
+                    sendBackoff.reset()
+                    if (result.wrote) acceptedDocument = true
+                    dao.settleReceivedNightscoutEdit(
+                        id = entry.id,
+                        updatedAt = entry.updatedAt,
+                        nsUploadedAt = if (result.action == ReceivedEditAction.CONFIRM) maxOf(now, entry.updatedAt) else null
+                    )
+                    continue
+                }
                 if (isExternalMirrorSource(entry.source)) continue
 
                 val preset = entry.insulinPresetId?.let { id ->
@@ -861,6 +898,292 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
 
     internal fun treatmentWriteUrl(baseUrl: String, remoteId: String, write: TreatmentWrite): String =
         if (write == TreatmentWrite.UPDATE) "$baseUrl/api/v3/treatments/$remoteId" else treatmentPostUrl(baseUrl, true)
+
+    // -- the user's edit of a treatment received from Nightscout ------------------------------
+    //
+    // Such a row stands for another app's document. Its edit is written back to that document,
+    // never as a new one: a PATCH of the fields that changed on v3, the whole document with them
+    // changed on v1 (whose PUT replaces what it stores). Until the server confirms it, the receive
+    // leaves the row alone (see receivedCopyMayReplace in JournalRepository.kt).
+
+    /** Why an edited received row cannot be sent, found without asking the server. */
+    internal enum class ReceivedEditHold {
+        /** No id the server knows the document by. */
+        NO_DOCUMENT,
+        /** Received from a server other than the one treatments go to. */
+        OTHER_SERVER,
+        /** Edited into another kind of treatment, which the document cannot become. */
+        TYPE_CHANGED
+    }
+
+    /**
+     * Why [entry]'s edit cannot be sent; null when it can. A held edit stays on the row, pending,
+     * and the receive does not write over it.
+     *
+     * @param sourcePrefix how the rows received from the upload server are named
+     *        ([NightscoutJournalFollowerImporter.sourcePrefix])
+     */
+    internal fun receivedEditHold(entry: JournalEntryEntity, sourcePrefix: String): ReceivedEditHold? {
+        if (entry.nsRemoteId.isNullOrBlank()) return ReceivedEditHold.NO_DOCUMENT
+        val sourceRecordId = entry.sourceRecordId ?: return ReceivedEditHold.OTHER_SERVER
+        // A follower can read another server than the one sent to, and its document ids mean
+        // nothing on this one.
+        if (!sourceRecordId.startsWith("$sourcePrefix:")) return ReceivedEditHold.OTHER_SERVER
+        // The row keeps the name it was received under, which ends in the kind it was.
+        if (sourceRecordId.substringAfterLast(':') != entry.entryType) return ReceivedEditHold.TYPE_CHANGED
+        return null
+    }
+
+    /** Where the document a received row stands for is read, to be changed. */
+    internal fun receivedDocumentUrl(baseUrl: String, remoteId: String, useV3: Boolean): String {
+        if (useV3) return "$baseUrl/api/v3/treatments/${pathSegment(remoteId)}"
+        // v1 turns find[_id] into an ObjectId (and then needs no date). An identifier needs the
+        // date, or only the last four days are looked at.
+        val find = if (isObjectId(remoteId)) {
+            urlEncoded("find[_id]") + "=" + urlEncoded(remoteId)
+        } else {
+            urlEncoded("find[identifier]") + "=" + urlEncoded(remoteId) + "&" +
+                urlEncoded("find[created_at][\$gte]") + "=" + V1_QUERY_ALL_TIME
+        }
+        // Two, to tell one document from an identifier several carry.
+        return "$baseUrl/api/v1/treatments.json?$find&count=2"
+    }
+
+    /** Where the edit goes: the document itself on v3; v1's PUT finds it by the _id in the body. */
+    internal fun receivedEditWriteUrl(baseUrl: String, remoteId: String, useV3: Boolean): String =
+        if (useV3) "$baseUrl/api/v3/treatments/${pathSegment(remoteId)}" else "$baseUrl/api/v1/treatments/"
+
+    private fun pathSegment(value: String): String = urlEncoded(value).replace("+", "%20")
+
+    /** A received document as read back to be changed. */
+    internal sealed class ReceivedDocumentRead {
+        class Found(val document: JSONObject) : ReceivedDocumentRead()
+        /** Not on the server any more (or marked deleted there). */
+        object Gone : ReceivedDocumentRead()
+        /** Several documents carry the identifier; changing a guess could change another's. */
+        object Ambiguous : ReceivedDocumentRead()
+        class Failed(val code: Int) : ReceivedDocumentRead()
+    }
+
+    /** What a read of one document answered: a v3 {status, result}, or a v1 array of matches. */
+    internal fun receivedDocumentRead(code: Int, body: String): ReceivedDocumentRead {
+        if (!answeredByNightscout(code, body)) return ReceivedDocumentRead.Failed(code)
+        if (code == HttpURLConnection.HTTP_NOT_FOUND || code == HttpURLConnection.HTTP_GONE) {
+            return ReceivedDocumentRead.Gone
+        }
+        if (code !in 200..299) return ReceivedDocumentRead.Failed(code)
+        val documents = runCatching {
+            val trimmed = body.trim()
+            val array = if (trimmed.startsWith("[")) {
+                JSONArray(trimmed)
+            } else {
+                val wrapper = JSONObject(trimmed)
+                wrapper.optJSONArray("result")
+                    ?: JSONArray().put(wrapper.optJSONObject("result") ?: wrapper)
+            }
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+        }.getOrElse { return ReceivedDocumentRead.Failed(code) }
+        return when (documents.size) {
+            0 -> ReceivedDocumentRead.Gone
+            1 -> ReceivedDocumentRead.Found(documents.single())
+            else -> ReceivedDocumentRead.Ambiguous
+        }
+    }
+
+    /** What to do with an edit, given the document as the server holds it now. */
+    internal sealed class ReceivedEditPlan {
+        /** The server's copy stands, and the next receive brings it. */
+        class ServerWins(val reason: String) : ReceivedEditPlan()
+        /** Nothing the server would take differs from what it holds: the edit is settled. */
+        class Settled(val timeKeptByServer: Boolean) : ReceivedEditPlan()
+        class Send(val changes: JournalTreatmentTransfer.ReceivedEditChanges, val timeKeptByServer: Boolean) :
+            ReceivedEditPlan()
+    }
+
+    /**
+     * Decides what becomes of [entry]'s edit, given [document] as the server now holds it.
+     *
+     * The server wins where it changed the document after the edit was made, where the document
+     * no longer holds the row's part, and where it may not be changed. API v3 will not move a
+     * document's date (it answers 400), so on v3 an edited time is not sent: it is reported as
+     * kept by the server, and the next receive shows the server's time again.
+     */
+    internal fun receivedEditPlan(entry: JournalEntryEntity, document: JSONObject, useV3: Boolean): ReceivedEditPlan {
+        if (JournalTreatmentTransfer.isReadOnlyDocument(document)) {
+            return ReceivedEditPlan.ServerWins("the document is read-only")
+        }
+        val modifiedAt = JournalTreatmentTransfer.serverModifiedMillis(document)
+        if (modifiedAt != null && modifiedAt > entry.updatedAt) {
+            return ReceivedEditPlan.ServerWins("the server changed it after the edit")
+        }
+        val changes = JournalTreatmentTransfer.receivedEditChanges(entry, document)
+            ?: return ReceivedEditPlan.ServerWins("the document no longer holds this ${entry.entryType}")
+        // v1 finds the document by the _id in the body and makes it an ObjectId; anything else
+        // fails there (500) on every attempt.
+        if (!useV3 && !isObjectId(document.optString("_id"))) {
+            return ReceivedEditPlan.ServerWins("v1 cannot address a document whose _id is not an ObjectId")
+        }
+        val timeKeptByServer = useV3 && changes.timestampMillis != null
+        val sendable = if (useV3) changes.copy(timestampMillis = null) else changes
+        return if (sendable.fields.length() == 0 && sendable.timestampMillis == null) {
+            ReceivedEditPlan.Settled(timeKeptByServer)
+        } else {
+            ReceivedEditPlan.Send(sendable, timeKeptByServer)
+        }
+    }
+
+    internal enum class ReceivedEditAction {
+        /** The server has the edit, or there is nothing left on it to change: settled. */
+        CONFIRM,
+        /** The server's copy stands; the next receive writes it over the row. */
+        SERVER_WINS,
+        /** Not taken; the edit stays pending and is sent again, like any refused upload. */
+        FAIL
+    }
+
+    /**
+     * What a write of an edit answered. A document gone meanwhile (404, 410) has nothing left to
+     * change, and no read will bring it back over the row; it is settled rather than retried for
+     * good, which would hold every later entry back.
+     */
+    internal fun receivedEditWriteAction(code: Int, answeredByNightscout: Boolean): ReceivedEditAction = when {
+        !answeredByNightscout -> ReceivedEditAction.FAIL
+        code == HttpURLConnection.HTTP_OK ||
+            code == HttpURLConnection.HTTP_CREATED ||
+            code == HttpURLConnection.HTTP_NO_CONTENT ||
+            code == HttpURLConnection.HTTP_NOT_FOUND ||
+            code == HttpURLConnection.HTTP_GONE -> ReceivedEditAction.CONFIRM
+        else -> ReceivedEditAction.FAIL
+    }
+
+    /** One pass's outcome for one edit. */
+    private class ReceivedEditResult(
+        val action: ReceivedEditAction,
+        val code: Int = 0,
+        val message: String = "",
+        /** The server accepted a write for it. */
+        val wrote: Boolean = false
+    )
+
+    private fun sendReceivedEdit(
+        entry: JournalEntryEntity,
+        baseUrl: String,
+        rawSecret: String,
+        secretHashed: String?,
+        useV3: Boolean
+    ): ReceivedEditResult {
+        val remoteId = entry.nsRemoteId!!
+        val readUrl = receivedDocumentUrl(baseUrl, remoteId, useV3)
+        val read = httpRequest("GET", readUrl, rawSecret, tokenAuth = useV3)
+        val document = when (val found = receivedDocumentRead(read.code, read.body)) {
+            is ReceivedDocumentRead.Found -> found.document
+            ReceivedDocumentRead.Gone -> {
+                Log.i(LOG_ID, "edit of received entry id=${entry.id}: remoteId=$remoteId is gone from the server; kept as edited")
+                return ReceivedEditResult(ReceivedEditAction.CONFIRM)
+            }
+            ReceivedDocumentRead.Ambiguous -> {
+                Log.e(LOG_ID, "edit of received entry id=${entry.id}: several documents carry remoteId=$remoteId; not sent")
+                return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)
+            }
+            is ReceivedDocumentRead.Failed ->
+                return ReceivedEditResult(ReceivedEditAction.FAIL, found.code, serverMessage(read.body))
+        }
+        val changes = when (val plan = receivedEditPlan(entry, document, useV3)) {
+            is ReceivedEditPlan.ServerWins -> {
+                Log.i(LOG_ID, "edit of received entry id=${entry.id} remoteId=$remoteId not sent: ${plan.reason}")
+                return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)
+            }
+            is ReceivedEditPlan.Settled -> {
+                if (plan.timeKeptByServer) logTimeKept(entry, remoteId)
+                return ReceivedEditResult(ReceivedEditAction.CONFIRM)
+            }
+            is ReceivedEditPlan.Send -> {
+                if (plan.timeKeptByServer) logTimeKept(entry, remoteId)
+                plan.changes
+            }
+        }
+        val writeUrl = receivedEditWriteUrl(baseUrl, remoteId, useV3)
+        val code: Int
+        val body: String
+        if (useV3) {
+            // Only what changed, none of it a field v3 holds immutable (date, utcOffset,
+            // eventType, app, device, isValid): the other app's document keeps its identity.
+            code = NightPost.uploadPatch(writeUrl, changes.fields.toString().toByteArray(Charsets.UTF_8), secretHashed)
+            body = NightPost.getLastPrimaryResponseBody()
+        } else {
+            val payload = JournalTreatmentTransfer.receivedEditV1Document(document, changes, System.currentTimeMillis())
+            val answer = httpRequest("PUT", writeUrl, rawSecret, tokenAuth = false, payload = payload.toString().toByteArray(Charsets.UTF_8))
+            code = answer.code
+            body = answer.body
+        }
+        val action = receivedEditWriteAction(code, answeredByNightscout(code, body))
+        if (action == ReceivedEditAction.CONFIRM) {
+            Log.i(LOG_ID, "edit of received entry id=${entry.id} sent to remoteId=$remoteId: ${changes.fields.names()} code=$code")
+        }
+        return ReceivedEditResult(
+            action = action,
+            code = code,
+            message = if (action == ReceivedEditAction.FAIL) serverMessage(body) else "",
+            wrote = action == ReceivedEditAction.CONFIRM && code in 200..299
+        )
+    }
+
+    private fun logTimeKept(entry: JournalEntryEntity, remoteId: String) {
+        Log.i(
+            LOG_ID,
+            "edit of received entry id=${entry.id}: API v3 does not let a client move remoteId=$remoteId in time; " +
+                "the server keeps its time"
+        )
+    }
+
+    private class HttpAnswer(val code: Int, val body: String)
+
+    /**
+     * One request with the uploader's credentials: the v3 token when [tokenAuth], the configured
+     * secret otherwise. Code -1 when nothing answered.
+     */
+    private fun httpRequest(
+        method: String,
+        endpoint: String,
+        secret: String,
+        tokenAuth: Boolean,
+        payload: ByteArray? = null
+    ): HttpAnswer {
+        val auth = if (tokenAuth) NightPost.getV3AuthorizationHeader() else ""
+        if (tokenAuth && auth.isEmpty()) return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "")
+        val connection = runCatching { URL(endpoint).openConnection() as HttpURLConnection }
+            .getOrElse { return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "") }
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.requestMethod = method
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("User-Agent", "JugglucoNG Nightscout journal sync")
+            if (tokenAuth) {
+                connection.setRequestProperty("Authorization", auth)
+            } else {
+                NightscoutFollowerRegistry.applyAuth(connection, secret)
+            }
+            if (payload != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Content-Length", payload.size.toString())
+                connection.outputStream.use { it.write(payload) }
+            }
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            if (code !in 200..299) Log.e(LOG_ID, "$method ${endpointPath(endpoint)} ResponseCode=$code\n${body.take(512)}")
+            return HttpAnswer(code, body)
+        } catch (th: Throwable) {
+            Log.e(LOG_ID, "$method ${endpointPath(endpoint)} failure:\n${Log.stackline(th)}")
+            return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "")
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun postV1Treatment(
         baseUrl: String,
