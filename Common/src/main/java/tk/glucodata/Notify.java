@@ -2460,6 +2460,8 @@ public class Notify {
         final boolean quietSilencesSound = AlertDeliveryPolicy.shouldSilenceSound(quietWindow, quietBreakThrough);
         final boolean quietSuppressesVibration = AlertDeliveryPolicy.shouldSuppressVibration(quietWindow,
                 quietMode, quietBreakThrough);
+        // "On the watch" (WatchAlarmStyle): Vibrate only and Screen only do not speak either.
+        final boolean watchStyleSpeaks = tk.glucodata.alerts.WatchAlarmStyle.speaksHere(kind);
 
         notifyfocus = true;
         doTurnFocuson();
@@ -2467,8 +2469,8 @@ public class Notify {
         // final int[] curfilter={-1};
         final boolean glucosealarm = kind < 2 || kind > 4;
         if (!DontTalk) {
-            // Speech is sound: a quiet window silences it too.
-            if (glucosealarm && Natives.speakalarms() && !quietSilencesSound) {
+            // Speech is sound: a quiet window, or a watch style without sound, silences it too.
+            if (glucosealarm && Natives.speakalarms() && !quietSilencesSound && watchStyleSpeaks) {
                 final CurrentDisplaySource.Snapshot current = resolveNotificationCurrentSnapshot();
                 // Read the static into a local before dereferencing it: endtalk() nulls
                 // SuperGattCallback.talker from another thread, and it is null until the first
@@ -2558,7 +2560,7 @@ public class Notify {
                     stopvibratealarm();
                 }
                 if (!DontTalk) {
-                    if (glucosealarm && Natives.speakalarms() && !quietSilencesSound) {
+                    if (glucosealarm && Natives.speakalarms() && !quietSilencesSound && watchStyleSpeaks) {
                         final CurrentDisplaySource.Snapshot current = resolveNotificationCurrentSnapshot();
                         if (current != null) {
                             Applic.scheduler.schedule(
@@ -2805,8 +2807,15 @@ public class Notify {
         final int rawDuration = p.getInt("alert_" + kind + "_alarmDur", defDuration);
         final int duration = sanitizeAlarmDurationSeconds(rawDuration);
         final boolean flash = p.getBoolean("alert_" + kind + "_flash", defFlash);
-        final boolean sound = p.getBoolean("alert_" + kind + "_sound", defSound);
-        final boolean vibration = p.getBoolean("alert_" + kind + "_vibration", defVibrate);
+        // "On the watch" (WatchAlarmStyle): on the watch, the phone's choice may replace the
+        // alert's own sound and vibration switches. Every alarm's effects start here (first
+        // firing, retries, the test alarm, a quiet-window breakthrough), and playringhier
+        // applies the quiet window on top of what this gives. The phone keeps its own.
+        final tk.glucodata.alerts.WatchAlarmStyle.Effects effects = tk.glucodata.alerts.WatchAlarmStyle
+                .effectsHere(kind, p.getBoolean("alert_" + kind + "_sound", defSound),
+                        p.getBoolean("alert_" + kind + "_vibration", defVibrate));
+        final boolean sound = effects.getSound();
+        final boolean vibration = effects.getVibrate();
 
         final boolean dist = isWearable || p.getBoolean("alert_" + kind + "_dnd", getalarmdisturb(kind));
         final boolean useAlarmStream = shouldUseAlarmAudioStream(kind, dist);
