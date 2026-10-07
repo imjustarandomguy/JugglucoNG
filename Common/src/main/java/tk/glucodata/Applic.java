@@ -1330,7 +1330,9 @@ public class Applic extends Application implements androidx.work.Configuration.P
 
     @Keep
     static boolean updateDevices() { // Rename to reset
-        final boolean useBluetooth = Natives.getusebluetooth();
+        // Not native's flag alone: without Bluetooth the roster is rebuilt with no
+        // connection, which would leave a watch told to read a sensor reading nothing.
+        final boolean useBluetooth = WatchSensorRadio.bluetoothWanted();
         boolean ok = false;
 
         if (useBluetooth) {

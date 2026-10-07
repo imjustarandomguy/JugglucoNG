@@ -1096,7 +1096,7 @@ public class SensorBluetooth {
     }
 
     private void setDevices(String[] names) {
-        names = filterActiveSensorNames(names);
+        names = withoutWatchCloudRecords(filterActiveSensorNames(names));
         for (String name : distinctRuntimeSensorIds(names != null ? Arrays.asList(names) : null)) {
             if (name != null) {
                 if (!isValidShortSensorName(name)) {
@@ -1370,7 +1370,7 @@ public class SensorBluetooth {
     }
 
     public boolean resetDevices() {
-        if (!Natives.getusebluetooth()) {
+        if (!WatchSensorRadio.bluetoothWanted()) {
             {
                 if (doLog) {
                     Log.d(LOG_ID, "resetDevices !getusebluetooth()");
@@ -1497,6 +1497,39 @@ public class SensorBluetooth {
         return valid.toArray(new String[0]);
     }
 
+    /**
+     * On a watch, {@code names} without the records cloud sources mirror their
+     * readings into ({@link CloudSensorRecord}). The phone serves those like any sensor, native
+     * lists them under a short name that reads like a Libre serial, and nothing
+     * on the watch reads them: a callback built for one would only scan for a
+     * sensor that does not exist.
+     */
+    private static String[] withoutWatchCloudRecords(String[] names) {
+        if (!isWearable || names == null || names.length == 0) {
+            return names;
+        }
+        return CloudSensorRecord.withoutCloudRecords(names, Natives::resolveFullSensorName, name -> {
+            if (doLog) {
+                Log.i(LOG_ID, "no Bluetooth callback on the watch for cloud record " + name);
+            }
+            return kotlin.Unit.INSTANCE;
+        });
+    }
+
+    /**
+     * Dials one callback the way a roster rebuild does: from its stored address,
+     * else by scanning. For a driver nothing else is going to dial.
+     */
+    static void redial(SuperGattCallback cb) {
+        final SensorBluetooth one = blueone;
+        if (one == null || cb == null) {
+            return;
+        }
+        if (one.checkandconnect(cb, 0)) {
+            one.scanStarter(0);
+        }
+    }
+
     public void connectNamedDevice(String id, long delayMillis) {
         for (var cb : gattcallbacks) {
             if (callbackMatchesSensorId(cb, id)) {
@@ -1526,7 +1559,9 @@ public class SensorBluetooth {
     }
 
     boolean updateDevicers() {
-        if (!Natives.getusebluetooth()) {
+        // Not native's flag on its own: on a watch the phone's /netinfo clears it,
+        // and acting on that here tore down the G7 a watch was told to read.
+        if (!WatchSensorRadio.bluetoothWanted()) {
             {
                 if (doLog) {
                     Log.d(LOG_ID, "updateDevicers !getusebluetooth()");
@@ -1543,7 +1578,7 @@ public class SensorBluetooth {
         // managed snapshots under the same monitor as comparison and mutation;
         // otherwise a pre-disable snapshot can re-add a callback after retirement.
         synchronized (gattcallbacks) {
-            String[] nativeDevs = filterActiveSensorNames(Natives.activeSensors());
+            String[] nativeDevs = withoutWatchCloudRecords(filterActiveSensorNames(Natives.activeSensors()));
             ArrayList<String> candidateDevs = new ArrayList<>();
             if (nativeDevs != null) {
                 for (String s : nativeDevs) {
@@ -1929,7 +1964,7 @@ public class SensorBluetooth {
             ;
         }
         ;
-        if (!Natives.getusebluetooth()) {
+        if (!WatchSensorRadio.bluetoothWanted()) {
             Natives.updateUsedSensors();
             return false;
         }
