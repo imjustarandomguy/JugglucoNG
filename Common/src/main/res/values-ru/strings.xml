@@ -1793,6 +1793,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_log_action">Записать</string>
     <string name="journal_quick_log_insulin">Записать инсулин</string>
     <string name="journal_quick_log_food">Записать еду</string>
+    <string name="notification_quick_log_buttons_title">Кнопки быстрой записи</string>
+    <string name="notification_quick_log_buttons_desc">«Записать инсулин» и «Записать еду» в уведомлении о глюкозе и в подробностях плавающей глюкозы</string>
     <string name="insulin_reminder_channel">Напоминания об инсулине</string>
     <string name="insulin_reminder_channel_desc">Когда доза длинного инсулина не записана вовремя</string>
     <string name="insulin_reminder_not_logged">%1$s: доза не записана</string>

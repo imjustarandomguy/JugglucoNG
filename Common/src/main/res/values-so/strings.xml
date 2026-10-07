@@ -2016,6 +2016,8 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="journal_log_action">Diiwaangeli</string>
     <string name="journal_quick_log_insulin">Diiwaangeli insulin</string>
     <string name="journal_quick_log_food">Diiwaangeli cunto</string>
+    <string name="notification_quick_log_buttons_title">Badhamada diiwaangelinta degdegga ah</string>
+    <string name="notification_quick_log_buttons_desc">Diiwaangeli insulin iyo Diiwaangeli cunto ogeysiiska gulukooska iyo faahfaahinta gulukooska sabaynaysa</string>
     <string name="insulin_reminder_channel">Xasuusinta insulinka</string>
     <string name="insulin_reminder_channel_desc">Marka qiyaasta muddada dheer aan waqtigeeda la diiwaangelin</string>
     <string name="insulin_reminder_not_logged">%1$s lama diiwaangelin</string>

@@ -1740,6 +1740,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_log_action">Registra</string>
     <string name="journal_quick_log_insulin">Registra insulina</string>
     <string name="journal_quick_log_food">Registra cibo</string>
+    <string name="notification_quick_log_buttons_title">Pulsanti di registrazione rapida</string>
+    <string name="notification_quick_log_buttons_desc">Registra insulina e Registra cibo nella notifica della glicemia e nei dettagli del glucosio fluttuante</string>
     <string name="insulin_reminder_channel">Promemoria insulina</string>
     <string name="insulin_reminder_channel_desc">Quando una dose a lunga durata non è registrata in tempo</string>
     <string name="insulin_reminder_not_logged">%1$s: dose non registrata</string>

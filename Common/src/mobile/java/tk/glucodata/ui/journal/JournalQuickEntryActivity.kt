@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
 import tk.glucodata.Log
+import tk.glucodata.QUICK_ENTRY_EXTRA_TYPE
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
@@ -40,10 +41,11 @@ import tk.glucodata.ui.JugglucoTheme
 
 /**
  * The entry sheet on its own, over whatever is on screen: what the floating glucose's buttons,
- * the "Log insulin" tile, the glucose notification's Log action, the app icon's shortcuts and
- * the basal reminder open. A translucent window with nothing of its own but the sheet, closed
- * with it; after a save, an undo bar for a few seconds at the bottom, the rest of the screen
- * already given back to the app below.
+ * the "Log insulin" and "Log food" tiles, the glucose notification's Log insulin and Log food,
+ * the app icon's shortcuts and the basal reminder open. A translucent window with nothing of its
+ * own but the sheet (and the sheet's scrim, which dims the app below), closed with it; after a
+ * save, an undo bar for a few seconds at the bottom, the rest of the screen already given back
+ * to the app below.
  *
  * Over the lock screen it shows nothing until the keyguard is dismissed: a dose is written to
  * the journal and uploaded, so it takes the user's credentials, as any app would. It never
@@ -127,7 +129,8 @@ class JournalQuickEntryActivity : ComponentActivity() {
 
     companion object {
         private const val LOG_ID = "JournalQuickEntry"
-        private const val EXTRA_TYPE = "tk.glucodata.journal.quick_entry.TYPE"
+        // Also set by the glucose notification's Log insulin and Log food (src/main).
+        private const val EXTRA_TYPE = QUICK_ENTRY_EXTRA_TYPE
         private const val EXTRA_INSULIN_PRESET_ID = "tk.glucodata.journal.quick_entry.INSULIN_PRESET_ID"
 
         /**

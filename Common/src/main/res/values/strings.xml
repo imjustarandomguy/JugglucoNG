@@ -2258,6 +2258,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_log_action">Log</string>
     <string name="journal_quick_log_insulin">Log insulin</string>
     <string name="journal_quick_log_food">Log food</string>
+    <string name="notification_quick_log_buttons_title">Quick log buttons</string>
+    <string name="notification_quick_log_buttons_desc">Log insulin and Log food on the glucose notification and in the floating glucose details</string>
     <string name="insulin_reminder_channel">Insulin reminders</string>
     <string name="insulin_reminder_channel_desc">When a long-acting dose is not logged by its time</string>
     <string name="insulin_reminder_not_logged">%1$s not logged</string>

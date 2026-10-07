@@ -1778,6 +1778,8 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="journal_log_action">Kaydet</string>
     <string name="journal_quick_log_insulin">İnsülin kaydet</string>
     <string name="journal_quick_log_food">Yiyecek kaydet</string>
+    <string name="notification_quick_log_buttons_title">Hızlı kayıt düğmeleri</string>
+    <string name="notification_quick_log_buttons_desc">Glikoz bildiriminde ve yüzen glikoz ayrıntılarında İnsülin kaydet ve Yiyecek kaydet</string>
     <string name="insulin_reminder_channel">İnsülin hatırlatıcıları</string>
     <string name="insulin_reminder_channel_desc">Uzun etkili doz zamanında kaydedilmediğinde</string>
     <string name="insulin_reminder_not_logged">%1$s kaydedilmedi</string>

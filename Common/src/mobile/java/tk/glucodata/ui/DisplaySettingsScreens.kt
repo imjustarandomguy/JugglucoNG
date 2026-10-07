@@ -350,6 +350,29 @@ fun NotificationSettingsScreen(
                 )
             }
         }
+
+        // Log insulin and Log food on the notification, + Insulin and + Food on the floating
+        // glucose's details (tk.glucodata.quickLogButtonsEnabled); only with the journal on.
+        val journalEnabled by viewModel.journalEnabled.collectAsState()
+        var quickLogButtons by rememberSaveable { mutableStateOf(tk.glucodata.quickLogButtonsSetting(context)) }
+        SectionLabel(
+            stringResource(R.string.journal_title),
+            topPadding = 16.dp,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+        SettingsSwitchItem(
+            title = stringResource(R.string.notification_quick_log_buttons_title),
+            subtitle = stringResource(R.string.notification_quick_log_buttons_desc),
+            checked = quickLogButtons,
+            onCheckedChange = {
+                quickLogButtons = it
+                tk.glucodata.setQuickLogButtonsSetting(context, it)
+                viewModel.refreshNotificationSurfaces()
+            },
+            enabled = journalEnabled,
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
     }
 }
 

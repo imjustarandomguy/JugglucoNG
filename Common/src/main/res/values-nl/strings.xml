@@ -1793,6 +1793,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_log_action">Invoeren</string>
     <string name="journal_quick_log_insulin">Insuline invoeren</string>
     <string name="journal_quick_log_food">Voeding invoeren</string>
+    <string name="notification_quick_log_buttons_title">Snelinvoerknoppen</string>
+    <string name="notification_quick_log_buttons_desc">Insuline invoeren en Voeding invoeren in de glucosemelding en in de details van de zwevende glucose</string>
     <string name="insulin_reminder_channel">Insulineherinneringen</string>
     <string name="insulin_reminder_channel_desc">Als een langwerkende dosis niet op tijd is ingevoerd</string>
     <string name="insulin_reminder_not_logged">%1$s niet ingevoerd</string>

@@ -1766,6 +1766,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_log_action">记录</string>
     <string name="journal_quick_log_insulin">记录胰岛素</string>
     <string name="journal_quick_log_food">记录食物</string>
+    <string name="notification_quick_log_buttons_title">快速记录按钮</string>
+    <string name="notification_quick_log_buttons_desc">在血糖通知和悬浮血糖详情中显示“记录胰岛素”和“记录食物”</string>
     <string name="insulin_reminder_channel">胰岛素提醒</string>
     <string name="insulin_reminder_channel_desc">长效剂量未按时记录时提醒</string>
     <string name="insulin_reminder_not_logged">%1$s 未记录</string>
