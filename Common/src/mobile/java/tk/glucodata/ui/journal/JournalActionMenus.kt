@@ -5,6 +5,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +62,9 @@ fun journalReachActionTypes(): List<JournalEntryType> = listOf(
     JournalEntryType.CARBS,
     JournalEntryType.INSULIN
 )
+
+// The chart menu's backdrop: as dark as the + menu's was, so the labels read over the curves.
+private const val JournalChartMenuScrimAlpha = 0.55f
 
 @Composable
 fun JournalEntryType.journalActionLabel(): String = when (this) {
@@ -131,6 +135,9 @@ fun JournalFloatingActionMenu(
                     modifier = Modifier
                         .size(popupWidth, popupHeight)
                         .graphicsLayer { alpha = menuProgress.coerceIn(0f, 1f) }
+                        // Dim the chart behind the menu so its labels don't blend into the
+                        // curves; the layer alpha above fades it in with the menu.
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = JournalChartMenuScrimAlpha))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
