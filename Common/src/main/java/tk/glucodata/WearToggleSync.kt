@@ -21,6 +21,12 @@ import tk.glucodata.alerts.AlertType
  * The exchange outputs only ever run on the phone, so its copy is the only one
  * that matters. Alerts fire on both, so the applied state is written on
  * whichever device receives it.
+ *
+ * The phone's state message also carries each alert's whole configuration,
+ * one [tk.glucodata.alerts.AlertConfigSync] line per alert after the switches,
+ * so the watch evaluates with the phone's thresholds, hours and delivery
+ * settings rather than its own defaults. [decode] skips those lines, as an
+ * older watch's parser does.
  */
 object WearToggleSync {
     private const val LOG_ID = "WearToggleSync"
@@ -81,12 +87,17 @@ object WearToggleSync {
         return result
     }
 
+    /**
+     * [configLines] are appended after the switches as they are. Only the
+     * phone's state message carries them; a command from the watch never does.
+     */
     @JvmStatic
-    fun encode(toggles: List<Toggle>): ByteArray = buildString {
+    fun encode(toggles: List<Toggle>, configLines: List<String> = emptyList()): ByteArray = buildString {
         // The protocol version, first. An old receiver skips a line with no '=', so the toggles
         // still arrive; a newer receiver checks it before applying (plan §6 Q2).
         append(WearProtocol.versionLine()).append('\n')
         toggles.forEach { append(it.scope).append(':').append(it.id).append('=').append(it.enabled).append('\n') }
+        configLines.forEach { append(it).append('\n') }
     }.toByteArray(Charsets.UTF_8)
 
     @JvmStatic
@@ -198,6 +209,8 @@ object WearToggleSync {
     /** Watch: remembers what the phone reported, and applies what is local. */
     @JvmStatic
     fun onState(data: ByteArray?) {
+        // Whole configurations first; the alert switches below then already match.
+        tk.glucodata.alerts.AlertConfigSync.onState(data)
         val toggles = decode(data)
         if (toggles.isEmpty()) return
         received = toggles
@@ -235,6 +248,14 @@ object WearToggleSync {
      */
     private val lastSentHashByNode = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
+    /**
+     * Phone: the state message — the switches, then every alert's whole
+     * configuration — so a change to any alert setting changes the payload,
+     * and with it the hash [pushIfChanged] compares.
+     */
+    private fun statePayload(): ByteArray =
+        encode(currentState(), tk.glucodata.alerts.AlertConfigSync.currentLines())
+
     /** Phone: applies a watch command, then reports the resulting state back. */
     @JvmStatic
     fun onCommand(data: ByteArray?, sourceNodeId: String?) {
@@ -254,7 +275,7 @@ object WearToggleSync {
         if (Applic.isWearable) return
         val target = nodeName ?: return
         runCatching {
-            val payload = encode(currentState())
+            val payload = statePayload()
             val sender = MessageSender.getMessageSender()
             if (sender == null || !MessageSender.outgoingAllowed()) {
                 lastSentHashByNode.remove(target)
@@ -273,7 +294,7 @@ object WearToggleSync {
     fun push() {
         if (Applic.isWearable) return
         runCatching {
-            val payload = encode(currentState())
+            val payload = statePayload()
             MessageSender.getMessageSender()?.sendToggleState(payload)
             // Which watches it reached is unknown here; let each one's next
             // ride-along confirm it rather than assume it arrived.
@@ -287,7 +308,7 @@ object WearToggleSync {
         if (Applic.isWearable) return
         val target = nodeName ?: return
         runCatching {
-            val payload = encode(currentState())
+            val payload = statePayload()
             val hash = payload.contentHashCode()
             if (lastSentHashByNode[target] == hash) return
             // Nothing went out without a sender, so nothing is remembered as sent.
