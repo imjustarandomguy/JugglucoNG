@@ -115,6 +115,7 @@ import tk.glucodata.data.journal.JournalCurvePoint
 import tk.glucodata.data.journal.JournalCurveEvidence
 import tk.glucodata.data.journal.JournalFood
 import tk.glucodata.data.journal.JournalFoodInput
+import tk.glucodata.data.journal.JournalInsulinDosing
 import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalInsulinPresetInput
 import tk.glucodata.data.journal.JournalInsulinCurveCatalogue
@@ -151,7 +152,12 @@ private data class JournalPresetDraft(
     val curveProfileId: String? = null,
     val curveModelVersion: Int = 0,
     val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
-    val scientificName: String? = null
+    val scientificName: String? = null,
+    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    /** Empty for no default dose, which is not the same as 0. */
+    val defaultDoseText: String = "",
+    /** Minutes after midnight; kept while the preset counts toward IOB, saved only when it does not. */
+    val reminderTimes: List<Int> = emptyList()
 )
 
 private data class JournalFoodDraft(
@@ -1851,6 +1857,19 @@ private fun JournalInsulinPresetSheet(
                 }
             }
 
+            item(key = "dosing") {
+                JournalPresetDosingSection(
+                    doseStep = draft.doseStep,
+                    defaultDoseText = draft.defaultDoseText,
+                    reminderTimes = draft.reminderTimes,
+                    remindersEditable = !draft.countsTowardIob,
+                    enabled = !draft.isArchived,
+                    onDoseStepChange = { draft = draft.copy(doseStep = it) },
+                    onDefaultDoseChange = { draft = draft.copy(defaultDoseText = it) },
+                    onReminderTimesChange = { draft = draft.copy(reminderTimes = it) }
+                )
+            }
+
             item(key = "curve_evidence") {
                 val isUnverified = draft.curveEvidence == JournalCurveEvidence.UNVERIFIED
                 val isSteadyState = draft.curveEvidence == JournalCurveEvidence.SOURCE_STEADY_STATE
@@ -2577,7 +2596,10 @@ private fun buildPresetDraft(preset: JournalInsulinPreset?): JournalPresetDraft 
         curveProfileId = preset?.curveProfileId,
         curveModelVersion = preset?.curveModelVersion ?: 0,
         curveEvidence = preset?.curveEvidence ?: JournalCurveEvidence.UNVERIFIED,
-        scientificName = preset?.scientificName
+        scientificName = preset?.scientificName,
+        doseStep = preset?.doseStep ?: JournalInsulinDosing.DEFAULT_STEP,
+        defaultDoseText = preset?.defaultDose?.let(::formatFloatForEditor).orEmpty(),
+        reminderTimes = preset?.reminderTimes.orEmpty()
     )
 }
 
@@ -2611,7 +2633,12 @@ private fun buildPresetInput(
         useForCalculation = draft.useForCalculation,
         curveProfileId = draft.curveProfileId,
         curveModelVersion = draft.curveModelVersion,
-        curveEvidence = draft.curveEvidence
+        curveEvidence = draft.curveEvidence,
+        doseStep = JournalInsulinDosing.sanitizeStep(draft.doseStep),
+        defaultDose = JournalInsulinDosing.sanitizeDefaultDose(
+            draft.defaultDoseText.trim().replace(',', '.').toFloatOrNull()
+        ),
+        reminderTimes = JournalInsulinDosing.reminderTimesFor(draft.countsTowardIob, draft.reminderTimes)
     )
 }
 
