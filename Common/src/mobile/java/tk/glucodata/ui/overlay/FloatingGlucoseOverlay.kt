@@ -19,6 +19,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
@@ -52,10 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.emptyFlow
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.theme.MainFontFile
 import tk.glucodata.ui.GlucosePoint
@@ -71,7 +71,6 @@ import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
-import tk.glucodata.MultiSensorSelection
 import tk.glucodata.ui.PeerCurrentReading
 import tk.glucodata.ui.SecondarySensorDisplay
 
@@ -90,12 +89,43 @@ data class FloatingDetailsRequest(
     val displayGlucose: Float,
 )
 
+/**
+ * The reading the pill shows, resolved by FloatingGlucoseService: the newest of the
+ * readings it follows, and the current value as the notification resolves it,
+ * with the selected peer sensors' current readings for the secondary slot
+ * ([peers], see SecondarySensorDisplay.fallback; empty unless it can use them).
+ *
+ * The pill used to resolve the current value itself, in a remember keyed on the
+ * readings and the refresh revision. The resolution reads the live reading, which
+ * Compose does not observe, so a change that moved none of the keys (the live reading
+ * expiring, a value revised under the same time) left the pill on the old one.
+ *
+ * [revision] changes with every new reading, so the pill can say which one it drew.
+ */
+data class FloatingPillReading(
+    val point: GlucosePoint?,
+    val snapshot: CurrentDisplaySource.Snapshot?,
+    val sensorId: String?,
+    val revision: Long = 0L,
+    val peers: List<PeerCurrentReading> = emptyList(),
+) {
+    companion object {
+        val NONE = FloatingPillReading(point = null, snapshot = null, sensorId = null)
+    }
+}
+
 @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FloatingGlucoseOverlay(
     repository: FloatingSettingsRepository,
     /** The readings; a StateFlow, so a new composition starts from the loaded ones. */
     historyFlow: StateFlow<List<GlucosePoint>>,
+    /** The reading to show, resolved by the service. */
+    readingFlow: StateFlow<FloatingPillReading>,
+    /** Each item asks for a frame of the pill's recomposer, as a tap does; see FloatingPillWatchdog. */
+    frameRequests: Flow<Unit> = emptyFlow(),
+    /** Called with the [FloatingPillReading.revision] the pill draws, each time it draws. */
+    onReadingDrawn: (Long) -> Unit = {},
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
@@ -130,33 +160,27 @@ fun FloatingGlucoseOverlay(
 
     // Data State: History List
     val history by historyFlow.collectAsState()
+    val reading by readingFlow.collectAsState()
     val refreshRevision by UiRefreshBus.revision.collectAsState(initial = 0L)
-    
+
     // Derived Data
-    val requestedSensorId = SensorIdentity.resolveMainSensor()
-    val selectionRevision by MultiSensorSelection.revision.collectAsState()
-    val readings by rememberOverlayReadings(
-        requestedSensorId, showSecondary, Triple(refreshRevision, selectionRevision, history),
-    ) { sensorId, includePeer ->
-        withContext(Dispatchers.IO) {
-            val snapshot = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensorId)
-            val resolvedSensorId = snapshot?.sensorId ?: sensorId
-            val peers = if (includePeer && snapshot?.secondaryStr.isNullOrBlank()) {
-                SecondarySensorDisplay.resolvePeers(SecondarySensorDisplay.selectedPeers(resolvedSensorId))
-            } else emptyList()
-            OverlayReadings(resolvedSensorId, snapshot, peers)
-        }
-    }
-    // Retain the previous complete frame until the next main/peer pair is resolved.
-    val currentSensorId = readings.sensorId
-    val currentSnapshot = readings.snapshot
-    val peerReadings = readings.peers
+    val glucosePoint = reading.point
+    val currentSensorId = reading.sensorId
+    val currentSnapshot = reading.snapshot
+    val peerReadings = reading.peers
     val sensorHistory = remember(history, currentSensorId) {
         history.filter { currentSensorId != null && SensorIdentity.matches(it.sensorSerial, currentSensorId) }
     }
-    val glucosePoint = sensorHistory.lastOrNull() ?: currentSnapshot?.let {
-        GlucosePoint(it.autoValue, "", it.timeMillis, it.rawValue, it.rate, it.sensorId)
+
+    // A frame on request, as a tap's ripple asks for one: the recomposer applies any
+    // pending state changes and recomposes in it. The service asks when the pill drew
+    // another reading than it was handed.
+    LaunchedEffect(frameRequests) {
+        frameRequests.collect { withFrameNanos { } }
     }
+    // Reports what was drawn, not just composed: the frame on screen is the last link.
+    val drawnRevision = reading.revision
+    val reportDrawn = Modifier.drawBehind { onReadingDrawn(drawnRevision) }
 
     // The overlay only recomposes on new data, so once readings stop nothing would
     // ever notice the last one aging out. Re-read the clock until it crosses the
@@ -173,7 +197,7 @@ fun FloatingGlucoseOverlay(
     }
     // Every layout (pill, side and top island) reads value and arrow from this.
     val displayPoint = overlayDisplayPoint(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
-    
+
     // View Mode & Calibration
     val viewData = remember(currentSnapshot, glucosePoint, currentSensorId) {
         val resolvedViewMode = currentSnapshot?.viewMode
@@ -509,7 +533,7 @@ fun FloatingGlucoseOverlay(
         CutoutOffsetLayout(
             edge = cutoutEdge,
             offset = verticalOffset.dp,
-            modifier = Modifier
+            modifier = reportDrawn
                 .wrapContentSize()
                 .then(dragModifier)
         ) {
@@ -592,7 +616,7 @@ fun FloatingGlucoseOverlay(
         Surface(
             color = finalBgColor,
             shape = finalShape,
-            modifier = Modifier
+            modifier = reportDrawn
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
