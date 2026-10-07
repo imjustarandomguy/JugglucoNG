@@ -1465,6 +1465,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="wear_direct_sensor_phone_desc">Följeslagarläge: telefonen skannar och skickar värden.</string>
     <string name="wear_claim_state_phone_owns">Telefonen styr sensorn</string>
     <string name="wear_claim_state_requesting">Klockan begär sensorn</string>
+    <string name="wear_stop_reading_on_watch">Sluta läsa på klockan</string>
     <string name="direct_status_phone_and_watch">Telefon + klocka</string>
     <string name="direct_status_phone">Telefon</string>
     <string name="direct_status_watch">Klocka</string>

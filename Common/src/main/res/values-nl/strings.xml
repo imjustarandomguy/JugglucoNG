@@ -1508,6 +1508,7 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="wear_direct_sensor_phone_desc">Companion-modus: de telefoon scant en stuurt metingen.</string>
     <string name="wear_claim_state_phone_owns">Telefoon beheert sensor</string>
     <string name="wear_claim_state_requesting">Horloge vraagt sensor aan</string>
+    <string name="wear_stop_reading_on_watch">Lezen op horloge stoppen</string>
     <string name="direct_status_phone_and_watch">Telefoon + horloge</string>
     <string name="direct_status_phone">Telefoon</string>
     <string name="direct_status_watch">Horloge</string>

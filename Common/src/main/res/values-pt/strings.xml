@@ -1466,6 +1466,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="wear_direct_sensor_phone_desc">Modo companheiro: o telemóvel lê e envia leituras.</string>
     <string name="wear_claim_state_phone_owns">O telemóvel controla o sensor</string>
     <string name="wear_claim_state_requesting">O relógio está a pedir o sensor</string>
+    <string name="wear_stop_reading_on_watch">Parar a leitura no relógio</string>
     <string name="direct_status_phone_and_watch">Telemóvel + relógio</string>
     <string name="direct_status_phone">Telemóvel</string>
     <string name="direct_status_watch">Relógio</string>
