@@ -405,7 +405,9 @@ fun JournalEntrySheet(
     onSaveEntries: ((List<JournalEntryInput>) -> Unit)? = null,
     onDelete: ((Long) -> Unit)? = null,
     sensorSerialProvider: () -> String?,
-    recentAmountsLoader: suspend (JournalEntryType, Long?, Long) -> List<Float> = ::loadRecentJournalAmounts
+    recentAmountsLoader: suspend (JournalEntryType, Long?, Long) -> List<Float> = ::loadRecentJournalAmounts,
+    // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
+    initialInsulinPresetId: Long? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -602,7 +604,10 @@ fun JournalEntrySheet(
         ) {
             return@LaunchedEffect
         }
-        JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets)?.let { preset ->
+        val requestedPreset = initialInsulinPresetId
+            ?.takeIf { draft.type == JournalEntryType.INSULIN }
+            ?.let { id -> activeInsulinPresets.firstOrNull { it.id == id } }
+        (requestedPreset ?: JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets))?.let { preset ->
             draft = draft.copy(
                 insulinPresetId = preset.id,
                 title = preset.displayName,
