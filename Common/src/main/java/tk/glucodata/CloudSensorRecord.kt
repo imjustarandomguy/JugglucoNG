@@ -44,6 +44,28 @@ object CloudSensorRecord {
     }
 
     /**
+     * The native records to end on a watch told that [removed] is gone: each
+     * active record ([activeNames], as Natives.activeSensors lists them) that is
+     * that same cloud source. Empty unless [removed] is itself a cloud source,
+     * so no sensor that transmits is ever among them.
+     */
+    @JvmStatic
+    fun recordsToEnd(
+        activeNames: Array<out String?>?,
+        removed: String?,
+        fullName: (String) -> String?,
+    ): List<String> {
+        val cloudId = cloudRecordId(removed, fullName) ?: return emptyList()
+        return activeNames.orEmpty()
+            .asSequence()
+            .filterNotNull()
+            .map { it.trim() }
+            .filter { name -> cloudRecordId(name, fullName)?.equals(cloudId, ignoreCase = true) == true }
+            .distinctBy { it.uppercase(Locale.US) }
+            .toList()
+    }
+
+    /**
      * [names] without the cloud records, for a watch building its Bluetooth
      * callbacks: every cloud record a watch holds came from the phone's sync, and
      * no driver on the watch reads one. [onSkipped] gets each name dropped.

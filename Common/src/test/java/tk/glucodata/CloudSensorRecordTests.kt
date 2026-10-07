@@ -69,6 +69,53 @@ class CloudSensorRecordTests {
     }
 
     @Test
+    fun aRemovedFollowerEndsItsRecordUnderTheNameNativeListsIt() {
+        assertEquals(
+            listOf("073E464C8CB"),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "NSF-3073E464C8CB", fullName),
+        )
+        // Told by its short alias, or with the case changed, it is the same record.
+        assertEquals(
+            listOf("073E464C8CB"),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "073E464C8CB", fullName),
+        )
+        assertEquals(
+            listOf("073E464C8CB"),
+            CloudSensorRecord.recordsToEnd(arrayOf("073E464C8CB"), "nsf-3073e464c8cb", fullName),
+        )
+    }
+
+    @Test
+    fun removingASensorThatTransmitsEndsNothingHere() {
+        assertEquals(
+            emptyList<String>(),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "12147739749", fullName),
+        )
+        assertEquals(
+            emptyList<String>(),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "8958912147739749", fullName),
+        )
+        assertEquals(emptyList<String>(), CloudSensorRecord.recordsToEnd(arrayOf("073E464C8CB"), null, fullName))
+    }
+
+    @Test
+    fun anotherCloudSourceIsLeftAlone() {
+        assertEquals(
+            emptyList<String>(),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "API-0123456789AB", fullName),
+        )
+    }
+
+    @Test
+    fun aFollowerAlreadyEndedLeavesNothingToEnd() {
+        assertEquals(
+            emptyList<String>(),
+            CloudSensorRecord.recordsToEnd(arrayOf("12147739749"), "NSF-3073E464C8CB", fullName),
+        )
+        assertEquals(emptyList<String>(), CloudSensorRecord.recordsToEnd(null, "NSF-3073E464C8CB", fullName))
+    }
+
+    @Test
     fun noNamesStayNoNames() {
         assertNull(CloudSensorRecord.withoutCloudRecords(null, fullName))
         assertArrayEquals(arrayOf<String?>(), CloudSensorRecord.withoutCloudRecords(arrayOf(), fullName))
