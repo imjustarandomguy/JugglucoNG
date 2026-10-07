@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -133,7 +134,9 @@ fun JournalScreen(
     glucoseAnchors: Map<Long, JournalGlucoseAnchor>? = null,
     /** The whole store's ends; see HistoryBrowseScreen. */
     timelineExtents: TimelineExtents? = null,
-    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
+    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null,
+    /** Where a save's "Saved 6 U Fiasp" and Undo show, just above the +. */
+    snackbarHostState: SnackbarHostState? = null
 ) {
     val view = LocalView.current
     val sortedHistory = remember(glucoseHistory) { glucoseHistory.ascendingByTimestamp() }
@@ -147,7 +150,6 @@ fun JournalScreen(
     var chartActionTimestamp by rememberSaveable { mutableStateOf<Long?>(null) }
     var chartActionDisplayValue by remember { mutableStateOf<Float?>(null) }
     var chartActionAmountFraction by remember { mutableStateOf<Float?>(null) }
-    var fabExpanded by rememberSaveable { mutableStateOf(false) }
 
     val selectedTypes = remember(selectedTypeFilters) {
         selectedTypeFilters.mapNotNull { name ->
@@ -283,7 +285,6 @@ fun JournalScreen(
                                         chartActionAmountFraction
                                     )
                                     clearChartAction()
-                                    fabExpanded = false
                                 }
                             )
                         }
@@ -391,13 +392,13 @@ fun JournalScreen(
             }
         }
 
-        JournalExpandableFab(
-            expanded = fabExpanded,
-            onExpandedChange = {
-                fabExpanded = it
-                if (it) clearChartAction()
-            },
-            onTypeSelected = { type ->
+        // Straight to the entry sheet, as from the dashboard: on the one type the list is
+        // filtered to, else on the type last added; its tabs switch type.
+        JournalQuickEntryFab(
+            snackbarHostState = snackbarHostState,
+            onClick = {
+                clearChartAction()
+                val type = selectedTypes.singleOrNull() ?: JournalQuickEntryPrefs.lastType(view.context)
                 onAddJournalEntry(
                     journalQuickAddTimestamp(selectedPointTimestamp, System.currentTimeMillis(), quickAddAlwaysNow),
                     type,
@@ -405,9 +406,7 @@ fun JournalScreen(
                     null
                 )
             },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(end = 20.dp, bottom = 20.dp)
+            modifier = Modifier.matchParentSize()
         )
     }
 }

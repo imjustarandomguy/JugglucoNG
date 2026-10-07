@@ -152,7 +152,6 @@ import tk.glucodata.MainActivity
 import tk.glucodata.UiRefreshBus
 import android.widget.Toast
 import tk.glucodata.data.journal.JournalEntry
-import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalFood
 import tk.glucodata.data.journal.JournalInsulinPreset
@@ -168,7 +167,7 @@ import tk.glucodata.ui.journal.JournalDoseProfile
 import tk.glucodata.ui.journal.JournalEntrySheet
 import tk.glucodata.ui.journal.JournalQuickEntryFab
 import tk.glucodata.ui.journal.JournalQuickEntryPrefs
-import tk.glucodata.ui.journal.journalSavedSummary
+import tk.glucodata.ui.journal.rememberJournalSaveWithUndo
 import tk.glucodata.ui.journal.rememberJournalCob
 import tk.glucodata.ui.journal.JournalFloatingActionMenu
 import tk.glucodata.ui.journal.JournalInlineChip
@@ -905,29 +904,10 @@ fun DashboardScreen(
 
     // Snackbar state for undo actions
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-    val journalUndoLabel = stringResource(R.string.undo)
 
     // A save from the entry sheet below, with a few seconds to take it back: undo deletes what
-    // was added, or puts an edited entry back as it was ([previous]).
-    fun saveJournalEntriesWithUndo(inputs: List<JournalEntryInput>, previous: JournalEntry?) {
-        val message = context.getString(
-            R.string.journal_saved_entry,
-            journalSavedSummary(context, inputs, journalPresetsById, unit)
-        )
-        viewModel.saveJournalEntries(inputs) { savedIds ->
-            coroutineScope.launch {
-                snackbarHostState.currentSnackbarData?.dismiss()
-                val result = snackbarHostState.showSnackbar(
-                    message = message,
-                    actionLabel = journalUndoLabel,
-                    duration = androidx.compose.material3.SnackbarDuration.Short
-                )
-                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                    viewModel.undoJournalSave(savedIds, previous)
-                }
-            }
-        }
-    }
+    // was added, or puts an edited entry back as it was.
+    val saveJournalEntriesWithUndo = rememberJournalSaveWithUndo(viewModel, snackbarHostState, journalPresetsById, unit)
 
     journalEditorRequest?.let { request ->
         JournalEntrySheet(
@@ -2162,9 +2142,7 @@ fun DashboardScreen(
                             suggestedChartAnchorGlucoseMgDl = suggestedGlucoseMgDl
                         )
                     },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 20.dp, bottom = 20.dp)
+                    modifier = Modifier.matchParentSize()
                 )
             }
         }
