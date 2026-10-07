@@ -238,15 +238,44 @@ class JournalQuickEntryPolicyTests {
     }
 
     @Test
-    fun yesterdayReadsAsYesterdayAtItsTime() {
-        val nowAt = at(2026, 10, 7, 7, 30)
-        val dose = at(2026, 10, 6, 21, 38)
-        assertEquals(JournalQuickEntryPolicy.Elapsed.Yesterday(dose), JournalQuickEntryPolicy.elapsed(dose, nowAt, zone))
-        // Just before midnight is still yesterday, even minutes ago.
-        val lateDose = at(2026, 10, 6, 23, 50)
+    fun underTwelveHoursReadsAsTimeAgoAcrossMidnight() {
+        // Just before midnight, minutes ago: "30 min ago", not "yesterday 23:50".
         assertEquals(
-            JournalQuickEntryPolicy.Elapsed.Yesterday(lateDose),
-            JournalQuickEntryPolicy.elapsed(lateDose, at(2026, 10, 7, 0, 20), zone)
+            JournalQuickEntryPolicy.Elapsed.Ago(30),
+            JournalQuickEntryPolicy.elapsed(at(2026, 10, 6, 23, 50), at(2026, 10, 7, 0, 20), zone)
+        )
+        // Last evening's dose in the morning: "9 h 52 min ago".
+        assertEquals(
+            JournalQuickEntryPolicy.Elapsed.Ago(9 * 60L + 52),
+            JournalQuickEntryPolicy.elapsed(at(2026, 10, 6, 21, 38), at(2026, 10, 7, 7, 30), zone)
+        )
+        // A minute short of the limit.
+        assertEquals(
+            JournalQuickEntryPolicy.Elapsed.Ago(11 * 60L + 59),
+            JournalQuickEntryPolicy.elapsed(at(2026, 10, 6, 20, 1), at(2026, 10, 7, 8, 0), zone)
+        )
+    }
+
+    @Test
+    fun twelveHoursOrMoreOnTheDayBeforeReadsAsYesterdayAtItsTime() {
+        val dose = at(2026, 10, 6, 21, 38)
+        assertEquals(
+            JournalQuickEntryPolicy.Elapsed.Yesterday(dose),
+            JournalQuickEntryPolicy.elapsed(dose, at(2026, 10, 7, 10, 0), zone)
+        )
+        // Exactly twelve hours.
+        val evening = at(2026, 10, 6, 20, 0)
+        assertEquals(
+            JournalQuickEntryPolicy.Elapsed.Yesterday(evening),
+            JournalQuickEntryPolicy.elapsed(evening, at(2026, 10, 7, 8, 0), zone)
+        )
+    }
+
+    @Test
+    fun twelveHoursOrMoreEarlierTodayReadsAsTimeAgo() {
+        assertEquals(
+            JournalQuickEntryPolicy.Elapsed.Ago(12 * 60L + 30),
+            JournalQuickEntryPolicy.elapsed(at(2026, 10, 7, 0, 30), at(2026, 10, 7, 13, 0), zone)
         )
     }
 
