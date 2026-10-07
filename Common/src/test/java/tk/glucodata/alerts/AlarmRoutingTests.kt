@@ -188,6 +188,8 @@ class AlarmRoutingTests {
                 "alarm_routing" to "WATCH_WHEN_CONNECTED",
                 "same_direction_suppression_min" to 17,
                 "acknowledged_high_coverage" to false,
+                // "On the watch" (WatchAlarmStyleTests), at its default here.
+                "watch_alarm_style" to "SAME_AS_PHONE",
             ),
             entries,
         )

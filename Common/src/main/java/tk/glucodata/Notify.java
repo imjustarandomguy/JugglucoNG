@@ -2752,6 +2752,8 @@ public class Notify {
         final boolean quietSilencesSound = AlertDeliveryPolicy.shouldSilenceSound(quietWindow, quietBreakThrough);
         final boolean quietSuppressesVibration = AlertDeliveryPolicy.shouldSuppressVibration(quietWindow,
                 quietMode, quietBreakThrough);
+        // "On the watch" (WatchAlarmStyle): Vibrate only and Screen only do not speak either.
+        final boolean watchStyleSpeaks = tk.glucodata.alerts.WatchAlarmStyle.speaksHere(kind);
 
         // Do Not Disturb: with it on and "Override silent mode" off, the alert makes no
         // sound and does not vibrate. One decision for both, so one cannot slip past
@@ -2773,7 +2775,8 @@ public class Notify {
         // Speech is sound: a quiet window and Do Not Disturb silence it too.
         final boolean speechSilenced = quietSilencesSound || dndBlocksEffects;
         if (!DontTalk) {
-            if (glucosealarm && Natives.speakalarms() && !speechSilenced) {
+            // A watch style without sound silences it as well.
+            if (glucosealarm && Natives.speakalarms() && !speechSilenced && watchStyleSpeaks) {
                 final CurrentDisplaySource.Snapshot current = resolveNotificationCurrentSnapshot();
                 // Read the static into a local before dereferencing it: endtalk() nulls
                 // SuperGattCallback.talker from another thread, and it is null until the first
@@ -2855,7 +2858,7 @@ public class Notify {
                     stopvibratealarm();
                 }
                 final CurrentDisplaySource.Snapshot closingSpeech = !DontTalk && glucosealarm
-                        && Natives.speakalarms() && !speechSilenced
+                        && Natives.speakalarms() && !speechSilenced && watchStyleSpeaks
                         ? resolveNotificationCurrentSnapshot() : null;
                 // Own continuing speech and the closing delay before releasing alarm focus.
                 // The reservation is distinct from utterance ownership, so late completion of
@@ -3089,8 +3092,15 @@ public class Notify {
         final int rawDuration = p.getInt("alert_" + kind + "_alarmDur", defDuration);
         final int duration = sanitizeAlarmDurationSeconds(rawDuration);
         final boolean flash = p.getBoolean("alert_" + kind + "_flash", defFlash);
-        final boolean sound = p.getBoolean("alert_" + kind + "_sound", defSound);
-        final boolean vibration = p.getBoolean("alert_" + kind + "_vibration", defVibrate);
+        // "On the watch" (WatchAlarmStyle): on the watch, the phone's choice may replace the
+        // alert's own sound and vibration switches. Every alarm's effects start here (first
+        // firing, retries, the test alarm, a quiet-window breakthrough), and playringhier
+        // applies the quiet window on top of what this gives. The phone keeps its own.
+        final tk.glucodata.alerts.WatchAlarmStyle.Effects effects = tk.glucodata.alerts.WatchAlarmStyle
+                .effectsHere(kind, p.getBoolean("alert_" + kind + "_sound", defSound),
+                        p.getBoolean("alert_" + kind + "_vibration", defVibrate));
+        final boolean sound = effects.getSound();
+        final boolean vibration = effects.getVibrate();
 
         // The watch has no override switch of its own. Until the phone has said what its
         // setting is, the watch alert keeps breaking through; after that it follows it.
