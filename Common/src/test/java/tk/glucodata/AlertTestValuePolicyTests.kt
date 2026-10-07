@@ -14,7 +14,8 @@ class AlertTestValuePolicyTests {
             val threshold = when (type) {
                 AlertType.LOW,
                 AlertType.VERY_LOW,
-                AlertType.PRE_LOW -> 4.0f
+                AlertType.PRE_LOW,
+                AlertType.PERSISTENT_LOW -> 4.0f
 
                 AlertType.HIGH,
                 AlertType.VERY_HIGH,
@@ -35,7 +36,8 @@ class AlertTestValuePolicyTests {
             when (type) {
                 AlertType.LOW,
                 AlertType.VERY_LOW,
-                AlertType.PRE_LOW -> assertTrue("$type test value must be low", value < threshold!!)
+                AlertType.PRE_LOW,
+                AlertType.PERSISTENT_LOW -> assertTrue("$type test value must be low", value < threshold!!)
 
                 AlertType.HIGH,
                 AlertType.VERY_HIGH,
