@@ -68,6 +68,7 @@ import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
 import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
 import tk.glucodata.ui.overlay.FloatingNextReading
+import tk.glucodata.ui.overlay.FloatingOpenAppActivity
 import tk.glucodata.ui.overlay.FloatingPillReading
 import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.Natives
@@ -106,6 +107,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
     // The details card has its own window, so opening it never resizes or moves the pill.
     private var detailsRoot: View? = null
+    // The WindowManager the card went in through: the pill's; see FloatingDetailsWindow.
+    private var detailsHost: WindowManager? = null
     private var detailsClosedByOutsideTouchAt = 0L
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private val closeDetailsRunnable = Runnable { closeDetails() }
@@ -333,9 +336,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * Opens the card beside the pill, on the side with room: away from the edge
      * an island is docked to; for the free pill below it in the top half of the
      * screen and above it in the bottom half, aligned to its nearer side edge.
+     * It goes in beside the pill, through the pill's WindowManager and as its window
+     * type, so it shows wherever the pill does (FloatingDetailsWindow): over the status
+     * bar and the lock screen too, for the pill drawn there.
      */
     private fun openDetails(request: FloatingDetailsRequest) {
-        val wm = windowManager ?: return
+        val app = windowManager ?: return
+        // The pill is off screen: there is nothing to open the card beside.
+        val host = hostWindowManager ?: return
         val anchor = overlayRoot ?: return
         val location = IntArray(2)
         anchor.getLocationOnScreen(location)
@@ -353,12 +361,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                // Outside touches still reach the app below; the card only closes on them.
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            FloatingDetailsWindow.type(layoutParams.type),
+            // Outside touches still reach the app below; the card only closes on them.
+            FloatingDetailsWindow.FLAGS,
             PixelFormat.TRANSLUCENT
         )
         if (android.os.Build.VERSION.SDK_INT >= 28) {
@@ -422,31 +427,42 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             card,
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         )
+        // As the pill does: an app overlay if the accessibility host refuses it.
+        val added = addDetails(host, root, params) ||
+            (host !== app && addDetails(app, root, params.apply {
+                type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                token = null
+            }))
+        if (added) mainHandler.postDelayed(closeDetailsRunnable, DETAILS_TIMEOUT_MS)
+    }
+
+    private fun addDetails(host: WindowManager, root: View, params: WindowManager.LayoutParams): Boolean =
         try {
-            wm.addView(root, params)
+            host.addView(root, params)
             detailsRoot = root
-            mainHandler.postDelayed(closeDetailsRunnable, DETAILS_TIMEOUT_MS)
+            detailsHost = host
+            true
         } catch (e: Exception) {
             e.printStackTrace()
+            false
         }
-    }
 
     private fun closeDetails() {
         mainHandler.removeCallbacks(closeDetailsRunnable)
         val root = detailsRoot ?: return
+        val host = detailsHost
         detailsRoot = null
+        detailsHost = null
         try {
-            windowManager?.removeView(root)
+            host?.removeView(root)
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
+    /** At once, or after the user unlocks while the keyguard is up; see FloatingOpenAppActivity. */
     private fun openApp() {
-        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-        }
+        FloatingOpenAppActivity.open(this)
     }
 
     private fun updateViewPosition(xDelta: Int, yDelta: Int) {
@@ -674,6 +690,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * are loaded again, and the pill goes back in a new window once they are in and
      * resolved, and its composition holds the reading resolved from them, so the new
      * window's first frame shows it; see FloatingPillPresence. The lock screen keeps it.
+     * The details card closes with the screen, never to come back without a tap.
      */
     private fun updateForScreen() {
         val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -687,6 +704,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             loadHistory()
             followReadings()
         } else if (!presence.screenOn) {
+            // detachPill closes it with the pill's window; this, even with no pill window in.
+            closeDetails()
             historyJob?.cancel()
             historyJob = null
             screenJob?.cancel()
