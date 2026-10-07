@@ -2870,6 +2870,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Dettagli al tocco</string>
     <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli</string>
+    <string name="floating_next_reading">Tempo alla prossima lettura</string>
+    <string name="floating_next_reading_desc">Una barra in basso si riempie fino alla prossima lettura</string>
     <string name="floating_above_status_bar">Sopra la barra di stato</string>
     <string name="floating_above_status_bar_desc">Resta toccabile sopra la barra di stato</string>
     <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>

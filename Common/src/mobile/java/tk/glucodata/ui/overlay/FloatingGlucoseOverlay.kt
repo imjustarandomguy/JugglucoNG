@@ -89,13 +89,23 @@ data class FloatingDetailsRequest(
  * expiring, a value revised under the same time) left the pill on the old one.
  *
  * [revision] changes with every new reading, so the pill can say which one it drew.
+ * [intervalMillis] is the sensor's reading interval, 0 when not known; see
+ * FloatingNextReading.intervalMillis.
  */
 data class FloatingPillReading(
     val point: GlucosePoint?,
     val snapshot: CurrentDisplaySource.Snapshot?,
     val sensorId: String?,
     val revision: Long = 0L,
+    val intervalMillis: Long = 0L,
 ) {
+    /**
+     * Time of the reading shown: the value's own (the live reading may be newer than the
+     * stored one), else the stored one's. The time to the next reading counts from it.
+     */
+    val readingTime: Long
+        get() = maxOf(snapshot?.timeMillis ?: 0L, point?.timestamp ?: 0L)
+
     companion object {
         val NONE = FloatingPillReading(point = null, snapshot = null, sensorId = null)
     }
@@ -139,6 +149,7 @@ fun FloatingGlucoseOverlay(
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
     val isMirrored by repository.isMirrored.collectAsState(initial = false)
+    val showNextReading by repository.showNextReading.collectAsState(initial = true)
 
     // Metrics State (from Service WindowInsets)
     val cutoutData by cutoutDataFlow.collectAsState(initial = CutoutData(0.dp, CutoutEdge.NONE))
@@ -404,6 +415,21 @@ fun FloatingGlucoseOverlay(
         }
     }
 
+    // Time to the next reading: a bar along the pill's bottom edge, drawn on its clipped
+    // background. Late in the range colours' amber, and late too while the pill is stale.
+    val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
+        Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
+    }
+    val nextReadingBar = nextReadingIndicator(
+        enabled = showNextReading,
+        readingTime = reading.readingTime,
+        intervalMillis = reading.intervalMillis,
+        stale = !isFreshReading,
+        color = finalTextColor,
+        lateColor = nextReadingLateColor,
+        cornerRadius = cornerRadius.dp,
+    )
+
     val valueContent: @Composable () -> Unit = {
         if (displayValues != null) {
             val dvs = displayValues
@@ -531,6 +557,7 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
+                                .then(nextReadingBar)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -568,6 +595,7 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
+                                .then(nextReadingBar)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -602,6 +630,7 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
+                .then(nextReadingBar)
                 .combinedClickable(
                     interactionSource = overlayInteractionSource,
                     indication = overlayIndication,

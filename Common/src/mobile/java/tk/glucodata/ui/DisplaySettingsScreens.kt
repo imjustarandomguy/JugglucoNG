@@ -498,6 +498,7 @@ fun FloatingGlucoseSettingsScreen(
     val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsState().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
     val isMirrored by repository.isMirrored.collectAsState(initial = false)
+    val showNextReading by repository.showNextReading.collectAsState(initial = true)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -716,6 +717,13 @@ fun FloatingGlucoseSettingsScreen(
                 title = stringResource(R.string.show_trend_arrow),
                 checked = showArrow,
                 onCheckedChange = { repository.setShowArrow(it) },
+                position = CardPosition.MIDDLE
+            )
+            SettingsSwitchItem(
+                title = stringResource(R.string.floating_next_reading),
+                subtitle = stringResource(R.string.floating_next_reading_desc),
+                checked = showNextReading,
+                onCheckedChange = { repository.setShowNextReading(it) },
                 position = CardPosition.BOTTOM
             )
         }

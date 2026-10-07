@@ -2923,6 +2923,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     </plurals>
     <string name="floating_tap_details">Details bij tikken</string>
     <string name="floating_tap_details_desc">Tikken toont de grafiek en details</string>
+    <string name="floating_next_reading">Tijd tot volgende meting</string>
+    <string name="floating_next_reading_desc">Een balk onderaan vult zich tot de volgende meting</string>
     <string name="floating_above_status_bar">Boven de statusbalk</string>
     <string name="floating_above_status_bar_desc">Blijft aantikbaar boven de statusbalk</string>
     <string name="floating_accessibility_service_off">Zet ‘%1$s’ aan in de toegankelijkheidsinstellingen</string>

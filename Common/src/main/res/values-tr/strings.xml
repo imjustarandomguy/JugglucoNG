@@ -2908,6 +2908,8 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     </plurals>
     <string name="floating_tap_details">Dokununca ayrıntılar</string>
     <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir</string>
+    <string name="floating_next_reading">Sonraki ölçüme kalan süre</string>
+    <string name="floating_next_reading_desc">Alttaki çubuk sonraki ölçüme kadar dolar</string>
     <string name="floating_above_status_bar">Durum çubuğunun üstünde</string>
     <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunulabilir</string>
     <string name="floating_accessibility_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın</string>

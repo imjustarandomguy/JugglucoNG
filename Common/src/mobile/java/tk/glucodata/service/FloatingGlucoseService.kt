@@ -56,6 +56,7 @@ import tk.glucodata.HistoryRepositoryAccess
 import tk.glucodata.LiveReadingLanes
 import tk.glucodata.Notify
 import tk.glucodata.SensorIdentity
+import tk.glucodata.SensorSourceResolver
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.GlucoseRepository
 import tk.glucodata.data.settings.FloatingSettingsRepository
@@ -63,6 +64,7 @@ import tk.glucodata.ui.overlay.FloatingDetailsCard
 import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
 import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
+import tk.glucodata.ui.overlay.FloatingNextReading
 import tk.glucodata.ui.overlay.FloatingPillReading
 import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.Natives
@@ -676,7 +678,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * The newest reading and the current value as the notification resolves it,
      * except while the live source still holds an older reading than one stored
      * since: then the stored one, resolved as it will be once current, instead of the
-     * older live one for the minutes until that expires.
+     * older live one for the minutes until that expires. With the sensor's reading
+     * interval, for the time to the next reading, from its kind or the readings' spacing.
      */
     private fun resolvePillReading(
         points: List<GlucosePoint>,
@@ -697,8 +700,19 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensorId)
             }
         }.getOrNull()
-        return FloatingPillReading(point = newest, snapshot = snapshot, sensorId = sensorId) to
-            FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
+        val sensorKind = runCatching {
+            SensorSourceResolver.resolveSensorKind(sensorId, SensorSourceResolver.SENSOR_KIND_UNKNOWN)
+        }.getOrDefault(SensorSourceResolver.SENSOR_KIND_UNKNOWN)
+        val interval = FloatingNextReading.intervalMillis(
+            sensorKind = sensorKind,
+            readingTimes = points.takeLast(FloatingNextReading.SPACING_READINGS).map { it.timestamp },
+        )
+        return FloatingPillReading(
+            point = newest,
+            snapshot = snapshot,
+            sensorId = sensorId,
+            intervalMillis = interval,
+        ) to FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
     }
 
     /** Time of the live reading the current value is resolved with, or 0 when there is none. */
