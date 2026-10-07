@@ -67,6 +67,22 @@ import tk.glucodata.UiRefreshBus
 /** How often a current reading is rechecked for staleness. */
 private const val STALE_RECHECK_MS = 30_000L
 
+/**
+ * A stale reading on the pill: its last value stays, dimmed, beside the next-reading
+ * bar's amber; "---" is only for no value at all. Pure, see the tests.
+ */
+internal object FloatingStaleValue {
+    /** Opacity of a stale value against a current one: clearly old, still readable. */
+    const val DIMMED_ALPHA = 0.5f
+
+    /**
+     * The opacity factor for the value, its trend arrow and its secondary value:
+     * [DIMMED_ALPHA] while there is a value and it is [stale], the same flag the
+     * next-reading bar is late by; 1 otherwise.
+     */
+    fun alpha(hasValue: Boolean, stale: Boolean): Float = if (hasValue && stale) DIMMED_ALPHA else 1f
+}
+
 /** The reading a details card is opened for. */
 /** Width of the details card; the service places its window by it. */
 internal val FloatingDetailsCardWidth = 260.dp
@@ -420,15 +436,23 @@ fun FloatingGlucoseOverlay(
     val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
         Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
     }
+    val isStale = !isFreshReading
     val nextReadingBar = nextReadingIndicator(
         enabled = showNextReading,
         readingTime = reading.readingTime,
         intervalMillis = reading.intervalMillis,
-        stale = !isFreshReading,
+        stale = isStale,
         color = finalTextColor,
         lateColor = nextReadingLateColor,
         cornerRadius = cornerRadius.dp,
     )
+
+    // A stale value is drawn dimmed: the value, its arrow and its secondary value in
+    // their own colours at reduced opacity, by the same stale flag as the bar's late
+    // state. Their outline or shadow stays as it is, for legibility on any background.
+    val valueAlpha = FloatingStaleValue.alpha(hasValue = glucosePoint != null, stale = isStale)
+    val shownValueColor = valueColor.copy(alpha = valueColor.alpha * valueAlpha)
+    val secondaryValueColor = finalTextColor.copy(alpha = 0.7f * valueAlpha)
 
     val valueContent: @Composable () -> Unit = {
         if (displayValues != null) {
@@ -441,7 +465,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = valueColor,
+                        textColor = shownValueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -454,7 +478,7 @@ fun FloatingGlucoseOverlay(
                             fontSize = sideSecondaryFontSize,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
-                            textColor = finalTextColor.copy(alpha = 0.7f),
+                            textColor = secondaryValueColor,
                             outlineColor = textOutlineColor,
                             shadow = textShadow,
                             useOutline = useSubtleOutline,
@@ -469,7 +493,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = valueColor,
+                        textColor = shownValueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -482,7 +506,7 @@ fun FloatingGlucoseOverlay(
                             fontSize = fontSize * 0.7f,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
-                            textColor = finalTextColor.copy(alpha = 0.7f),
+                            textColor = secondaryValueColor,
                             outlineColor = textOutlineColor,
                             shadow = textShadow,
                             useOutline = useSubtleOutline
@@ -509,7 +533,7 @@ fun FloatingGlucoseOverlay(
             TrendIndicator(
                 trendResult = trendResult,
                 modifier = Modifier.size(if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize),
-                color = valueColor,
+                color = shownValueColor,
                 outlineColor = arrowOutlineColor,
                 shadowColor = arrowShadowColor
             )
