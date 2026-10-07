@@ -16,8 +16,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,15 +35,17 @@ import java.text.DecimalFormatSymbols
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tk.glucodata.R
+import tk.glucodata.data.journal.JournalEntry
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalQuickEntryPolicy
 import tk.glucodata.data.journal.JournalRepository
 import tk.glucodata.ui.util.GlucoseFormatter
-
+import tk.glucodata.ui.viewmodel.DashboardViewModel
 
 private val quickEntryRepository by lazy { JournalRepository() }
 
@@ -110,7 +119,7 @@ internal fun JournalContextLine(text: String) {
     }
 }
 
-/** "1 h 20 min ago", "just now", or "yesterday 21:38". */
+/** "2 h 10 min ago" or "just now" under 12 hours, even across midnight; else "yesterday 21:38". */
 @Composable
 internal fun journalElapsedText(timestampMillis: Long, nowMillis: Long): String {
     val context = LocalContext.current
@@ -183,5 +192,48 @@ internal fun journalSavedSummary(
             amount?.let { context.getString(R.string.journal_rate_units_per_hour, it) },
             input.durationMinutes?.let { context.getString(R.string.minutes_short_format, it) }
         ).joinToString(" ")
+    }
+}
+
+/**
+ * Saves what the entry sheet hands back, then shows "Saved 6 U Fiasp" with Undo in
+ * [snackbarHostState] for a few seconds. Undo deletes what the save added, or writes an edited
+ * entry back as it was ([previous] is the entry before the edit, null for a new one); both go
+ * through the repository, so Nightscout and the other uploads see a user delete or edit. The
+ * dashboard, the journal and the history save this way; the sheet opened from outside the app
+ * shows the same bar on its own (JournalQuickEntryActivity).
+ */
+@Composable
+internal fun rememberJournalSaveWithUndo(
+    viewModel: DashboardViewModel,
+    snackbarHostState: SnackbarHostState,
+    presetsById: Map<Long, JournalInsulinPreset>,
+    unit: String
+): (inputs: List<JournalEntryInput>, previous: JournalEntry?) -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val undoLabel = stringResource(R.string.undo)
+    val currentPresetsById by rememberUpdatedState(presetsById)
+    val currentUnit by rememberUpdatedState(unit)
+    return remember(viewModel, snackbarHostState, context, scope, undoLabel) {
+        { inputs, previous ->
+            val message = context.getString(
+                R.string.journal_saved_entry,
+                journalSavedSummary(context, inputs, currentPresetsById, currentUnit)
+            )
+            viewModel.saveJournalEntries(inputs) { savedIds ->
+                scope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    val result = snackbarHostState.showSnackbar(
+                        message = message,
+                        actionLabel = undoLabel,
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.undoJournalSave(savedIds, previous)
+                    }
+                }
+            }
+        }
     }
 }
