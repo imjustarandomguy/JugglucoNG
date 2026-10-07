@@ -6,19 +6,22 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.IBinder
+import android.os.Looper
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.Surface
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.FrameLayout
-import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.PausableMonotonicFrameClock
 import androidx.compose.runtime.Recomposer
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
+import androidx.core.os.HandlerCompat
 import androidx.core.view.doOnLayout
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -138,8 +141,23 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     // but its composition stays, so that it comes back with its settings instead of a
     // first frame of defaults. It therefore runs on this recomposer rather than its
     // window's, which ends with the window, and its frames pause while the screen is off.
+    // They come from FloatingPillFrameClock, not Compose's vsync-only clock, so that the
+    // composition keeps up with no window and in the background; see there.
     private lateinit var pillFrameClock: PausableMonotonicFrameClock
     private lateinit var pillRecomposer: Recomposer
+
+    // At screen on the pill's window goes back in only once its composition holds the
+    // reading handed to it (see FloatingPillPresence): asked from the composition's apply
+    // pass and done after it, or COMPOSE_TIMEOUT_MS after the readings at the latest.
+    private val updatePillWindowLater = Runnable { updatePillWindow() }
+    private var composeTimeoutPosted = false
+    private val composeTimedOut = Runnable {
+        composeTimeoutPosted = false
+        presence.onComposeTimedOut()
+        updatePillWindow()
+    }
+    // When the screen came on (uptime) until the pill's window is back, for its log line.
+    private var screenOnAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -151,7 +169,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         glucoseRepository.refreshSensorSerial()
 
         val ui = AndroidUiDispatcher.Main
-        pillFrameClock = PausableMonotonicFrameClock(ui[MonotonicFrameClock]!!).apply { pause() }
+        pillFrameClock = PausableMonotonicFrameClock(
+            FloatingPillFrameClock(Choreographer.getInstance(), HandlerCompat.createAsync(Looper.getMainLooper()))
+        ).apply { pause() }
         pillRecomposer = Recomposer(ui + pillFrameClock)
         serviceScope.launch(ui + pillFrameClock) { pillRecomposer.runRecomposeAndApplyChanges() }
 
@@ -248,6 +268,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     readingFlow = reading,
                     frameRequests = frameRequests,
                     onReadingDrawn = { drawnRevision = it },
+                    onReadingComposed = { onPillComposed(it) },
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
@@ -549,7 +570,59 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
     /** Adds or removes the pill as [presence] says. */
     private fun updatePillWindow() {
-        if (presence.shown) attachPill() else detachPill()
+        if (presence.awaitingComposition) {
+            if (!composeTimeoutPosted) {
+                composeTimeoutPosted = true
+                mainHandler.postDelayed(composeTimedOut, FloatingPillPresence.COMPOSE_TIMEOUT_MS)
+            }
+        } else if (composeTimeoutPosted) {
+            composeTimeoutPosted = false
+            mainHandler.removeCallbacks(composeTimedOut)
+        }
+        if (presence.shown) {
+            attachPill()
+            if (screenOnAt != 0L && hostWindowManager != null) logScreenOnWindow()
+        } else {
+            detachPill()
+        }
+    }
+
+    /** From the pill's composition, each time one of its recompositions has been applied. */
+    private fun onPillComposed(revision: Long) {
+        val awaiting = presence.awaitingComposition
+        presence.onReadingComposed(revision)
+        // After the apply pass, not within it: the window's attach measures the composition.
+        if (awaiting && presence.shown) {
+            mainHandler.removeCallbacks(updatePillWindowLater)
+            mainHandler.post(updatePillWindowLater)
+        }
+    }
+
+    /**
+     * The one line per screen on, as the pill's window goes back in: the reading handed
+     * to the pill, and whether its composition held that one before the window's first
+     * frame ("composed"), or the window had to go in without it ("NOT composed").
+     */
+    private fun logScreenOnWindow() {
+        val handed = reading.value
+        val composed = presence.composedRevision
+        val after = SystemClock.uptimeMillis() - screenOnAt
+        screenOnAt = 0L
+        val time = if (handed.readingTime > 0L) {
+            android.text.format.DateFormat.format("HH:mm:ss", handed.readingTime)
+        } else {
+            "none"
+        }
+        val value = handed.snapshot?.primaryStr ?: handed.point?.value?.toString() ?: "---"
+        val state = when {
+            composed == null -> "first composition"
+            composed >= handed.revision -> "composed before its first frame"
+            else -> "NOT composed before its first frame (composed rev $composed)"
+        }
+        tk.glucodata.Log.i(
+            LOG_ID,
+            "screen on: pill window added after $after ms with reading $time $value rev ${handed.revision}, $state",
+        )
     }
 
     /** Adds the pill through [pillHost], or as an app overlay if that host refuses it. */
@@ -599,7 +672,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * frames are paused and its readings are not followed: nothing runs for it, the
      * self-check included. When the screen comes on, its frames resume, the readings
      * are loaded again, and the pill goes back in a new window once they are in and
-     * resolved; see FloatingPillPresence. The lock screen keeps it.
+     * resolved, and its composition holds the reading resolved from them, so the new
+     * window's first frame shows it; see FloatingPillPresence. The lock screen keeps it.
      */
     private fun updateForScreen() {
         val power = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
@@ -607,6 +681,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         // Set from the state, not only on its changes, so the frames can never stay
         // paused under a pill on screen.
         if (presence.screenOn) pillFrameClock.resume() else pillFrameClock.pause()
+        if (turnedOn) screenOnAt = SystemClock.uptimeMillis() else if (!presence.screenOn) screenOnAt = 0L
         if (turnedOn) {
             readingsArrived = false
             loadHistory()
@@ -654,7 +729,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     /**
      * Resolves the pill's reading on each request, one at a time, off the main thread.
      * The pill goes on screen after the first resolution from the readings loaded since
-     * the screen came on, so its first frame already shows them.
+     * the screen came on, once it has composed it, so its first frame already shows them.
      */
     private suspend fun resolveReadings() {
         while (true) {
@@ -668,7 +743,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             }
             resolvedInputs = inputs
             if (loaded) {
-                presence.onReadingsLoaded()
+                presence.onReadingsLoaded(reading.value.revision)
                 updatePillWindow()
             }
         }
@@ -939,6 +1014,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     override fun onDestroy() {
         unregisterReceiver(screenStateReceiver)
         closeDetails()
+        mainHandler.removeCallbacks(updatePillWindowLater)
+        mainHandler.removeCallbacks(composeTimedOut)
         // The id is shared with keeprunning's glucose notification; detach it while keeprunning still holds it.
         val held = tk.glucodata.Notify.keeprunningHoldsGlucoseNotification()
         stopForeground(if (held) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)

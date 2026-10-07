@@ -139,6 +139,12 @@ fun FloatingGlucoseOverlay(
     frameRequests: Flow<Unit> = emptyFlow(),
     /** Called with the [FloatingPillReading.revision] the pill draws, each time it draws. */
     onReadingDrawn: (Long) -> Unit = {},
+    /**
+     * Called with the [FloatingPillReading.revision] the pill composed, after each of its
+     * recompositions is applied; the service puts its window back at screen on only once
+     * the handed one is, see FloatingPillPresence.
+     */
+    onReadingComposed: (Long) -> Unit = {},
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
@@ -191,6 +197,9 @@ fun FloatingGlucoseOverlay(
     // Reports what was drawn, not just composed: the frame on screen is the last link.
     val drawnRevision = reading.revision
     val reportDrawn = Modifier.drawBehind { onReadingDrawn(drawnRevision) }
+    // And what was composed, once applied: with no window (the screen just came on) it
+    // is what the next window's first frame will draw.
+    SideEffect { onReadingComposed(drawnRevision) }
 
     // The overlay only recomposes on new data, so once readings stop nothing would
     // ever notice the last one aging out. Re-read the clock until it crosses the
