@@ -195,6 +195,7 @@ class WearMessagePathManifestTests {
             "SYNC2_OWN" to "/sync2/own",
             "SYNC2_REMOVE" to "/sync2/remove",
             "SYNC2_REQ" to "/sync2/req",
+            "SYNC2_SILENCE" to "/sync2/silence",
             "TOGGLES" to "/toggles",
             "TOGGLES_REQ" to "/toggles/req",
             "TOGGLES_SET" to "/toggles/set",

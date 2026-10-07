@@ -125,6 +125,25 @@ object AlertStateTracker {
         return maxOf(DEFAULT_REARM_COOLDOWN_MS, configuredMs)
     }
 
+    // Set while a dismissal from the other device runs through the one below.
+    private var dismissingFromPeer = false
+
+    /**
+     * A person dismissed [type]'s alarm on the other device ([AlarmSilenceSync]):
+     * this device takes it as its own dismissal, through the same path, and does
+     * not send it back.
+     */
+    @Synchronized
+    fun onAlertDismissed(type: AlertType, fromPeer: Boolean): Boolean {
+        if (!fromPeer) return onAlertDismissed(type)
+        dismissingFromPeer = true
+        try {
+            return onAlertDismissed(type)
+        } finally {
+            dismissingFromPeer = false
+        }
+    }
+
     @Synchronized
     fun onAlertDismissed(type: AlertType): Boolean {
         if (manualTests.consumeAction(type)) {
@@ -136,6 +155,8 @@ object AlertStateTracker {
         // Acknowledged: a quiet window's silenced episode must not break through now.
         QuietWindow.clearSilencedEpisode(type.id)
         Log.i(LOG_ID, "Dismissed ${type.name} for current episode")
+        // The same alarm stops on the other device; one it dismissed is not sent back.
+        if (!dismissingFromPeer) AlarmSilenceSync.onLocalDismiss(type)
         return true
     }
 
@@ -162,6 +183,14 @@ object AlertStateTracker {
     /** True once [onAlertDismissed] took this episode, until [resetState]. */
     @Synchronized
     fun isDismissed(type: AlertType): Boolean = type in dismissedAlerts
+
+    /**
+     * When the running episode first fired, or was held for the other device; 0 with
+     * none. A dismissal from the other device reaches only an episode that started
+     * before it ([AlarmSilencePolicy.dismissApplies]).
+     */
+    @Synchronized
+    fun episodeStartedAtMs(type: AlertType): Long = lastTriggerTime[type] ?: 0L
 
     /** Whether the last real firing was acknowledged for the cross-family quiet period. */
     @Synchronized

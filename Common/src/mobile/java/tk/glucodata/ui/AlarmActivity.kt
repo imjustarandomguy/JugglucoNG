@@ -21,6 +21,7 @@ import tk.glucodata.MainActivity
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.SensorBluetooth
+import tk.glucodata.alerts.AlarmSilenceSync
 import tk.glucodata.alerts.AlertDisplayText
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertStateTracker
@@ -36,12 +37,36 @@ class AlarmActivity : ComponentActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    /**
+     * The watch snoozed or dismissed the alarm this screen shows (AlarmSilenceSync):
+     * the screen goes as it would after a tap here, but opens nothing in its place,
+     * since nobody touched the phone.
+     */
+    private val closeFromPeer = AlarmSilenceSync.AlarmScreen { alertTypeId ->
+        runOnUiThread {
+            val shown = intent
+            if (!isFinishing &&
+                shown.getStringExtra(Notify.EXTRA_CUSTOM_ALERT_ID) == null &&
+                shown.getIntExtra(EXTRA_ALERT_TYPE_ID, -1) == alertTypeId
+            ) {
+                cancelAlarmNotification()
+                finishAndRemoveTask()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         turnScreenOnAndKeyguard()
         showAlarmContent()
+        AlarmSilenceSync.registerAlarmScreen(closeFromPeer)
+    }
+
+    override fun onDestroy() {
+        AlarmSilenceSync.unregisterAlarmScreen(closeFromPeer)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

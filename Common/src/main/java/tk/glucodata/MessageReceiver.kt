@@ -114,6 +114,10 @@ class MessageReceiver: WearableListenerService() {
             WearMessagePath.SYNC2_REMOVE -> {
                 if (isWearable) WearSync2.onRemove(data)
             }
+            WearMessagePath.SYNC2_SILENCE -> {
+                // Both ways: a snooze, dismissal or quiet window from the other device.
+                tk.glucodata.alerts.AlarmSilenceSync.onPeerMessage(data)
+            }
             WearMessagePath.SYNC2_JOURNAL_REQ -> {
                 if (!isWearable) WearJournalSync.onRequest(
                     if (data != null && data.size >= 9) {
@@ -348,6 +352,8 @@ class MessageReceiver: WearableListenerService() {
                 }
             }
         }
+        // The other device is in reach: a silence change that did not get through goes now.
+        tk.glucodata.alerts.AlarmSilenceSync.onPeerHeard()
         Log.i(LOG_ID,"onMessageReceived end $path"  )
       }
 
