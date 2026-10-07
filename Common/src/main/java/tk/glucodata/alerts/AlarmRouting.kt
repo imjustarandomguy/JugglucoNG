@@ -25,6 +25,8 @@ data class GlobalAlertSettings(
     val alarmRouting: AlarmRoutingMode = AlarmRoutingMode.BOTH,
     val sameDirectionSuppressionMinutes: Int = AlertDefaults.SAME_DIRECTION_SUPPRESSION_MINUTES,
     val acknowledgedHighCoverage: Boolean = AlertDefaults.ACKNOWLEDGED_HIGH_COVERAGE_ENABLED,
+    /** "On the watch": how the watch rings the alarms it rings ([WatchAlarmStyle]). */
+    val watchAlarmStyle: WatchAlarmStyle = WatchAlarmStyle.SAME_AS_PHONE,
 )
 
 /**
