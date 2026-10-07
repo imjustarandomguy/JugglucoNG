@@ -1922,6 +1922,7 @@ public class Notify {
                 if (!AlertStateTracker.INSTANCE.shouldTrigger(type, config)) return;
                 if (AlertStateTracker.INSTANCE.onAlertTriggered(type, config)) {
                     syncRetrySession(kind, value, message, glucose, channel, config, true);
+                    tk.glucodata.alerts.AlarmHistory.onFired(kind, value);
                 }
             }
             deliverTriggeredAlert(kind, value, message, glucose, channel);
@@ -2377,6 +2378,7 @@ public class Notify {
     private static int lastalarm = -1;
 
     static void stoplossalarm() {
+        tk.glucodata.alerts.AlarmHistory.onCleared(4, "new-reading-arrived");
         if (lastalarm == 4) {
             lastalarm = -1;
             stopalarm();
@@ -5339,6 +5341,7 @@ public class Notify {
         final String message = "***  " + Applic.getContext().getString(R.string.nonewvalue) + tformat + " ***";
 
         // oldfloatmessage(tformat, true) ;
+        tk.glucodata.alerts.AlarmHistory.onFired(4, Float.NaN);
         return lossofsignalalarm(4, R.drawable.loss, message, alertChannelForKind(4), true, false);
     }
 
