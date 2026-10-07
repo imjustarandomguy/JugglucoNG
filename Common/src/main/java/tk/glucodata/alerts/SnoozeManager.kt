@@ -130,6 +130,7 @@ object SnoozeManager {
             snooze(AlertType.LOW, durationMinutes, preemptive = true)
             snooze(AlertType.VERY_LOW, durationMinutes, preemptive = true)
             snooze(AlertType.PRE_LOW, durationMinutes, preemptive = true)
+            snooze(AlertType.PERSISTENT_LOW, durationMinutes, preemptive = true)
         }
         if (snoozeHigh) {
             snooze(AlertType.HIGH, durationMinutes, preemptive = true)

@@ -36,7 +36,8 @@ final class AlertTestValuePolicy {
     }
 
     private static boolean isLowFamily(AlertType type) {
-        return type == AlertType.LOW || type == AlertType.VERY_LOW || type == AlertType.PRE_LOW;
+        return type == AlertType.LOW || type == AlertType.VERY_LOW || type == AlertType.PRE_LOW
+                || type == AlertType.PERSISTENT_LOW;
     }
 
     private static boolean isHighFamily(AlertType type) {

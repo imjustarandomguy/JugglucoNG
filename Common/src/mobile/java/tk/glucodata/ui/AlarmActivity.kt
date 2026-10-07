@@ -189,7 +189,7 @@ class AlarmActivity : ComponentActivity() {
         )
 
         val severity = when (alertType) {
-            AlertType.LOW, AlertType.VERY_LOW, AlertType.PRE_LOW -> AlarmSeverity.LOW
+            AlertType.LOW, AlertType.VERY_LOW, AlertType.PRE_LOW, AlertType.PERSISTENT_LOW -> AlarmSeverity.LOW
             AlertType.HIGH, AlertType.VERY_HIGH, AlertType.PRE_HIGH, AlertType.PERSISTENT_HIGH -> AlarmSeverity.HIGH
             else -> when {
                 supportingText.contains("low", ignoreCase = true) || alertLabel.contains("low", ignoreCase = true) -> AlarmSeverity.LOW

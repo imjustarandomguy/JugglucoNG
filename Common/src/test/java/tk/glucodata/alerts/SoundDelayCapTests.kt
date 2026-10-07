@@ -14,6 +14,7 @@ class SoundDelayCapTests {
     fun capsAreTighterForHypoTypes() {
         assertEquals(60, maxSoundDelaySecondsFor(AlertType.LOW))
         assertEquals(30, maxSoundDelaySecondsFor(AlertType.VERY_LOW))
+        assertEquals(60, maxSoundDelaySecondsFor(AlertType.PERSISTENT_LOW))
         assertEquals(300, maxSoundDelaySecondsFor(AlertType.HIGH))
         assertEquals(300, maxSoundDelaySecondsFor(AlertType.VERY_HIGH))
         assertEquals(300, maxSoundDelaySecondsFor(AlertType.PRE_LOW))

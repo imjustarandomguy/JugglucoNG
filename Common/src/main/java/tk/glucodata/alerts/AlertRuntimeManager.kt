@@ -31,6 +31,8 @@ object AlertRuntimeManager {
     private var lastRate: Float = Float.NaN
     private var lastDisplaySnapshot: CurrentDisplaySource.Snapshot? = null
     private var persistentHighStartedAtMs: Long = 0L
+    private var persistentLowState = PersistentLowState()
+    private var persistentLowLastReason: String? = null
     private var lastLoggedExpiryEndMs: Long = Long.MIN_VALUE
     private var warnedForecastRateUntrusted = false
     private var preLowSuppressionReason: String? = null
@@ -185,6 +187,8 @@ object AlertRuntimeManager {
         evaluateMissedReadingLocked(nowMs)
         if (!glucoseAlertsBlocked) {
             evaluatePersistentHighLocked(nowMs)
+            // After the standard alerts, so it sees this reading's VERY_LOW episode.
+            evaluatePersistentLowLocked(nowMs)
             evaluateDeltaAlarmsLocked()
         }
         evaluateSensorExpiryLocked(nowMs)
@@ -598,6 +602,63 @@ object AlertRuntimeManager {
 
         val message = Applic.app.getString(R.string.alert_persistent_high) + " " + Notify.glucosestr(glucoseValue)
         triggerAlert(type, glucoseValue, currentRateLocked(), message)
+    }
+
+    /**
+     * The low-side mirror of [evaluatePersistentHighLocked]; the rules live in
+     * [PersistentLowPolicy]. Unlike the persistent high, the duration is measured
+     * between reading times, the timer only resets above threshold + margin, and
+     * VERY_LOW anywhere in the episode keeps it quiet.
+     */
+    private fun evaluatePersistentLowLocked(nowMs: Long) {
+        val type = AlertType.PERSISTENT_LOW
+        val config = AlertRepository.loadConfig(type)
+        val glucoseValue = currentGlucoseValueLocked()
+        val readingTimeMs = lastDisplaySnapshot?.timeMillis?.takeIf { it > 0L }
+            ?: lastReadingTimeMs.takeIf { it > 0L }
+            ?: nowMs
+        val previous = persistentLowState
+        val decision = PersistentLowPolicy.decide(
+            state = previous,
+            config = config,
+            isMmol = Applic.unit == 1,
+            activeNow = config.isActiveNow(),
+            value = glucoseValue,
+            readingTimeMs = readingTimeMs,
+            rate = currentRateLocked(),
+            veryLowActive = standardEpisodes.isActive(AlertType.VERY_LOW) ||
+                AlertStateTracker.isEpisodeActive(AlertType.VERY_LOW),
+            snoozed = SnoozeManager.isSnoozed(type)
+        )
+        persistentLowState = decision.state
+        val reasonChanged = decision.reason != persistentLowLastReason
+        persistentLowLastReason = decision.reason
+        if (reasonChanged && (previous.startedAtMs != 0L || decision.state.startedAtMs != 0L)) {
+            Log.i(
+                LOG_ID,
+                "PERSISTENT_LOW ${decision.action} (${decision.reason}) value=$glucoseValue " +
+                    "startedAt=${decision.state.startedAtMs} reading=$readingTimeMs"
+            )
+        }
+
+        when (decision.action) {
+            // Once per change, not every 15 s: nothing can fire while reset or
+            // held, so one clear covers the whole stretch.
+            PersistentLowAction.RESET -> if (previous.startedAtMs != 0L || reasonChanged) {
+                clearRuntimeAlert(type, decision.reason)
+            }
+            // Held, like the persistent high while falling: retries stop, the
+            // timer stays. A stall below the line can speak at once.
+            PersistentLowAction.HOLD -> if (reasonChanged) {
+                clearRuntimeAlert(type, decision.reason)
+            }
+            PersistentLowAction.WAIT -> Unit
+            PersistentLowAction.FIRE -> {
+                val value = glucoseValue ?: return
+                val message = Applic.app.getString(R.string.alert_persistent_low) + " " + Notify.glucosestr(value)
+                triggerAlert(type, value, currentRateLocked(), message)
+            }
+        }
     }
 
     private fun evaluateSensorExpiryLocked(nowMs: Long) {

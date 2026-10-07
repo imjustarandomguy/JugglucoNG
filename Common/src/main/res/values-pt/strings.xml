@@ -573,6 +573,8 @@
     <string name="tap_to_change">Toque para alterar</string>
     <string name="threshold_label">Limiar</string>
     <string name="persistent_high_fall_suppress_label">Silenciar em queda</string>
+    <string name="persistent_low_rise_hold_label">Silenciar em subida</string>
+    <string name="persistent_low_explanation">Toca quando a glicose fica abaixo do limite durante este tempo. Com leituras a cada 5 min (G7): 10 min = 3 leituras seguidas, 15 min = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Perfil de volume/vibracao</string>
     <string name="ICE">ICE</string>
@@ -611,6 +613,7 @@
     <string name="alert_missed_reading">Leitura perdida</string>
     <string name="alert_mode">Alert Mode</string>
     <string name="alert_persistent_high">Alto persistente</string>
+    <string name="alert_persistent_low">Baixo persistente</string>
     <string name="alert_sensor_expiry">Expiração do sensor</string>
     <string name="missed_reading_channel_description">Alerts when no glucose reading arrives for the configured duration</string>
     <string name="sensor_expiry_channel_description">Alerts when the current sensor is nearing expiry</string>

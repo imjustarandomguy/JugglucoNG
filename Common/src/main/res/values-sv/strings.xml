@@ -673,6 +673,8 @@
     <string name="tap_to_change">Tryck for att andra</string>
     <string name="threshold_label">Tröskel</string>
     <string name="persistent_high_fall_suppress_label">Tyst vid fall</string>
+    <string name="persistent_low_rise_hold_label">Tyst vid stigning</string>
+    <string name="persistent_low_explanation">Larmar när glukosen ligger under gränsen så här länge. Med värden var 5:e min (G7): 10 min = 3 värden i rad, 15 min = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Volym-/vibrationsprofil</string>
     <string name="ICE">ICE</string>
@@ -709,6 +711,7 @@
     <string name="alert_missed_reading">Missad avläsning</string>
     <string name="alert_mode">Alert Mode</string>
     <string name="alert_persistent_high">Ihållande hög</string>
+    <string name="alert_persistent_low">Ihållande låg</string>
     <string name="alert_sensor_expiry">Sensor går ut</string>
     <string name="missed_reading_channel_description">Alerts when no glucose reading arrives for the configured duration</string>
     <string name="sensor_expiry_channel_description">Alerts when the current sensor is nearing expiry</string>

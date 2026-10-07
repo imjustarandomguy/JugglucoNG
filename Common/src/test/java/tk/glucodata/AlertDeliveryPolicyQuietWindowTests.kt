@@ -127,10 +127,16 @@ class AlertDeliveryPolicyQuietWindowTests {
             .forEach { scope ->
                 assertTrue("LOW under $scope", AlertDeliveryPolicy.quietWindowBreakthroughAppliesTo(low, scope))
                 assertTrue("VERY_LOW under $scope", AlertDeliveryPolicy.quietWindowBreakthroughAppliesTo(veryLow, scope))
+                assertTrue(
+                    "PERSISTENT_LOW under $scope",
+                    AlertDeliveryPolicy.quietWindowBreakthroughAppliesTo(AlertType.PERSISTENT_LOW.id, scope)
+                )
             }
         assertTrue(AlertDeliveryPolicy.isHypoKind(low))
         assertTrue(AlertDeliveryPolicy.isHypoKind(veryLow))
+        assertTrue(AlertDeliveryPolicy.isHypoKind(AlertType.PERSISTENT_LOW.id))
         assertFalse(AlertDeliveryPolicy.isHypoKind(high))
         assertFalse(AlertDeliveryPolicy.isHypoKind(AlertType.VERY_HIGH.id))
+        assertFalse(AlertDeliveryPolicy.isHypoKind(AlertType.PERSISTENT_HIGH.id))
     }
 }
