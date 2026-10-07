@@ -58,8 +58,8 @@ public final class AlertDeliveryPolicy {
     // are not its business. The safety rule lives here so it cannot be lost in
     // the UI: a silenced alarm that stays active, unacknowledged, past the
     // breakthrough time sounds as if there were no window. The scope setting
-    // narrows that to the very high — but a hypo (LOW, VERY_LOW) always breaks
-    // through, whatever the scope: the repo's hypo policy caps a delayed hypo
+    // narrows that to the very high — but a hypo (LOW, VERY_LOW, PERSISTENT_LOW)
+    // always breaks through, whatever the scope: the repo's hypo policy caps a delayed hypo
     // sound tightly (AlertConfig.maxSoundDelaySecondsFor), and a quiet window
     // may not turn that into a whole silent night.
 
@@ -71,10 +71,14 @@ public final class AlertDeliveryPolicy {
     private static final int LOW_KIND = 0; // AlertType.LOW.id
     private static final int VERY_LOW_KIND = 5; // AlertType.VERY_LOW.id
     private static final int VERY_HIGH_KIND = 6; // AlertType.VERY_HIGH.id
+    private static final int PERSISTENT_LOW_KIND = 14; // AlertType.PERSISTENT_LOW.id
 
-    /** A hypo kind. Custom alerts deliver as kind 0 too; a custom low is a low. */
+    /**
+     * A hypo kind. Custom alerts deliver as kind 0 too; a custom low is a low. A
+     * persistent low is one that has already lasted its duration, so it is too.
+     */
     public static boolean isHypoKind(int kind) {
-        return kind == LOW_KIND || kind == VERY_LOW_KIND;
+        return kind == LOW_KIND || kind == VERY_LOW_KIND || kind == PERSISTENT_LOW_KIND;
     }
 
     public static String normalizeQuietMode(String quietMode) {
