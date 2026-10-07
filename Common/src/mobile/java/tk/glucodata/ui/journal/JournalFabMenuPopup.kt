@@ -24,8 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 
-// Material's modal scrim opacity, the same the app's bottom sheets use.
-private const val JournalFabMenuScrimAlpha = 0.32f
+// Darker than Material's 0.32 modal scrim: at 0.32 the dashboard's chart and colours
+// still competed with the menu labels.
+private const val JournalFabMenuScrimAlpha = 0.55f
 
 /**
  * Dims the page behind the open menu so the labels do not blend into it.
