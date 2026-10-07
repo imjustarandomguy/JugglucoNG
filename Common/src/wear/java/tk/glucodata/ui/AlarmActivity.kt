@@ -42,6 +42,7 @@ import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.Log
 import tk.glucodata.Notify
 import tk.glucodata.R
+import tk.glucodata.alerts.AlarmSilenceSync
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertType
 import tk.glucodata.receivers.AlarmActionReceiver
@@ -50,11 +51,30 @@ import tk.glucodata.ui.screens.trendArrow
 import tk.glucodata.ui.theme.WearJugglucoTheme
 
 class AlarmActivity : ComponentActivity() {
+    /** The phone snoozed or dismissed the alarm this screen shows (AlarmSilenceSync). */
+    private val closeFromPeer = AlarmSilenceSync.AlarmScreen { alertTypeId ->
+        runOnUiThread {
+            val shown = intent
+            if (!isFinishing &&
+                shown.getStringExtra(Notify.EXTRA_CUSTOM_ALERT_ID) == null &&
+                shown.getIntExtra(EXTRA_ALERT_TYPE_ID, -1) == alertTypeId
+            ) {
+                finish()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         turnScreenOnAndKeyguard()
         showAlarmContent()
+        AlarmSilenceSync.registerAlarmScreen(closeFromPeer)
+    }
+
+    override fun onDestroy() {
+        AlarmSilenceSync.unregisterAlarmScreen(closeFromPeer)
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

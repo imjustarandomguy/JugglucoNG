@@ -26,7 +26,7 @@ object AlertActions {
                 else AlertStateTracker.effectiveRearmCooldownMs(AlertRepository.loadConfig(type))
             val action = WearAlertAcknowledgement(kind, snoozeMinutes != null, now,
                 now + duration.coerceAtMost(WearAlertAcknowledgement.MAX_DURATION_MS))
-            applyState(action)
+            applyState(action, fromPeer = false)
             WearAlertSync.record(action)
         }
         Notify.cancelQueuedAlarmActivityLaunch(kind, customId, "user-acknowledgement")
@@ -44,7 +44,7 @@ object AlertActions {
     fun applyRemote(action: WearAlertAcknowledgement) {
         val type = AlertType.fromId(action.kind) ?: return
         if (AlertStateTracker.isManualTestActive(type)) return
-        applyState(action)
+        applyState(action, fromPeer = true)
         Notify.cancelRetrySession(action.kind, "wear-acknowledgement")
         Notify.cancelQueuedAlarmActivityLaunch(action.kind, null, "wear-acknowledgement")
         // A high acknowledgement must never stop a newer low alarm (or a manual test).
@@ -55,18 +55,18 @@ object AlertActions {
         AlarmActivityAccess.acknowledge(action.kind)
     }
 
-    private fun applyState(action: WearAlertAcknowledgement) {
+    private fun applyState(action: WearAlertAcknowledgement, fromPeer: Boolean) {
         val type = AlertType.fromId(action.kind) ?: return
         if (action.snoozed) {
-            SnoozeManager.snoozeUntil(type, action.untilMs)
+            SnoozeManager.snoozeUntil(type, action.untilMs, fromPeer = fromPeer)
             AlertStateTracker.resetState(type)
         } else {
             // A peer can acknowledge before this device has entered the condition.
             // Only an existing local episode can own an episode-long dismissal.
             if (AlertStateTracker.isEpisodeActive(type)) {
-                AlertStateTracker.onAlertDismissed(type, action.untilMs)
+                AlertStateTracker.onAlertDismissed(type, fromPeer, action.untilMs)
             }
-            SnoozeManager.clearSnooze(type, recordCancellation = false)
+            SnoozeManager.clearSnooze(type, recordCancellation = false, fromPeer = fromPeer)
         }
     }
 
@@ -76,7 +76,7 @@ object AlertActions {
         // the sound/notification/episode of a fresh alarm, belong to another action.
         if (previous?.snoozed == true &&
             SnoozeManager.getSnoozeState(type)?.snoozeUntilMillis == previous.untilMs) {
-            SnoozeManager.clearSnooze(type, recordCancellation = false)
+            SnoozeManager.clearSnooze(type, recordCancellation = false, fromPeer = true)
         }
     }
 }
