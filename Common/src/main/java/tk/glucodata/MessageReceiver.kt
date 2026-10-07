@@ -207,6 +207,10 @@ class MessageReceiver: WearableListenerService() {
                         MessageSender.sendSensorClaimStatus()
                     }
                 }
+                // The phone's netinfo still says "the phone has the sensor", and
+                // native answers that by clearing the watch's Bluetooth flag. A
+                // watch told to read a sensor puts it back at once.
+                if (isWearable) WatchSensorRadio.bluetoothWanted()
             }
             WearMessagePath.START ->  {
                // Same gate as Applic.initproc(): request Wi-Fi only when the Wi-Fi setting is on.

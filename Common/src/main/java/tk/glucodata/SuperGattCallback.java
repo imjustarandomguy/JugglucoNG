@@ -231,6 +231,19 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     }
 
     /**
+     * No GATT open or pending and no connect scheduled: until something dials
+     * it, this callback will not reach its sensor.
+     */
+    public final synchronized boolean transportIdle() {
+        return mBluetoothGatt == null && !connectPending && !connectQueued();
+    }
+
+    /** A connect the driver queued itself (a wakeup alarm, its own wait), not through connectDevice's scheduler. */
+    protected boolean connectQueued() {
+        return false;
+    }
+
+    /**
      * Mark a live reading accepted by this local BLE callback.
      *
      * Every ownership claim this device can make hangs off this one point: the

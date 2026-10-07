@@ -78,6 +78,10 @@ private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
 private PowerManager.WakeLock reconnectlock;
 private long shortReconnectSeq;
 private boolean shortReconnectPending;
+// When the wakeup alarm is due. Well past that it has fired, and a connect it
+// was refused then is not queued any more.
+private long alarmDueMs;
+private static final long DEXCOM_ALARM_GRACE_MS = 60_000L;
 // Asked a moment before its next measurement, a G7 answers with the reading
 // before (age about 300 s). It keeps the link for a few seconds: ask again.
 private static final long DEXCOM_PREVIOUS_READING_AGE_MS = 240_000L;
@@ -289,7 +293,10 @@ private boolean connected=false;
             // An executor timer cannot wake a suspended CPU, and its pending latch
             // would prevent an alarm/scan from requesting an immediate connection.
             onalarm = setalarm(System.currentTimeMillis() + delayMillis, onalarm, SerialNumber);
-            if (onalarm != null) return true;
+            if (onalarm != null) {
+                alarmDueMs = System.currentTimeMillis() + delayMillis;
+                return true;
+            }
             // Keep recovery queued if the OS refuses the wakeup alarm.
             return connectNow();
         }
@@ -310,6 +317,13 @@ private boolean connected=false;
         if (!bondedHere() && (foundtime == 0L || mActiveBluetoothDevice != scannedDevice))
             mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
+    }
+
+    /** A connect waiting on the wakeup alarm or the short wait is one scheduled (WatchSensorRadio). */
+    @Override
+    protected boolean connectQueued() {
+        return shortReconnectPending
+                || (onalarm != null && System.currentTimeMillis() < alarmDueMs + DEXCOM_ALARM_GRACE_MS);
     }
 
     /**
