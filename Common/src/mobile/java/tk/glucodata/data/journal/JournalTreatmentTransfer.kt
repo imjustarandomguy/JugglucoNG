@@ -11,6 +11,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
+import java.util.Collections
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -479,10 +480,15 @@ object JournalTreatmentTransfer {
     private fun sourceRecordId(sourcePrefix: String, baseId: String, kind: String): String =
         "$sourcePrefix:$baseId:$kind"
 
-    private fun chooseInsulinPreset(
+    /**
+     * The preset a received dose is filed under: the one it names ([presetNamedBy]), else, as
+     * before, the first long-acting preset when it reads as basal and the first rapid one when not.
+     */
+    internal fun chooseInsulinPreset(
         presets: List<JournalInsulinPreset>,
         treatment: JSONObject
     ): JournalInsulinPreset? {
+        presetNamedBy(presets, treatment)?.let { return it }
         val text = listOfNotNull(
             treatment.optNonBlankString("eventType", "eventtype"),
             treatment.optNonBlankString("notes", "note"),
@@ -503,6 +509,69 @@ object JournalTreatmentTransfer {
                 ?: candidates.minByOrNull { it.sortOrder }
         }
     }
+
+    /**
+     * The one preset [treatment] names, or null to leave the choice to the basal words.
+     *
+     * Another app that writes a dose usually names the insulin (insulinType "Tresiba", or the name
+     * in its notes) without saying it is long-acting; filed by the basal words alone, such a dose
+     * went under the first rapid preset and counted toward IOB.
+     *
+     * insulinType is read first, then the notes, then eventType; the first of them that names a
+     * preset decides. A name counts when its words stand in the field as whole words, in order,
+     * case ignored: "Tresiba" in "tresiba 100", not "Novo" in "NovoRapid". A built-in name that
+     * lists brands ("Lantus / Basaglar / Semglee") also counts for each brand alone. An active
+     * preset named comes before an archived one, then the longest name ("Humalog Mix 75/25" over
+     * "Humalog"); two presets named equally are left to the basal words.
+     */
+    private fun presetNamedBy(
+        presets: List<JournalInsulinPreset>,
+        treatment: JSONObject
+    ): JournalInsulinPreset? {
+        if (presets.isEmpty()) return null
+        val fields = listOfNotNull(
+            treatment.optNonBlankString("insulinType"),
+            treatment.optNonBlankString("notes", "note"),
+            treatment.optNonBlankString("eventType", "eventtype", "event_type")
+        )
+        if (fields.isEmpty()) return null
+        val namesOfPresets = presets.map { preset -> preset to presetNames(preset) }
+        for (field in fields) {
+            val fieldWords = words(field)
+            for (archived in listOf(false, true)) {
+                // Each preset named in this field, with the length of the longest of its names there.
+                val named = namesOfPresets
+                    .filter { (preset, _) -> preset.isArchived == archived }
+                    .mapNotNull { (preset, names) ->
+                        names.filter { name -> Collections.indexOfSubList(fieldWords, name) >= 0 }
+                            .maxOfOrNull { name -> name.sumOf(String::length) }
+                            ?.let { length -> preset to length }
+                    }
+                if (named.isEmpty()) continue
+                val longest = named.maxOf { it.second }
+                return named.filter { it.second == longest }.singleOrNull()?.first
+            }
+        }
+        return null
+    }
+
+    /**
+     * The names [preset] goes by, each as its words: the whole name, and each brand of a built-in
+     * name that lists them with " / " ("Humalog Mix 50/50" is one name). A name without a letter,
+     * or of one character, is left out: it would be found in too many notes.
+     */
+    private fun presetNames(preset: JournalInsulinPreset): List<List<String>> =
+        (listOf(preset.displayName) + preset.displayName.split(BRAND_SEPARATOR))
+            .map(::words)
+            .filter { name -> name.sumOf(String::length) >= 2 && name.any { word -> word.any(Char::isLetter) } }
+            .distinct()
+
+    private val BRAND_SEPARATOR = Regex("\\s+/\\s+")
+    private val WORD = Regex("[\\p{L}\\p{N}]+")
+
+    /** [text]'s words, lowercased: its runs of letters and digits. */
+    private fun words(text: String): List<String> =
+        WORD.findAll(text.lowercase(Locale.ROOT)).map { it.value }.toList()
 
     private fun JSONObject.optRemoteId(): String? =
         remoteIdentifiers().firstOrNull()
