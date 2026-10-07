@@ -11,6 +11,7 @@ import tk.glucodata.SensorBluetooth
 import tk.glucodata.SensorIdentity
 import tk.glucodata.SuperGattCallback
 import tk.glucodata.drivers.ManagedBluetoothSensorDriver
+import tk.glucodata.drivers.ManagedSensorIdentityRegistry
 import tk.glucodata.drivers.ManagedSensorUiSignals
 
 object NightscoutFollowerRegistry {
@@ -140,16 +141,21 @@ object NightscoutFollowerRegistry {
         context: Context,
         sensorId: String = loadConfig(context).sensorId,
     ): NightscoutFollowerManager? {
+        val config = loadConfig(context)
+        // Only the configured server's follower may run. One for another server is being
+        // stopped (see stopInactiveFollowers); an alarm it left must not poll it again, nor
+        // hand it the new server's credentials.
+        if (!config.isUsable || !matchesSensorId(sensorId, config.sensorId)) return null
         val existing = findRunningFollower(sensorId)
         if (existing != null) {
-            existing.updateApiVersion(loadConfig(context).useV3)
+            existing.updateSettings(config.secret, config.useV3)
             return existing
         }
 
         var added = false
         val follower = synchronized(SensorBluetooth.gattcallbacks) {
             findRunningFollowerLocked(sensorId)?.also {
-                it.updateApiVersion(loadConfig(context).useV3)
+                it.updateSettings(config.secret, config.useV3)
             } ?: run {
                 val restored = createRestoredCallback(context, sensorId, 0L) as? NightscoutFollowerManager
                     ?: return@synchronized null
@@ -183,29 +189,176 @@ object NightscoutFollowerRegistry {
     ): String? {
         val normalizedUrl = normalizeUrl(url)
         if (normalizedUrl.isEmpty()) return null
-        saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = useV3)
         val sensorId = deriveSensorId(normalizedUrl)
+        // Read before the previous server's follower goes: ending it moves the current sensor
+        // off it, and the follower that replaces it should be what is shown instead.
+        val takeOverCurrent = connectNow && followerTakesOverCurrent(
+            currentMain = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull(),
+            sensorId = sensorId,
+            fullName = ::nativeFullName,
+        )
+        saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = useV3)
+        stopInactiveFollowers(context)
         if (connectNow) {
             connectSensor(context, sensorId)
+            if (takeOverCurrent) SensorBluetooth.setCurrentSensorSelection(sensorId)
+        } else {
+            val config = loadConfig(context)
+            findRunningFollower(sensorId)?.updateSettings(config.secret, config.useV3)
         }
         return sensorId
     }
 
     fun disableFollowerSensor(context: Context) {
-        val sensorId = loadConfig(context).sensorId
+        val config = loadConfig(context)
         NightscoutFollowerDeviceStatus.clear()
-        ManagedCurrentSensor.clearIfMatches(sensorId)
-        saveConfig(context, enabled = false, url = loadConfig(context).url, secret = loadConfig(context).secret)
-        SensorBluetooth.mygatts()
-            .filter { SensorIdentity.matches(it.SerialNumber, sensorId) }
-            .forEach { callback ->
-                if (callback is ManagedBluetoothSensorDriver) {
-                    callback.terminateManagedSensor(wipeData = false)
-                }
-                SensorBluetooth.sensorEnded(callback.SerialNumber)
+        ManagedCurrentSensor.clearIfMatches(config.sensorId)
+        saveConfig(context, enabled = false, url = config.url, secret = config.secret, useV3 = config.useV3)
+        stopInactiveFollowers(context)
+    }
+
+    /** What saving the Nightscout settings does to the follower; see [followerSettingsAction]. */
+    internal enum class FollowerSettingsAction {
+        /** Upload mode, or Nightscout off: no follower runs. */
+        DISABLE,
+
+        /** Follow mode without a URL yet: no follower can run. */
+        AWAIT_URL,
+
+        /** Follow mode: stop any other server's follower and start (or poll) this server's. */
+        START,
+
+        /** Follow mode, same server, no poll asked for: the running follower takes the new settings. */
+        UPDATE,
+    }
+
+    /**
+     * The follower half of saving the Nightscout settings. A follower that points at another
+     * server than [url] always goes, even when the caller asked for no connection: following a
+     * URL means following that server and no other, from the moment it is saved.
+     */
+    internal fun followerSettingsAction(
+        follow: Boolean,
+        url: String?,
+        connectRequested: Boolean,
+        previous: Config,
+    ): FollowerSettingsAction {
+        val normalizedUrl = normalizeUrl(url)
+        return when {
+            !follow -> FollowerSettingsAction.DISABLE
+            normalizedUrl.isEmpty() -> FollowerSettingsAction.AWAIT_URL
+            connectRequested -> FollowerSettingsAction.START
+            !previous.isUsable || !matchesSensorId(previous.sensorId, deriveSensorId(normalizedUrl)) ->
+                FollowerSettingsAction.START
+            else -> FollowerSettingsAction.UPDATE
+        }
+    }
+
+    /**
+     * Stores the follower half of the Nightscout settings and brings the running followers in
+     * line with it: afterwards only the follower of the server [url] names runs, and only in
+     * Follow mode ([follow]). [connectNow] polls that follower straight away.
+     */
+    fun applyFollowerSettings(
+        context: Context,
+        follow: Boolean,
+        url: String?,
+        secret: String?,
+        useV3: Boolean,
+        connectNow: Boolean,
+    ) {
+        val normalizedUrl = normalizeUrl(url)
+        when (followerSettingsAction(follow, normalizedUrl, connectNow, loadConfig(context))) {
+            FollowerSettingsAction.DISABLE -> {
+                // Not only when the follower was enabled: a follower left running without
+                // being enabled is exactly the one that has to go.
+                disableFollowerSensor(context)
+                saveConfig(context, enabled = false, url = normalizedUrl, secret = secret, useV3 = useV3)
             }
+            FollowerSettingsAction.AWAIT_URL -> {
+                saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = useV3)
+                stopInactiveFollowers(context)
+            }
+            FollowerSettingsAction.START ->
+                enableFollowerSensor(context, normalizedUrl, secret, connectNow = true, useV3 = useV3)
+            FollowerSettingsAction.UPDATE ->
+                enableFollowerSensor(context, normalizedUrl, secret, connectNow = false, useV3 = useV3)
+        }
+    }
+
+    /**
+     * Stops every running follower that is not the enabled one, takes it off the callback
+     * list, and ends its native record ([endInactiveFollowerRecords]). A follower is tied to
+     * the server it was created for, so after the URL changes the old one would otherwise go on
+     * polling the old server, and writing to its record, until the app restarted.
+     */
+    fun stopInactiveFollowers(context: Context) {
+        val config = loadConfig(context)
+        val inactive = inactiveFollowerCallbacks(
+            callbacks = SensorBluetooth.mygatts(),
+            serialOf = { it.SerialNumber },
+            enabledSensorId = config.sensorId.takeIf { config.isUsable },
+            fullName = ::nativeFullName,
+        )
+        inactive.forEach { retireFollowerCallback(context, it) }
+        if (inactive.isNotEmpty()) ManagedSensorUiSignals.markDeviceListDirty()
         endInactiveFollowerRecords(context)
     }
+
+    /**
+     * The follower callbacks among [callbacks] that the enabled follower ([enabledSensorId],
+     * null when none is) is not: each is named by its follower id, or by native's short name for
+     * a follower record.
+     */
+    internal fun <T> inactiveFollowerCallbacks(
+        callbacks: Iterable<T>,
+        serialOf: (T) -> String?,
+        enabledSensorId: String?,
+        fullName: (String) -> String?,
+    ): List<T> =
+        callbacks.filter { callback ->
+            val follower = followerRecordName(serialOf(callback), fullName) ?: return@filter false
+            !matchesSensorId(follower, enabledSensorId)
+        }
+
+    /**
+     * Whether the follower [sensorId] should become the current sensor when it starts: the
+     * current one ([currentMain]) is the follower of another server, which is about to stop.
+     */
+    internal fun followerTakesOverCurrent(
+        currentMain: String?,
+        sensorId: String,
+        fullName: (String) -> String?,
+    ): Boolean {
+        val current = followerRecordName(currentMain, fullName) ?: return false
+        return !matchesSensorId(current, sensorId)
+    }
+
+    private fun retireFollowerCallback(context: Context, callback: SuperGattCallback) {
+        val serial = callback.SerialNumber
+        try {
+            if (callback is ManagedBluetoothSensorDriver) {
+                callback.terminateManagedSensor(wipeData = false)
+            }
+            SensorBluetooth.sensorEnded(serial)
+            // sensorEnded() works through NG's Bluetooth object, which does not exist while its
+            // Bluetooth is off (blueone == null). A follower runs without it, from the static
+            // callback list, so it would stay listed: shown, still holding its poll alarm, and
+            // found again by restoreConfiguredFollower.
+            if (SensorBluetooth.mygatts().any { it === callback }) {
+                SensorBluetooth.retireCloneSensor(serial)
+                ManagedCurrentSensor.clearIfMatches(serial)
+                ManagedSensorIdentityRegistry.removePersistedSensor(context, serial)
+            }
+            Log.i(TAG, "Stopped inactive follower $serial")
+        } catch (t: Throwable) {
+            Log.stack(TAG, "retireFollowerCallback($serial)", t)
+        }
+    }
+
+    /** Native's full name for record [name], or null; a failed lookup must not stop a settings save. */
+    private fun nativeFullName(name: String): String? =
+        runCatching { Natives.resolveFullSensorName(name) }.getOrNull()
 
     /**
      * Ends the native record of every follower that is not the enabled one, the way a finished
