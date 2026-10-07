@@ -77,8 +77,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private companion object {
         private const val LOG_ID = "FloatingGlucose"
         private const val FLOATING_HISTORY_WINDOW_MS = 6L * 60L * 60L * 1000L
-        /** How long the details card stays open on its own. */
-        private const val DETAILS_TIMEOUT_MS = 10_000L
     }
 
     enum class CutoutEdge {
@@ -111,7 +109,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private var detailsHost: WindowManager? = null
     private var detailsClosedByOutsideTouchAt = 0L
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val closeDetailsRunnable = Runnable { closeDetails() }
 
     private lateinit var settingsRepository: FloatingSettingsRepository
     private val glucoseRepository = GlucoseRepository()
@@ -428,12 +425,13 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT)
         )
         // As the pill does: an app overlay if the accessibility host refuses it.
-        val added = addDetails(host, root, params) ||
-            (host !== app && addDetails(app, root, params.apply {
+        // No timeout: the card stays until a tap outside it, the pill, or screen off closes it.
+        if (!addDetails(host, root, params) && host !== app) {
+            addDetails(app, root, params.apply {
                 type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 token = null
-            }))
-        if (added) mainHandler.postDelayed(closeDetailsRunnable, DETAILS_TIMEOUT_MS)
+            })
+        }
     }
 
     private fun addDetails(host: WindowManager, root: View, params: WindowManager.LayoutParams): Boolean =
@@ -448,7 +446,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
 
     private fun closeDetails() {
-        mainHandler.removeCallbacks(closeDetailsRunnable)
         val root = detailsRoot ?: return
         val host = detailsHost
         detailsRoot = null
