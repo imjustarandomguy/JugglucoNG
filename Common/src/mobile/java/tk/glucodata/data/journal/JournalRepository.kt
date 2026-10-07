@@ -480,7 +480,12 @@ class JournalRepository {
                 storedEvidence.supportsPerDoseCalculation,
             curveProfileId = storedProfile?.storageValue,
             curveModelVersion = if (storedProfile == null) 0 else JournalInsulinCurveCatalogue.MODEL_VERSION,
-            curveEvidence = storedEvidence.storageValue
+            curveEvidence = storedEvidence.storageValue,
+            doseStep = JournalInsulinDosing.sanitizeStep(input.doseStep),
+            defaultDose = JournalInsulinDosing.sanitizeDefaultDose(input.defaultDose),
+            reminderTimes = JournalInsulinDosing.encodeReminderTimes(
+                JournalInsulinDosing.reminderTimesFor(input.countsTowardIob, input.reminderTimes)
+            )
         )
         val id = dao.upsertInsulinPreset(entity)
         // Entries snapshot their resolved curve, so edits affect future doses only.
@@ -513,6 +518,11 @@ class JournalRepository {
 
     suspend fun getEntriesBetweenSnapshot(startMillis: Long, endMillis: Long): List<JournalEntry> {
         return dao.getEntriesBetween(startMillis, endMillis).map(JournalEntryEntity::toModel)
+    }
+
+    /** Amounts of [type] logged between the two times, whatever their source (the entry sheet's chips). */
+    suspend fun amountsBetween(type: JournalEntryType, startMillis: Long, endMillis: Long): List<JournalAmountRow> {
+        return dao.getAmountsBetween(type.storageValue, startMillis, endMillis)
     }
 
     suspend fun ensureDefaultFoods() {
@@ -931,7 +941,10 @@ private fun JournalInsulinPresetEntity.toModel(): JournalInsulinPreset {
         curveEvidence = JournalCurveEvidence.fromStorage(curveEvidence),
         scientificName = curveProfileId
             ?.let(JournalBuiltInCurveProfile::fromStorage)
-            ?.let(JournalInsulinCurveCatalogue::scientificName)
+            ?.let(JournalInsulinCurveCatalogue::scientificName),
+        doseStep = JournalInsulinDosing.sanitizeStep(doseStep),
+        defaultDose = JournalInsulinDosing.sanitizeDefaultDose(defaultDose),
+        reminderTimes = JournalInsulinDosing.decodeReminderTimes(reminderTimes)
     )
 }
 
