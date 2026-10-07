@@ -407,6 +407,8 @@ object AlarmSilenceSync {
             Notify.cancelRetrySession(type.id, "$reason-after-stop")
             Notify.cancelAlertNotification()
         }
+        // The watch's alarm screen notification goes with the screen, once the sound is over too.
+        Notify.cancelAlarmScreenNotification(type.id)
         screens.forEach { screen ->
             try {
                 screen.closeFor(type.id)
