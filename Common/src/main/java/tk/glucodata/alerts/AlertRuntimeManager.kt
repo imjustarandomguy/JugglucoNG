@@ -657,8 +657,9 @@ object AlertRuntimeManager {
      * The low-side mirror of [evaluatePersistentHighLocked]; the rules live in
      * [PersistentLowPolicy]. Unlike the persistent high, the duration is measured
      * between reading times, the timer only resets above threshold + margin, and
-     * VERY_LOW anywhere in the episode keeps it quiet. An episode's start comes
-     * from the stored readings, so phone and watch count from the same reading.
+     * VERY_LOW's episode holds it, the count starting over when that episode
+     * ends. An episode's start comes from the stored readings, so phone and
+     * watch count from the same reading.
      */
     private fun evaluatePersistentLowLocked(nowMs: Long) {
         val type = AlertType.PERSISTENT_LOW
@@ -694,7 +695,7 @@ object AlertRuntimeManager {
         persistentLowState = decision.state
         val reasonChanged = decision.reason != persistentLowLastReason
         persistentLowLastReason = decision.reason
-        if (reasonChanged && (previous.startedAtMs != 0L || decision.state.startedAtMs != 0L)) {
+        if (reasonChanged && (previous.running || decision.state.running)) {
             Log.i(
                 LOG_ID,
                 "PERSISTENT_LOW ${decision.action} (${decision.reason}) value=$glucoseValue " +
@@ -705,7 +706,7 @@ object AlertRuntimeManager {
         when (decision.action) {
             // Once per change, not every 15 s: nothing can fire while reset or
             // held, so one clear covers the whole stretch.
-            PersistentLowAction.RESET -> if (previous.startedAtMs != 0L || reasonChanged) {
+            PersistentLowAction.RESET -> if (previous.running || reasonChanged) {
                 clearRuntimeAlert(type, decision.reason)
             }
             // Held, like the persistent high while falling: retries stop, the
@@ -736,7 +737,9 @@ object AlertRuntimeManager {
     ): Long {
         val start = try {
             val readings = EpisodeHistory.load(lastDisplaySnapshot?.sensorId, readingTimeMs, value)
-            PersistentLowPolicy.startFromHistory(readings, config, isMmol)
+            // VERY_LOW as it could hold now: the walk restarts the count where its episodes end.
+            val veryLow = AlertRepository.loadConfig(AlertType.VERY_LOW).takeIf { it.enabled && it.isActiveNow() }
+            PersistentLowPolicy.startFromHistory(readings, config, isMmol, veryLow)
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "persistentLowStartFromHistory", t)
             null
