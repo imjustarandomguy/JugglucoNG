@@ -55,7 +55,7 @@ class TrendConsumerPointListTests {
         return points
     }
 
-    private fun snapshot(ts: Long, value: Float) = CurrentDisplaySource.Snapshot(
+    private fun snapshot(ts: Long, value: Float, isMmol: Boolean = false) = CurrentDisplaySource.Snapshot(
         timeMillis = ts,
         rate = Float.NaN,
         sensorId = serial,
@@ -67,7 +67,7 @@ class TrendConsumerPointListTests {
         rawValue = 0f,
         sharedDisplayValue = 0f,
         sharedMgdl = 0,
-        isMmol = false,
+        isMmol = isMmol,
         displayValues = DisplayValues(primaryValue = value, primaryStr = "", fullFormatted = "")
     )
 
@@ -264,5 +264,36 @@ class TrendConsumerPointListTests {
         assertEquals(dashboard, complication, 1e-6f)
         assertEquals(dashboard, watchMain, 1e-6f)
         assertEquals(TrendArrowAngle.rotationDegrees(dashboard), TrendArrowAngle.rotationDegrees(complication), 0f)
+    }
+
+    @Test
+    fun watchArrowRisesWithTheDashboardWhenItsRowsKeepWholeSeconds() {
+        // As seen on a G7 (mmol/L): 5.4, 5.45, 5.5, 5.6, 5.9, 6.1, the phone's arrow up
+        // and the watch's flat. Native rows keep whole seconds, but the live reading the
+        // watch takes from the G7 itself keeps the milliseconds it arrived at (now less
+        // the reading's age), and with local smoothing on, the snapshot carries the
+        // smoothed 6.0 where its own stored row says 6.1.
+        val readings = listOf(5.4f, 5.45f, 5.5f, 5.6f, 5.9f, 6.1f)
+        val watchRows = g7Rows(readings.size) { k -> readings[readings.lastIndex - k] }
+        val liveTs = newestTs + 417L
+        val snap = snapshot(liveTs, 6.0f, isMmol = true)
+        // The phone's Room rows keep each live reading's own time.
+        val phoneRows = watchRows.map { GlucosePoint(it.timestamp + 417L, it.value, it.rawValue) }
+
+        val dashboard = TrendEngine.calculateTrend(
+            DisplayTrendSource.resolveTrendPoints(phoneRows, snap, null), useRaw = false, isMmol = true
+        )
+        val watch = DisplayTrendSource.resolveDisplayArrowRate(watchRows, snap, serial, 0, true)
+        // Merged as a reading of its own, the live point sat 417 ms after its stored row
+        // and 0.1 mmol/L off it: a > 20 mg/dL/min artifact to TrendEngine, which then
+        // measured the newest point alone.
+        val asSeparateReading = DisplayTrendSource.resolveArrowRate(
+            DisplayTrendSource.resolveTrendPoints(watchRows, snap, serial), snap, 0, true, Float.NaN
+        )
+
+        assertEquals(0f, asSeparateReading, 0f)
+        assertEquals(1, deadZoneSide(dashboard.velocity))
+        assertEquals(dashboard.velocity, watch, 1e-4f)
+        assertEquals(TrendArrowAngle.rotationDegrees(dashboard.velocity), TrendArrowAngle.rotationDegrees(watch), 0.01f)
     }
 }
