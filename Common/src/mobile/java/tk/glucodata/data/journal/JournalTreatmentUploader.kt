@@ -529,6 +529,16 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                         break
                     }
                     if (result.action == ReceivedEditAction.KEEP_LOCAL) {
+                        // Refused or not the server's to change: the rest of the queue goes on, and
+                        // the edit stays here, unconfirmed, until the row is edited again.
+                        if (result.code != 0) {
+                            Log.e(
+                                LOG_ID,
+                                "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} refused " +
+                                    "code=${failureText(result.code, result.message)}; kept here, not sent again"
+                            )
+                            uploadFailureCode = result.code
+                        }
                         dao.settleReceivedNightscoutEdit(entry.id, entry.updatedAt, NIGHTSCOUT_EDIT_KEPT_LOCAL)
                         continue
                     }
@@ -1111,9 +1121,12 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         CONFIRM,
         /** The server's copy stands; the next receive writes it over the row. */
         SERVER_WINS,
-        /** Not sent, and not sent again unless the row is edited again ([NIGHTSCOUT_EDIT_KEPT_LOCAL]). */
+        /**
+         * Not sent, and not sent again unless the row is edited again ([NIGHTSCOUT_EDIT_KEPT_LOCAL]):
+         * a loop system's document, or an edit the server refused.
+         */
         KEEP_LOCAL,
-        /** Not taken; the edit stays pending and is sent again, like any refused upload. */
+        /** Not taken; the edit stays pending and is sent again, like any failed upload. */
         FAIL
     }
 
@@ -1129,8 +1142,20 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             code == HttpURLConnection.HTTP_NO_CONTENT ||
             code == HttpURLConnection.HTTP_NOT_FOUND ||
             code == HttpURLConnection.HTTP_GONE -> ReceivedEditAction.CONFIRM
-        else -> ReceivedEditAction.FAIL
+        else -> receivedEditFailureAction(code, answeredByNightscout)
     }
+
+    /**
+     * What a failed read or write of an edit does to it. Nightscout's own refusal (403 for a token
+     * that may create but not change, 422, 400) is not retried: asking again only gets the same
+     * answer, and the edit stays on the row instead. Anything else is tried again.
+     */
+    internal fun receivedEditFailureAction(code: Int, answeredByNightscout: Boolean): ReceivedEditAction =
+        if (answeredByNightscout && isRefusal(code)) ReceivedEditAction.KEEP_LOCAL else ReceivedEditAction.FAIL
+
+    /** A 4xx that is the server's answer about this request, not a request to come back later. */
+    private fun isRefusal(code: Int): Boolean =
+        code in 400..499 && code != HttpURLConnection.HTTP_CLIENT_TIMEOUT && code != HTTP_TOO_MANY_REQUESTS
 
     /** One pass's outcome for one edit. */
     private class ReceivedEditResult(
@@ -1161,8 +1186,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 Log.e(LOG_ID, "edit of received entry id=${entry.id}: several documents carry remoteId=$remoteId; not sent")
                 return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)
             }
-            is ReceivedDocumentRead.Failed ->
-                return ReceivedEditResult(ReceivedEditAction.FAIL, found.code, serverMessage(read.body))
+            is ReceivedDocumentRead.Failed -> return ReceivedEditResult(
+                receivedEditFailureAction(found.code, answeredByNightscout(read.code, read.body)),
+                found.code,
+                serverMessage(read.body)
+            )
         }
         val changes = when (val plan = receivedEditPlan(entry, document, useV3)) {
             is ReceivedEditPlan.KeepLocal -> {
@@ -1203,7 +1231,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         return ReceivedEditResult(
             action = action,
             code = code,
-            message = if (action == ReceivedEditAction.FAIL) serverMessage(body) else "",
+            message = if (action == ReceivedEditAction.CONFIRM) "" else serverMessage(body),
             wrote = action == ReceivedEditAction.CONFIRM && code in 200..299
         )
     }

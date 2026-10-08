@@ -951,7 +951,8 @@ internal fun nightscoutDeleteRemoteId(source: String, nsRemoteId: String?): Stri
 
 /**
  * nsUploadedAt of a received row whose edit is not sent: the document is a loop system's
- * ([JournalTreatmentTransfer.isLoopSystemDocument]). A further edit of the row is sent again.
+ * ([JournalTreatmentTransfer.isLoopSystemDocument]), or the server refused the edit. A further
+ * edit of the row is sent again.
  */
 internal const val NIGHTSCOUT_EDIT_KEPT_LOCAL = 0L
 
