@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tall enough for a chart: the value row on top, the chart filling the rest. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/widget_background"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_background"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
+            android:orientation="horizontal">
+
+            <!-- Sets the row's height (setHeight). The value beside it matches that
+                 height instead of its own oversized line box. -->
+            <TextView
+                android:id="@+id/widget_header_strut"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:importantForAccessibility="no"
+                android:visibility="invisible" />
+
+            <FrameLayout
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1">
+
+                <include
+                    layout="@layout/widget_glucose_value_row"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="start|center_vertical" />
+            </FrameLayout>
+
+            <include layout="@layout/widget_glucose_meta_column" />
+        </LinearLayout>
+
+        <ImageView
+            android:id="@+id/widget_chart"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1"
+            android:contentDescription="@string/notification_chart_accessibility"
+            android:scaleType="fitXY"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

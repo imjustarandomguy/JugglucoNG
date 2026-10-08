@@ -3091,4 +3091,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_warning">Неафіцыйны інтэрфейс: Dexcom можа змяніць або заблакаваць яго ў любы момант. Гэта не функцыя медыцынскай прылады.</string>
     <string name="status_bar_icon_colored_title">Каляровы значок у радку стану</string>
     <string name="status_bar_icon_colored_desc">Маляваць значэнне ў радку стану колерам дыяпазону</string>
+    <string name="widget_value_label">Глюкоза</string>
+    <string name="widget_chart_label">Графік глюкозы</string>
+    <string name="widget_value_description">Бягучая глюкоза, стрэлка трэнду і час вымярэння</string>
+    <string name="widget_chart_description">Бягучая глюкоза з графікам апошніх значэнняў</string>
 </resources>
