@@ -939,12 +939,25 @@ internal fun nightscoutDeleteRemoteId(source: String, nsRemoteId: String?): Stri
  *
  *   nsUploadedAt null                    as received: the server's copy, which a receive replaces
  *   updatedAt > nsUploadedAt             the user's edit, not yet confirmed by the server
+ *   nsUploadedAt 0                       the user's edit, kept here and not sent
+ *                                        ([NIGHTSCOUT_EDIT_KEPT_LOCAL]); still unconfirmed, so a
+ *                                        receive leaves it alone as it does a pending one
  *   updatedAt <= nsUploadedAt            the edit, confirmed; the next receive is the server's
  *                                        copy again and puts nsUploadedAt back to null
  *
  * Such a row is never one of this app's own uploads: JournalDao's own-upload queries leave the
  * source out, and the uploader writes back to the document the row came from, never a new one.
  */
+
+/**
+ * nsUploadedAt of a received row whose edit is not sent: the document is a loop system's
+ * ([JournalTreatmentTransfer.isLoopSystemDocument]). A further edit of the row is sent again.
+ */
+internal const val NIGHTSCOUT_EDIT_KEPT_LOCAL = 0L
+
+/** Whether a row received from Nightscout holds an edit that is kept here and not sent. */
+internal fun isNightscoutEditKeptLocal(source: String, nsUploadedAt: Long?): Boolean =
+    source == JournalEntrySource.NIGHTSCOUT.storageValue && nsUploadedAt == NIGHTSCOUT_EDIT_KEPT_LOCAL
 
 /** Whether a write to a row received from Nightscout is the user's own edit of it. */
 internal fun isLocalEditOfReceivedTreatment(existingSource: String?, incomingSource: JournalEntrySource): Boolean =
@@ -985,8 +998,10 @@ internal fun nightscoutUploadedAtAfterWrite(
     if (storedSource != JournalEntrySource.NIGHTSCOUT.storageValue) return existingNsUploadedAt
     if (existingUpdatedAt == null || !isLocalEditOfReceivedTreatment(existingSource, incomingSource)) return null
     // When the row last said what the server says (received, confirmed, or the mark an earlier
-    // edit set), and before now in any case, so the edit reads as pending.
-    return minOf(existingNsUploadedAt ?: existingUpdatedAt, now - 1)
+    // edit set), and before now in any case, so the edit reads as pending. An edit that was kept
+    // here gives way to the new one, which is sent.
+    val mark = existingNsUploadedAt?.takeIf { it != NIGHTSCOUT_EDIT_KEPT_LOCAL } ?: existingUpdatedAt
+    return minOf(mark, now - 1)
 }
 
 private fun JournalEntryEntity.toModel(): JournalEntry {

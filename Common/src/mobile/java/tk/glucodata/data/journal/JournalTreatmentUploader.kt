@@ -216,6 +216,38 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     internal fun refusedDeleteAction(attemptsSoFar: Int): TombstoneAction =
         if (attemptsSoFar + 1 >= MAX_DELETE_ATTEMPTS) TombstoneAction.GIVE_UP else TombstoneAction.RETRY
 
+    /**
+     * What a failed read of the document to delete does to its tombstone: a refusal counts as a
+     * refused delete would, and anything else waits. A read never clears one: an answer that
+     * could not be read as a document says nothing of whether it is gone.
+     */
+    internal fun tombstoneReadAction(code: Int, attemptsSoFar: Int, answeredByNightscout: Boolean): TombstoneAction =
+        tombstoneAction(code, attemptsSoFar, answeredByNightscout)
+            .takeIf { it != TombstoneAction.CLEAR } ?: TombstoneAction.WAIT
+
+    /** Whether the delete of [tombstone] is still to be sent (see [JournalPendingDeleteEntity]). */
+    internal fun sendsDelete(tombstone: JournalPendingDeleteEntity): Boolean = tombstone.attempts < MAX_DELETE_ATTEMPTS
+
+    /** Whether [remoteId] is an identifier this app gave a document of its own, dated or not. */
+    internal fun isOwnIdentifier(remoteId: String): Boolean = remoteId.startsWith(ID_PREFIX, ignoreCase = true)
+
+    internal enum class DeleteCheck {
+        DELETE,
+        /** Not on the server any more: nothing to delete. */
+        GONE,
+        /** A loop system's document, or several under one id: deleted here only. */
+        KEEP_LOCAL
+    }
+
+    /** What the read of a document about to be deleted allows; null when the read failed. */
+    internal fun deleteCheck(read: ReceivedDocumentRead): DeleteCheck? = when (read) {
+        is ReceivedDocumentRead.Found ->
+            if (JournalTreatmentTransfer.isLoopSystemDocument(read.document)) DeleteCheck.KEEP_LOCAL else DeleteCheck.DELETE
+        ReceivedDocumentRead.Gone -> DeleteCheck.GONE
+        ReceivedDocumentRead.Ambiguous -> DeleteCheck.KEEP_LOCAL
+        is ReceivedDocumentRead.Failed -> null
+    }
+
     private fun isTransientDeleteFailure(code: Int): Boolean =
         code < 0 ||
             code >= HttpURLConnection.HTTP_INTERNAL_ERROR ||
@@ -477,6 +509,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                     // The user edited a treatment received from Nightscout: the edit goes back to
                     // that document. Not subject to "send long insulin", which keeps this app from
                     // putting long-acting doses on the server; this one is there already.
+                    if (isNightscoutEditKeptLocal(entry.source, entry.nsUploadedAt)) continue
                     if (receivedEditHold(entry, receivedPrefix) != null) continue
                     if (sendBackoff.shouldHold(entry.id, System.currentTimeMillis())) {
                         uploadOk = false
@@ -494,6 +527,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                         uploadFailureCode = result.code
                         uploadOk = false
                         break
+                    }
+                    if (result.action == ReceivedEditAction.KEEP_LOCAL) {
+                        dao.settleReceivedNightscoutEdit(entry.id, entry.updatedAt, NIGHTSCOUT_EDIT_KEPT_LOCAL)
+                        continue
                     }
                     sendBackoff.reset()
                     if (result.wrote) acceptedDocument = true
@@ -638,6 +675,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         var recentTreatments: JSONArray? = null
         var ownRemoteIds: Set<String>? = null
         for (tomb in dao.getPendingNightscoutDeletes()) {
+            if (!sendsDelete(tomb)) continue
             // A Nightscout treatment can be several journal rows (a meal bolus is carbs and
             // insulin). Deleting the document for one of them would take the others off the
             // server too, so the delete waits for the last of them; until then the tombstone
@@ -645,6 +683,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             if (dao.countOtherEntriesWithNightscoutRemoteId(tomb.nsRemoteId, tomb.entryId) > 0) continue
 
             var documentId = tomb.nsRemoteId
+            val ownDocument = isOwnIdentifier(documentId)
             if (isUndatedOwnIdentifier(documentId)) {
                 val read = recentTreatments ?: fetchTreatmentsWithIds(baseUrl, rawSecret, useV3)
                 if (read == null) {
@@ -671,10 +710,39 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 documentId = found
             }
 
-            val code = NightPost.deleteUrlCode(tombstoneDeleteUrl(baseUrl, documentId, useV3), secretHashed)
-            val answered = answeredByNightscout(code, NightPost.getLastPrimaryResponseBody())
+            // Read before deleting: a loop system's document is never deleted from here, and one
+            // already gone needs no delete. This app's own documents need no such look.
+            val failedRead = if (ownDocument) null else {
+                val read = httpRequest("GET", receivedDocumentUrl(baseUrl, documentId, useV3), rawSecret, tokenAuth = useV3)
+                when (deleteCheck(receivedDocumentRead(read.code, read.body))) {
+                    DeleteCheck.KEEP_LOCAL -> {
+                        Log.i(
+                            LOG_ID,
+                            "tombstone entryId=${tomb.entryId} remoteId=$documentId is a loop system's document " +
+                                "or names several; deleted here only, never on the server"
+                        )
+                        dao.recordFailedNightscoutDelete(tomb.entryId, MAX_DELETE_ATTEMPTS, System.currentTimeMillis())
+                        continue
+                    }
+                    DeleteCheck.GONE -> {
+                        pass.confirmed += ConfirmedDelete(tomb, documentId)
+                        continue
+                    }
+                    DeleteCheck.DELETE -> null
+                    null -> read
+                }
+            }
+            val code: Int
+            val action: TombstoneAction
+            if (failedRead != null) {
+                code = failedRead.code
+                action = tombstoneReadAction(code, tomb.attempts, answeredByNightscout(code, failedRead.body))
+            } else {
+                code = NightPost.deleteUrlCode(tombstoneDeleteUrl(baseUrl, documentId, useV3), secretHashed)
+                action = tombstoneAction(code, tomb.attempts, answeredByNightscout(code, NightPost.getLastPrimaryResponseBody()))
+            }
             val attempts = tomb.attempts + 1
-            when (tombstoneAction(code, tomb.attempts, answered)) {
+            when (action) {
                 TombstoneAction.CLEAR -> {
                     pass.confirmed += ConfirmedDelete(tomb, documentId)
                     // A 404 also clears the tombstone, but it is not proof that the
@@ -994,6 +1062,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     internal sealed class ReceivedEditPlan {
         /** The server's copy stands, and the next receive brings it. */
         class ServerWins(val reason: String) : ReceivedEditPlan()
+        /** Nothing is sent and the edit stays on the row. */
+        class KeepLocal(val reason: String) : ReceivedEditPlan()
         /** Nothing the server would take differs from what it holds: the edit is settled. */
         class Settled(val timeKeptByServer: Boolean) : ReceivedEditPlan()
         class Send(val changes: JournalTreatmentTransfer.ReceivedEditChanges, val timeKeptByServer: Boolean) :
@@ -1003,12 +1073,16 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /**
      * Decides what becomes of [entry]'s edit, given [document] as the server now holds it.
      *
-     * The server wins where it changed the document after the edit was made, where the document
-     * no longer holds the row's part, and where it may not be changed. API v3 will not move a
-     * document's date (it answers 400), so on v3 an edited time is not sent: it is reported as
-     * kept by the server, and the next receive shows the server's time again.
+     * A loop system's document is never written to: the edit stays here. The server wins where it
+     * changed the document after the edit was made, where the document no longer holds the row's
+     * part, and where it may not be changed. API v3 will not move a document's date (it answers
+     * 400), so on v3 an edited time is not sent: it is reported as kept by the server, and the
+     * next receive shows the server's time again.
      */
     internal fun receivedEditPlan(entry: JournalEntryEntity, document: JSONObject, useV3: Boolean): ReceivedEditPlan {
+        if (JournalTreatmentTransfer.isLoopSystemDocument(document)) {
+            return ReceivedEditPlan.KeepLocal("the document belongs to a loop or pump system")
+        }
         if (JournalTreatmentTransfer.isReadOnlyDocument(document)) {
             return ReceivedEditPlan.ServerWins("the document is read-only")
         }
@@ -1037,6 +1111,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         CONFIRM,
         /** The server's copy stands; the next receive writes it over the row. */
         SERVER_WINS,
+        /** Not sent, and not sent again unless the row is edited again ([NIGHTSCOUT_EDIT_KEPT_LOCAL]). */
+        KEEP_LOCAL,
         /** Not taken; the edit stays pending and is sent again, like any refused upload. */
         FAIL
     }
@@ -1089,6 +1165,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 return ReceivedEditResult(ReceivedEditAction.FAIL, found.code, serverMessage(read.body))
         }
         val changes = when (val plan = receivedEditPlan(entry, document, useV3)) {
+            is ReceivedEditPlan.KeepLocal -> {
+                Log.i(LOG_ID, "edit of received entry id=${entry.id} remoteId=$remoteId kept here, not sent: ${plan.reason}")
+                return ReceivedEditResult(ReceivedEditAction.KEEP_LOCAL)
+            }
             is ReceivedEditPlan.ServerWins -> {
                 Log.i(LOG_ID, "edit of received entry id=${entry.id} remoteId=$remoteId not sent: ${plan.reason}")
                 return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)

@@ -16,6 +16,10 @@ import androidx.room.PrimaryKey
  * retried on every upload cycle forever, so the tombstone is dropped past
  * [JournalTreatmentUploader.MAX_DELETE_ATTEMPTS]. A delete that got no answer (the server
  * out of reach) is not a refusal and does not count.
+ *
+ * A tombstone at [JournalTreatmentUploader.MAX_DELETE_ATTEMPTS] is not sent at all: its document
+ * is a loop system's, which is never deleted from here. It only keeps the document from being
+ * received again.
  */
 @Entity(tableName = "journal_pending_deletes")
 data class JournalPendingDeleteEntity(
