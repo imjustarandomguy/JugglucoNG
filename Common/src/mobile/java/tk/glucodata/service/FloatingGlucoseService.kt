@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -68,11 +69,11 @@ import tk.glucodata.data.GlucoseRepository
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.overlay.FloatingDetailsCard
 import tk.glucodata.ui.overlay.FloatingDetailsCardWidth
-import tk.glucodata.ui.overlay.FloatingDetailsRequest
 import tk.glucodata.ui.overlay.FloatingGlucoseOverlay
 import tk.glucodata.ui.overlay.FloatingNextReading
 import tk.glucodata.ui.overlay.FloatingOpenAppActivity
 import tk.glucodata.ui.overlay.FloatingPillReading
+import tk.glucodata.ui.overlay.nextOverlayFreshnessCheckDelay
 import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.Natives
 
@@ -116,6 +117,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private var pillTouchDownAt = 0L
     // The card's background opacity, followed from the settings: a card opens with it, and follows it.
     private val detailsOpacity = MutableStateFlow(FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
+    // Whether the card is open; while it is, the freshness clock keeps its age going.
+    private val detailsShown = MutableStateFlow(false)
+    // The pill's and the card's one freshness clock; see runFreshnessClock.
+    private val freshnessNow = MutableStateFlow(System.currentTimeMillis())
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private lateinit var settingsRepository: FloatingSettingsRepository
@@ -182,6 +187,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         ).apply { pause() }
         pillRecomposer = Recomposer(ui + pillFrameClock)
         serviceScope.launch(ui + pillFrameClock) { pillRecomposer.runRecomposeAndApplyChanges() }
+        serviceScope.launch { runFreshnessClock() }
 
         setupOverlay()
         androidx.core.content.ContextCompat.registerReceiver(
@@ -278,13 +284,14 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     repository = settingsRepository,
                     historyFlow = history,
                     readingFlow = reading,
+                    freshnessNowFlow = freshnessNow,
                     frameRequests = frameRequests,
                     onReadingDrawn = { drawnRevision = it },
                     onReadingComposed = { onPillComposed(it) },
                     onUpdatePosition = { x, y -> updateViewPosition(x, y) },
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
-                    onToggleDetails = { toggleDetails(it) },
+                    onToggleDetails = { toggleDetails() },
                     onTapNotOpened = { tapNotOpened(it) },
                     onOpenApp = {
                         closeDetails()
@@ -331,7 +338,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         root.doOnLayout { applyOverlayPlacement() }
     }
     
-    private fun toggleDetails(request: FloatingDetailsRequest) {
+    private fun toggleDetails() {
         if (detailsRoot != null) {
             closeDetails()
             tapNotOpened("the card was open, closed it")
@@ -341,7 +348,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             tapNotOpened("its touch closed the card")
             return
         }
-        openDetails(request)
+        openDetails()
     }
 
     /** The trace line for a tap on the pill that does not open the details card: why not. */
@@ -355,9 +362,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * screen and above it in the bottom half, aligned to its nearer side edge.
      * It goes in beside the pill, through the pill's WindowManager and as its window
      * type, so it shows wherever the pill does (FloatingDetailsWindow): over the status
-     * bar and the lock screen too, for the pill drawn there.
+     * bar and the lock screen too, for the pill drawn there. It shows the pill's reading,
+     * and follows it while open.
      */
-    private fun openDetails(request: FloatingDetailsRequest) {
+    private fun openDetails() {
         val app = windowManager ?: return tapNotOpened("no window manager")
         // The pill is off screen: there is nothing to open the card beside.
         val host = hostWindowManager ?: return tapNotOpened("the pill has no window")
@@ -432,7 +440,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             setContent {
                 val opacity by detailsOpacity.collectAsState()
                 FloatingDetailsCard(
-                    request = request,
+                    readingFlow = reading,
+                    freshnessNowFlow = freshnessNow,
                     isDark = androidx.compose.foundation.isSystemInDarkTheme(),
                     onOpenApp = {
                         closeDetails()
@@ -463,6 +472,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             host.addView(root, params)
             detailsRoot = root
             detailsHost = host
+            detailsShown.value = true
             true
         } catch (e: Exception) {
             tk.glucodata.Log.i(LOG_ID, "tap: card not added as ${windowTypeName(params.type)}: $e")
@@ -477,6 +487,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val host = detailsHost
         detailsRoot = null
         detailsHost = null
+        detailsShown.value = false
         try {
             host?.removeView(root)
         } catch (e: Exception) {
@@ -810,6 +821,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             if (resolved.copy(revision = current.revision) != current) {
                 reading.value = resolved.copy(revision = current.revision + 1)
             }
+            // The card follows the reading; with none left it has nothing to show.
+            if (resolved.point == null) closeDetails()
             resolvedInputs = inputs
             if (loaded) {
                 presence.onReadingsLoaded(reading.value.revision)
@@ -857,6 +870,22 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             sensorId = sensorId,
             intervalMillis = interval,
         ) to FloatingPillWatchdog.ResolveInputs(sensorId, liveTime)
+    }
+
+    /**
+     * The pill's and the details card's one freshness clock: re-reads the wall clock from
+     * each new reading until it is stale, and on while the card shows its age; see
+     * nextOverlayFreshnessCheckDelay.
+     */
+    private suspend fun runFreshnessClock() {
+        combine(reading.map { it.readingTime }.distinctUntilChanged(), detailsShown) { time, shown -> time to shown }
+            .collectLatest { (time, shown) ->
+                while (true) {
+                    val now = System.currentTimeMillis()
+                    freshnessNow.value = now
+                    delay(nextOverlayFreshnessCheckDelay(time, now, ageShown = shown) ?: break)
+                }
+            }
     }
 
     /** Time of the live reading the current value is resolved with, or 0 when there is none. */
