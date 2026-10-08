@@ -780,6 +780,11 @@ private    void getdata(byte[] value) {
            case 0x59:{
               Applic.app.redraw();
               Natives.dexEndBackfill(dataptr);
+              // The backfilled readings are stored now. A watch's complications redraw only
+              // on a data refresh, so they kept a trend measured across the gap until the
+              // next reading. This answers a backfill request only, and complication
+              // updates are throttled (UiRefreshBus).
+              if(isWearable) UiRefreshBus.requestDataRefresh();
               break;
               }
            default: {
