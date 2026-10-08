@@ -7,13 +7,20 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tk.glucodata.data.journal.JournalTreatmentUploader.IdentifierDocument
 import tk.glucodata.data.journal.JournalTreatmentUploader.MAX_DELETE_ATTEMPTS
+import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.Settlement
 import tk.glucodata.data.journal.JournalTreatmentUploader.TombstoneAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.answeredByNightscout
+import tk.glucodata.data.journal.JournalTreatmentUploader.documentForIdentifier
+import tk.glucodata.data.journal.JournalTreatmentUploader.documentsRead
+import tk.glucodata.data.journal.JournalTreatmentUploader.identifierLookupUrl
+import tk.glucodata.data.journal.JournalTreatmentUploader.isLookupDue
+import tk.glucodata.data.journal.JournalTreatmentUploader.lookupLetsGo
+import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.servedRemoteIds
 import tk.glucodata.data.journal.JournalTreatmentUploader.settlement
-import tk.glucodata.data.journal.JournalTreatmentUploader.soleDocumentIdForIdentifier
 import tk.glucodata.data.journal.JournalTreatmentUploader.tombstoneAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.tombstoneDeleteUrl
 
@@ -133,7 +140,38 @@ class JournalNightscoutDeleteTests {
         assertEquals(Settlement.KEEP, settlement(deleteConfirmed = false, readsBack = true, served = true))
         assertEquals(Settlement.KEEP, settlement(deleteConfirmed = false, readsBack = true, served = null))
         assertEquals(Settlement.KEEP, settlement(deleteConfirmed = false, readsBack = false, served = null))
-        assertEquals(Settlement.DROP, settlement(deleteConfirmed = false, readsBack = true, served = false))
+    }
+
+    @Test
+    fun aLocalOnlyTombstoneOutOfTheNewestTreatmentsTakesAReadOfItsDocument() {
+        // The read holds only the newest treatments: an older one deleted here is left out of it
+        // while still on the server, and dropping its tombstone let a follower's history bring it
+        // back.
+        assertEquals(Settlement.LOOK_UP, settlement(deleteConfirmed = false, readsBack = true, served = false))
+    }
+
+    @Test
+    fun onlyAReadOfTheDocumentItselfLetsItsTombstoneGo() {
+        assertTrue(lookupLetsGo(ReceivedDocumentRead.Gone))
+        assertTrue(lookupLetsGo(ReceivedDocumentRead.Found(document(objectId, uuid).put("isValid", false))))
+        assertFalse(lookupLetsGo(ReceivedDocumentRead.Found(document(objectId, uuid))))
+        assertFalse(lookupLetsGo(ReceivedDocumentRead.Ambiguous))
+        assertFalse(lookupLetsGo(ReceivedDocumentRead.Failed(-1)))
+        assertFalse(lookupLetsGo(ReceivedDocumentRead.Failed(503)))
+        // As the server answers: v3 404/410, an empty v1 find.
+        assertTrue(lookupLetsGo(receivedDocumentRead(404, """{"status":404}""")))
+        assertTrue(lookupLetsGo(receivedDocumentRead(200, "[]")))
+        assertFalse(lookupLetsGo(receivedDocumentRead(404, "<html>Router</html>")))
+    }
+
+    @Test
+    fun aDocumentIsLookedUpAtMostOnceADay() {
+        val day = 24 * 60 * 60_000L
+        val last = 1_786_794_604_000L
+        assertTrue("never looked up", isLookupDue(0L, last))
+        assertFalse(isLookupDue(last, last + day - 1))
+        assertTrue(isLookupDue(last, last + day))
+        assertTrue("the clock went back", isLookupDue(last, last - 1))
     }
 
     // -- what a read still serves ---------------------------------------------
@@ -167,20 +205,44 @@ class JournalNightscoutDeleteTests {
         val read = JSONArray()
             .put(document(current, "jng-j-1a7"))
             .put(document(oldCopy, "jng-j-1a7"))
-            .put(document("65a1b2c3d4e5f60718293a03", "jng-j-1a8"))
 
-        assertEquals(oldCopy, soleDocumentIdForIdentifier(read, "jng-j-1a7", excludeRemoteIds = setOf(current)))
+        val named = documentForIdentifier(read, "jng-j-1a7", excludeRemoteIds = setOf(current), limit = 10)
+        assertEquals(oldCopy, (named as IdentifierDocument.One).documentId)
     }
 
     @Test
-    fun anIdentifierCarriedByNoDocumentOrBySeveralNamesNone() {
+    fun anIdentifierCarriedBySeveralDocumentsNamesNoneOfThem() {
         // Two other installs reusing the same row id: deleting a guess could take the wrong one.
         val read = JSONArray()
             .put(document("65a1b2c3d4e5f60718293a01", "jng-j-1a7"))
             .put(document("65a1b2c3d4e5f60718293a02", "jng-j-1a7"))
 
-        assertNull(soleDocumentIdForIdentifier(read, "jng-j-1a7", excludeRemoteIds = emptySet()))
-        assertNull(soleDocumentIdForIdentifier(read, "jng-j-999", excludeRemoteIds = emptySet()))
+        assertEquals(IdentifierDocument.Several, documentForIdentifier(read, "jng-j-1a7", emptySet(), limit = 10))
+        // A read as full as it may be can have left more out.
+        val full = JSONArray().put(document("65a1b2c3d4e5f60718293a01", "jng-j-1a7"))
+        assertEquals(IdentifierDocument.Several, documentForIdentifier(full, "jng-j-1a7", emptySet(), limit = 1))
+    }
+
+    @Test
+    fun anIdentifierNoOtherDocumentCarriesIsGone() {
+        val current = "65a1b2c3d4e5f60718293a01"
+        val onlyOwn = JSONArray().put(document(current, "jng-j-1a7"))
+
+        assertEquals(IdentifierDocument.None, documentForIdentifier(onlyOwn, "jng-j-1a7", setOf(current), limit = 10))
+        assertEquals(IdentifierDocument.None, documentForIdentifier(JSONArray(), "jng-j-1a7", emptySet(), limit = 10))
+    }
+
+    @Test
+    fun anUndatedIdentifierIsLookedUpOverAllTimeWithItsIds() {
+        // Not the newest treatments: those leave an older document out, and it was taken as gone.
+        assertEquals(
+            "$base/api/v1/treatments.json?find%5Bidentifier%5D=jng-j-1a7&find%5Bcreated_at%5D%5B%24gte%5D=2000-01-01&count=10",
+            identifierLookupUrl(base, "jng-j-1a7", 10)
+        )
+        assertEquals(1, documentsRead(200, JSONArray().put(document(objectId, "jng-j-1a7")).toString())!!.length())
+        assertNull(documentsRead(200, "<html>Sign in to the Wi-Fi</html>"))
+        assertNull(documentsRead(403, """{"status":403}"""))
+        assertNull(documentsRead(-1, ""))
     }
 
     // -- a received treatment, deleted ------------------------------------------
