@@ -45,7 +45,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import tk.glucodata.HealthActivityImportPolicy.ExistingRow
 import tk.glucodata.HealthActivityImportPolicy.ImportedRow
+import tk.glucodata.HealthActivityImportPolicy.Incoming
 import tk.glucodata.HealthActivityImportPolicy.Interval
 import tk.glucodata.data.journal.JournalEntry
 import tk.glucodata.data.journal.JournalEntryInput
@@ -257,35 +259,24 @@ private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
                 }
 
             // Only what is new or changed in Health Connect is written: an unchanged row is not
-            // touched, a row the user edited keeps the edit, one they deleted stays deleted.
+            // touched, a row the user edited keeps the edit, one they deleted stays deleted, also
+            // when the edit or the deletion comes while this import runs.
             val memory = activityImportMemory()
-            val importedBefore = memory.imported()
-            val existing = repository.entriesBySourceRecordIds(records.mapNotNull { it.first.sourceRecordId })
-            val counts = HashMap<HealthActivityImportPolicy.ImportAction, Int>()
-            for ((input, _) in records) {
-                val name = input.sourceRecordId ?: continue
-                val action = HealthActivityImportPolicy.importAction(
-                    existing = existing[name]?.let {
-                        HealthActivityImportPolicy.ExistingRow(it.source == JournalEntrySource.HEALTH_CONNECT, it.activityContent())
-                    },
-                    incoming = input.activityContent(),
-                    importedBefore = name in importedBefore,
-                )
-                if (action == HealthActivityImportPolicy.ImportAction.WRITE)
-                    repository.upsertEntry(input)
-                counts[action] = (counts[action] ?: 0) + 1
-            }
+            val journal = ActivityImportJournal(repository, start.toEpochMilli(), now.toEpochMilli())
+            val counts = HealthActivityImportPolicy.importRecords(
+                journal,
+                records.mapNotNull { (input, _) ->
+                    input.sourceRecordId?.let { Incoming(it, input.activityContent(), input) }
+                },
+                memory.imported().keys,
+            )
 
             // Step rows an earlier import wrote next to the session they belong to.
-            val rows = repository.entriesFromSourceBetween(
-                JournalEntrySource.HEALTH_CONNECT, start.toEpochMilli(), now.toEpochMilli()
-            ).map { ImportedRow(it.id, it.sourceRecordId, it.timestamp, it.durationMinutes) }
-            val doubled = HealthActivityImportPolicy.stepRowsToRemove(rows, sessionIntervals, stepIntervals)
-            doubled.forEach { repository.deleteEntry(it) }
+            val doubled = HealthActivityImportPolicy.removeStepsWithinSessions(journal, sessionIntervals, stepIntervals)
             val finished = System.currentTimeMillis()
             memory.remember(records.mapNotNull { (input, end) -> input.sourceRecordId?.let { it to end } }.toMap(), finished)
             memory.lastRunMillis = finished
-            Log.i(LOG_ID, "Health Connect activity records: $counts; removed ${doubled.size} steps within sessions")
+            Log.i(LOG_ID, "Health Connect activity records: $counts; removed $doubled steps within sessions")
         } catch (se: SecurityException) {
             hasActivityPermission = false
             Log.stack(LOG_ID, "importActivity", se)
@@ -494,3 +485,39 @@ private fun JournalEntryInput.activityContent() = HealthActivityImportPolicy.Act
 private fun JournalEntry.activityContent() = HealthActivityImportPolicy.ActivityContent.of(
     timestamp, title, note, amount, durationMinutes, intensity?.storageValue
 )
+
+private fun JournalEntry.existingRow() = ExistingRow(source == JournalEntrySource.HEALTH_CONNECT, activityContent())
+
+private fun JournalEntry.importedRow() =
+    ImportedRow(id, sourceRecordId, timestamp, durationMinutes, source == JournalEntrySource.HEALTH_CONNECT, updatedAt)
+
+/** The journal as the activity import reads and writes it, its own rows from [startMillis] to [endMillis]. */
+private class ActivityImportJournal(
+    private val repository: JournalRepository,
+    private val startMillis: Long,
+    private val endMillis: Long,
+) : HealthActivityImportPolicy.Journal<JournalEntryInput> {
+    override suspend fun rowsNamed(names: Collection<String>): Map<String, ExistingRow> =
+        repository.entriesBySourceRecordIds(names).mapValues { (_, row) -> row.existingRow() }
+
+    override suspend fun writeWhere(
+        records: List<Incoming<JournalEntryInput>>,
+        writes: (Incoming<JournalEntryInput>, ExistingRow?) -> Boolean,
+    ) {
+        val byName = records.associateBy { it.name }
+        repository.upsertEntriesWhere(records.map { it.record }) { input, row ->
+            byName[input.sourceRecordId]?.let { writes(it, row?.existingRow()) } ?: false
+        }
+    }
+
+    override suspend fun importedRows(): List<ImportedRow> =
+        repository.entriesFromSourceBetween(JournalEntrySource.HEALTH_CONNECT, startMillis, endMillis)
+            .map { it.importedRow() }
+
+    override suspend fun deleteWhere(rows: List<ImportedRow>, deletes: (ImportedRow, ImportedRow?) -> Boolean): Int {
+        val byId = rows.associateBy { it.id }
+        return repository.deleteEntriesWhere(rows.map { it.id }) { row ->
+            byId[row.id]?.let { deletes(it, row.importedRow()) } ?: false
+        }
+    }
+}
