@@ -2867,6 +2867,27 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="one">%1$d saat</item>
         <item quantity="other">%1$d saat</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d kaydedilmemiş değişiklik</item>
+        <item quantity="other">%1$d kaydedilmemiş değişiklik</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">ve %1$d tane daha</item>
+        <item quantity="other">ve %1$d tane daha</item>
+    </plurals>
+    <string name="alert_settings_discard">Vazgeç</string>
+    <string name="alert_settings_changed">Değişti</string>
+    <string name="alert_settings_saved">Kaydedildi</string>
+    <string name="alert_settings_leave_title">Değişiklikler kaydedilsin mi?</string>
+    <string name="alert_settings_keep_editing">Düzenlemeye devam et</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Diğer ayarlar</string>
+    <string name="alert_settings_added">Eklendi</string>
+    <string name="alert_settings_removed">Kaldırıldı</string>
+    <string name="alert_settings_test_uses_saved">Test kayıtlı ayarları kullanır — değişikliklerinizi denemek için önce kaydedin</string>
+    <string name="alert_settings_delivery">Uyarı türü</string>
+    <string name="alert_settings_on">Açık</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Eşler arası</string>
     <string name="clone_transport_connected">Bağlı</string>

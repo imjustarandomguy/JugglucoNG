@@ -7,6 +7,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -51,12 +52,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.navigation.NavController
 import tk.glucodata.Applic
 import tk.glucodata.GlucoseRangeColors
 import tk.glucodata.Notify
 import tk.glucodata.R
 import tk.glucodata.alerts.*
+import tk.glucodata.ui.LeaveGuard
 import tk.glucodata.ui.components.SettingsItem
 import tk.glucodata.ui.components.StyledSwitch
 import tk.glucodata.ui.components.CardPosition as SettingsItemPosition
@@ -65,6 +69,7 @@ import tk.glucodata.ui.theme.labelLargeExpressive
 import tk.glucodata.ui.util.ConnectedButtonGroup
 import tk.glucodata.logic.CustomAlertManager
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * State-of-the-art Alert Settings Screen with Material 3 Expressive design.
@@ -76,43 +81,35 @@ fun AlertSettingsScreen(
 ) {
     val context = LocalContext.current
     val isMmol = Applic.unit == 1
-    
-    // Load all alert configs
-    val configs = remember {
-        mutableStateMapOf<AlertType, AlertConfig>().apply {
-            AlertType.settingsEntries.forEach { put(it, AlertRepository.loadConfig(it)) }
-        }
-    }
 
-    // Custom Alerts State
-    var customAlerts by remember { mutableStateOf(CustomAlertRepository.getAll()) }
-    fun refreshCustomAlerts() {
-        customAlerts = CustomAlertRepository.getAll()
+    // Every setting here is edited in a draft (AlertSettingsEditor): nothing reaches
+    // the alerts, the watch or the stores until Save. Actions - a test, a snooze, a
+    // quiet window started or ended, a sub-screen - still happen at once. What is
+    // stored is read again on each return, under the edits not saved yet.
+    remember { AlertSettingsEditor.refresh(isMmol) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { AlertSettingsEditor.refresh(isMmol) }
+    val editor = AlertSettingsEditor.state ?: return
+    val configs = editor.draft.configs
+    val customAlerts = editor.draft.customAlerts
+
+    fun editConfig(updated: AlertConfig) {
+        AlertSettingsEditor.edit { it.withConfig(updated, isMmol) }
     }
-    fun saveCustomAlerts(updatedAlerts: List<CustomAlertConfig>) {
-        if (updatedAlerts == customAlerts) {
-            return
+    fun editConfig(type: AlertType, transform: (AlertConfig) -> AlertConfig) {
+        AlertSettingsEditor.edit { draft ->
+            draft.draft.configs[type]?.let { draft.withConfig(transform(it), isMmol) } ?: draft
         }
-        CustomAlertRepository.saveAll(updatedAlerts)
-        customAlerts = updatedAlerts
+    }
+    fun editCustomAlerts(transform: (List<CustomAlertConfig>) -> List<CustomAlertConfig>) {
+        AlertSettingsEditor.edit { it.withCustomAlerts(transform(it.draft.customAlerts)) }
     }
     fun upsertCustomAlert(updatedAlert: CustomAlertConfig) {
-        saveCustomAlerts(
-            customAlerts.map { existing ->
-                if (existing.id == updatedAlert.id) updatedAlert else existing
-            }
-        )
+        editCustomAlerts { alerts ->
+            alerts.map { existing -> if (existing.id == updatedAlert.id) updatedAlert else existing }
+        }
     }
     fun removeCustomAlert(alertId: String) {
-        saveCustomAlerts(customAlerts.filterNot { it.id == alertId })
-    }
-
-    fun persistConfigIfChanged(updated: AlertConfig) {
-        if (configs[updated.type] == updated) {
-            return
-        }
-        configs[updated.type] = updated
-        AlertRepository.saveConfig(updated)
+        editCustomAlerts { alerts -> alerts.filterNot { it.id == alertId } }
     }
 
     // Dialog States
@@ -128,7 +125,7 @@ fun AlertSettingsScreen(
             name = newName,
             type = type
         ).resetToDefaults(isMmol)
-        saveCustomAlerts(customAlerts + newAlert)
+        editCustomAlerts { alerts -> alerts + newAlert }
     }
 
     // Grouped by what the alert is about, not by how it is computed: a persistent
@@ -166,19 +163,42 @@ fun AlertSettingsScreen(
     var showPreemptiveSnooze by remember { mutableStateOf(false) }
     // Track sound picker state (Generic: Current URI + AlertTypeId + Callback)
     var soundPickerRequest by remember { mutableStateOf<Triple<String?, Int, (String?) -> Unit>?>(null) }
-    var sameDirectionSuppressionMinutes by remember {
-        mutableStateOf(AlertRepository.loadSameDirectionSuppressionMinutes())
-    }
-    fun persistSameDirectionSuppressionMinutes(minutes: Int) {
-        sameDirectionSuppressionMinutes = minutes
-        AlertRepository.saveSameDirectionSuppressionMinutes(minutes)
+    val globalSettings = editor.draft.global
+    fun editGlobal(updated: GlobalAlertSettings) {
+        AlertSettingsEditor.edit { it.withGlobal(updated) }
     }
 
     // Collected outside the LazyColumn: the quiet-window card only exists while
     // something can be silenced, or while a window runs.
     val quietWindowStateNow by tk.glucodata.alerts.QuietWindow.state.collectAsState()
+    // Starting a window stores its mode, and the other device can change it.
+    LaunchedEffect(quietWindowStateNow) { AlertSettingsEditor.refreshQuietWindow(isMmol) }
     // One Advanced state for every card on this screen.
     val advancedOpen = rememberSaveable { mutableStateOf(false) }
+
+    // The changes, in the order the page shows the alerts.
+    val pageOrder = remember { highAlerts + lowAlerts + trendAlerts + sensorAlerts }
+    val changes = remember(editor) { editor.changes(pageOrder) }
+    val dirty = editor.isDirty
+    // The bar keeps its count while it slides away after a Save.
+    val barCount = remember { IntArray(1) }
+    if (changes.isNotEmpty()) barCount[0] = changes.size
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Leaving with unsaved changes always asks: Back, the arrow, a tab, a
+    // notification's route (LeaveGuard). A sub-screen opened from here keeps the
+    // draft and does not ask.
+    var pendingLeave by remember { mutableStateOf<(() -> Unit)?>(null) }
+    fun leave(proceed: () -> Unit) {
+        if (AlertSettingsEditor.state?.isDirty == true) pendingLeave = proceed else proceed()
+    }
+    BackHandler(enabled = dirty) { leave { navController.popBackStack() } }
+    DisposableEffect(dirty) {
+        val guard: (() -> Unit) -> Unit = { proceed -> pendingLeave = proceed }
+        if (dirty) LeaveGuard.hold(guard)
+        onDispose { LeaveGuard.release(guard) }
+    }
 
     CompositionLocalProvider(LocalAlertsAdvancedOpen provides advancedOpen) {
     Scaffold(
@@ -186,7 +206,7 @@ fun AlertSettingsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.glucose_alerts_title)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
+                    IconButton(onClick = { leave { navController.popBackStack() } }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.navigate_back))
                     }
                 },
@@ -194,7 +214,28 @@ fun AlertSettingsScreen(
                     containerColor = Color.Transparent
                 )
             )
-        }
+        },
+        // Sticky under the list, above the system navigation bar; the list is
+        // padded by its height, so the last card stays reachable.
+        bottomBar = {
+            AnimatedVisibility(
+                visible = dirty,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
+            ) {
+                UnsavedChangesBar(
+                    changeCount = barCount[0],
+                    onDiscard = { AlertSettingsEditor.discard() },
+                    onSave = {
+                        AlertSettingsEditor.save(context)
+                        scope.launch {
+                            snackbarHostState.showSnackbar(context.getString(R.string.alert_settings_saved))
+                        }
+                    }
+                )
+            }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         LazyColumn(
             modifier = Modifier
@@ -209,64 +250,66 @@ fun AlertSettingsScreen(
                     allConfigs = configs,
                     hasCustomAlertsEnabled = customAlerts.any { it.enabled },
                     onMasterToggle = { enabled ->
-                        configs.values.toList().forEach { config ->
-                            persistConfigIfChanged(config.copy(enabled = enabled))
+                        AlertSettingsEditor.edit { edits ->
+                            edits.withConfigs(isMmol) { config -> config.copy(enabled = enabled) }
+                                .let { it.withCustomAlerts(it.draft.customAlerts.map { alert -> alert.copy(enabled = enabled) }) }
                         }
-                        saveCustomAlerts(customAlerts.map { alert -> alert.copy(enabled = enabled) })
                     },
                     onApplyToAll = { draft ->
-                        configs.values.toList().forEach { config ->
-                            val updated = config.copy(
-                                soundEnabled = draft.soundEnabled,
-                                vibrationEnabled = draft.vibrationEnabled,
-                                flashEnabled = draft.flashEnabled,
-                                deliveryMode = draft.deliveryMode,
-                                hapticProfile = draft.hapticProfile,
-                                customSoundUri = BundledAlertSounds.forAlert(
-                                    draft.customSoundUri, context.packageName, config.type.id
-                                ),
-                                overrideDND = draft.overrideDND,
-                                alarmDurationSeconds = draft.alarmDurationSeconds,
-                                timeRangeEnabled = draft.timeRangeEnabled,
-                                activeStartHour = draft.activeStartHour,
-                                activeStartMinute = draft.activeStartMinute,
-                                activeEndHour = draft.activeEndHour,
-                                activeEndMinute = draft.activeEndMinute,
-                                retryEnabled = draft.retryEnabled,
-                                retryIntervalMinutes = draft.retryIntervalMinutes,
-                                retryCount = draft.retryCount,
-                                soundDelayEnabled = draft.soundDelayEnabled,
-                                soundDelaySeconds = draft.soundDelaySeconds,
-                                defaultSnoozeMinutes = draft.defaultSnoozeMinutes
-                            )
-                            persistConfigIfChanged(updated)
-                        }
-                        val updatedCustomAlerts = customAlerts.map { alert ->
-                            alert.copy(
-                                sound = draft.soundEnabled,
-                                vibrate = draft.vibrationEnabled,
-                                flash = draft.flashEnabled,
-                                style = when (draft.deliveryMode) {
-                                    AlertDeliveryMode.NOTIFICATION_ONLY -> "notification"
-                                    AlertDeliveryMode.SYSTEM_ALARM -> "alarm"
-                                    AlertDeliveryMode.BOTH -> "both"
-                                },
-                                hapticProfile = draft.hapticProfile.name.lowercase(),
-                                durationSeconds = draft.alarmDurationSeconds,
-                                overrideDnd = draft.overrideDND,
-                                retryEnabled = draft.retryEnabled,
-                                retryIntervalMinutes = draft.retryIntervalMinutes,
-                                retryCount = draft.retryCount,
-                                timeRangeEnabled = draft.timeRangeEnabled,
-                                startTimeMinutes = (draft.activeStartHour ?: 0) * 60 + (draft.activeStartMinute ?: 0),
-                                endTimeMinutes = (draft.activeEndHour ?: 0) * 60 + (draft.activeEndMinute ?: 0),
-                                soundUri = BundledAlertSounds.forAlert(
-                                    draft.customSoundUri, context.packageName,
-                                    if (alert.type == CustomAlertType.LOW) 0 else 1
+                        // Into the page's draft, like any other edit: Save stores it.
+                        AlertSettingsEditor.edit { edits ->
+                            edits.withConfigs(isMmol) { config ->
+                                config.copy(
+                                    soundEnabled = draft.soundEnabled,
+                                    vibrationEnabled = draft.vibrationEnabled,
+                                    flashEnabled = draft.flashEnabled,
+                                    deliveryMode = draft.deliveryMode,
+                                    hapticProfile = draft.hapticProfile,
+                                    customSoundUri = BundledAlertSounds.forAlert(
+                                        draft.customSoundUri, context.packageName, config.type.id
+                                    ),
+                                    overrideDND = draft.overrideDND,
+                                    alarmDurationSeconds = draft.alarmDurationSeconds,
+                                    timeRangeEnabled = draft.timeRangeEnabled,
+                                    activeStartHour = draft.activeStartHour,
+                                    activeStartMinute = draft.activeStartMinute,
+                                    activeEndHour = draft.activeEndHour,
+                                    activeEndMinute = draft.activeEndMinute,
+                                    retryEnabled = draft.retryEnabled,
+                                    retryIntervalMinutes = draft.retryIntervalMinutes,
+                                    retryCount = draft.retryCount,
+                                    soundDelayEnabled = draft.soundDelayEnabled,
+                                    soundDelaySeconds = draft.soundDelaySeconds,
+                                    defaultSnoozeMinutes = draft.defaultSnoozeMinutes
                                 )
-                            )
+                            }.let { applied ->
+                                applied.withCustomAlerts(applied.draft.customAlerts.map { alert ->
+                                    alert.copy(
+                                        sound = draft.soundEnabled,
+                                        vibrate = draft.vibrationEnabled,
+                                        flash = draft.flashEnabled,
+                                        style = when (draft.deliveryMode) {
+                                            AlertDeliveryMode.NOTIFICATION_ONLY -> "notification"
+                                            AlertDeliveryMode.SYSTEM_ALARM -> "alarm"
+                                            AlertDeliveryMode.BOTH -> "both"
+                                        },
+                                        hapticProfile = draft.hapticProfile.name.lowercase(),
+                                        durationSeconds = draft.alarmDurationSeconds,
+                                        overrideDnd = draft.overrideDND,
+                                        retryEnabled = draft.retryEnabled,
+                                        retryIntervalMinutes = draft.retryIntervalMinutes,
+                                        retryCount = draft.retryCount,
+                                        timeRangeEnabled = draft.timeRangeEnabled,
+                                        startTimeMinutes = (draft.activeStartHour ?: 0) * 60 + (draft.activeStartMinute ?: 0),
+                                        endTimeMinutes = (draft.activeEndHour ?: 0) * 60 + (draft.activeEndMinute ?: 0),
+                                        soundUri = BundledAlertSounds.forAlert(
+                                            draft.customSoundUri, context.packageName,
+                                            if (alert.type == CustomAlertType.LOW) 0 else 1
+                                        )
+                                    )
+                                })
+                            }
                         }
-                        saveCustomAlerts(updatedCustomAlerts)
                     },
                     onPickSound = { draft, updateDraft ->
                         soundPickerRequest = Triple(draft.customSoundUri, draft.type.id) { uri ->
@@ -287,7 +330,12 @@ fun AlertSettingsScreen(
                 customAlerts.any { it.enabled && it.vibrate }
             if (anythingAudible || quietWindowStateNow.active) {
                 item(key = "quiet-window") {
-                    QuietWindowCard(anySound = anySound)
+                    QuietWindowCard(
+                        anySound = anySound,
+                        settings = editor.draft.quietWindow,
+                        savedSettings = editor.saved.quietWindow,
+                        onSettingsChange = { settings -> AlertSettingsEditor.edit { it.withQuietWindow(settings) } }
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
             }
@@ -307,19 +355,20 @@ fun AlertSettingsScreen(
 
                 AlertCard(
                     config = config,
+                    savedConfig = editor.savedConfig(type),
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = position,
                     onToggle = { enabled ->
-                        persistConfigIfChanged(config.copy(enabled = enabled))
+                        editConfig(type) { it.copy(enabled = enabled) }
                     },
                     onExpand = { expandedType = if (expandedType == type) null else type },
                     onConfigChange = { updated ->
-                        persistConfigIfChanged(updated)
+                        editConfig(updated)
                     },
                     onPickSound = {
                         soundPickerRequest = Triple(config.customSoundUri, config.type.id) { uri ->
-                            persistConfigIfChanged(config.copy(customSoundUri = uri))
+                            editConfig(type) { it.copy(customSoundUri = uri) }
                             soundPickerRequest = null
                         }
                     }
@@ -336,6 +385,7 @@ fun AlertSettingsScreen(
                     
                     CustomAlertCard(
                         alert = alert,
+                        savedAlert = editor.saved.customAlerts.firstOrNull { it.id == alert.id },
                         isMmol = isMmol,
                         isExpanded = isExpanded,
                         position = position,
@@ -384,19 +434,20 @@ fun AlertSettingsScreen(
 
                 AlertCard(
                     config = config,
+                    savedConfig = editor.savedConfig(type),
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = position,
                     onToggle = { enabled ->
-                        persistConfigIfChanged(config.copy(enabled = enabled))
+                        editConfig(type) { it.copy(enabled = enabled) }
                     },
                     onExpand = { expandedType = if (expandedType == type) null else type },
                     onConfigChange = { updated ->
-                        persistConfigIfChanged(updated)
+                        editConfig(updated)
                     },
                     onPickSound = {
                         soundPickerRequest = Triple(config.customSoundUri, config.type.id) { uri ->
-                            persistConfigIfChanged(config.copy(customSoundUri = uri))
+                            editConfig(type) { it.copy(customSoundUri = uri) }
                             soundPickerRequest = null
                         }
                     }
@@ -413,6 +464,7 @@ fun AlertSettingsScreen(
                     
                     CustomAlertCard(
                         alert = alert,
+                        savedAlert = editor.saved.customAlerts.firstOrNull { it.id == alert.id },
                         isMmol = isMmol,
                         isExpanded = isExpanded,
                         position = position,
@@ -458,19 +510,20 @@ fun AlertSettingsScreen(
                 val config = configs[type] ?: return@items
                 AlertCard(
                     config = config,
+                    savedConfig = editor.savedConfig(type),
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = getCardPosition(type, trendAlerts),
                     onToggle = { enabled ->
-                        persistConfigIfChanged(config.copy(enabled = enabled))
+                        editConfig(type) { it.copy(enabled = enabled) }
                     },
                     onExpand = { expandedType = if (expandedType == type) null else type },
                     onConfigChange = { updated ->
-                        persistConfigIfChanged(updated)
+                        editConfig(updated)
                     },
                     onPickSound = {
                         soundPickerRequest = Triple(config.customSoundUri, config.type.id) { uri ->
-                            persistConfigIfChanged(config.copy(customSoundUri = uri))
+                            editConfig(type) { it.copy(customSoundUri = uri) }
                             soundPickerRequest = null
                         }
                     }
@@ -485,14 +538,16 @@ fun AlertSettingsScreen(
                     title = stringResource(R.string.same_direction_suppression_title),
                     subtitle = stringResource(R.string.same_direction_suppression_summary),
                     icon = Icons.Default.NotificationsPaused,
-                    position = SettingsItemPosition.SINGLE
+                    position = SettingsItemPosition.SINGLE,
+                    changed = globalSettings.sameDirectionSuppressionMinutes !=
+                        editor.saved.global.sameDirectionSuppressionMinutes
                 ) {
                     DurationSlider(
                         label = "",
-                        value = sameDirectionSuppressionMinutes,
+                        value = globalSettings.sameDirectionSuppressionMinutes,
                         range = 0..AlertDefaults.SAME_DIRECTION_SUPPRESSION_MAX_MINUTES,
                         stepSize = 1,
-                        onValueChange = { persistSameDirectionSuppressionMinutes(it) },
+                        onValueChange = { editGlobal(globalSettings.copy(sameDirectionSuppressionMinutes = it)) },
                         valueText = { v ->
                             if (v == 0) stringResource(R.string.off)
                             else stringResource(R.string.minutes_short_format, v)
@@ -514,19 +569,20 @@ fun AlertSettingsScreen(
                 val config = configs[type] ?: return@items
                 AlertCard(
                     config = config,
+                    savedConfig = editor.savedConfig(type),
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = getCardPosition(type, sensorAlerts),
                     onToggle = { enabled ->
-                        persistConfigIfChanged(config.copy(enabled = enabled))
+                        editConfig(type) { it.copy(enabled = enabled) }
                     },
                     onExpand = { expandedType = if (expandedType == type) null else type },
                     onConfigChange = { updated ->
-                        persistConfigIfChanged(updated)
+                        editConfig(updated)
                     },
                     onPickSound = {
                         soundPickerRequest = Triple(config.customSoundUri, config.type.id) { uri ->
-                            persistConfigIfChanged(config.copy(customSoundUri = uri))
+                            editConfig(type) { it.copy(customSoundUri = uri) }
                             soundPickerRequest = null
                         }
                     }
@@ -587,6 +643,33 @@ fun AlertSettingsScreen(
                 onDismiss = { soundPickerRequest = null }
             )
         }
+
+        pendingLeave?.let { proceed ->
+            UnsavedChangesDialog(
+                changes = changes,
+                isMmol = isMmol,
+                deltaDisplayIntervalMinutes = remember {
+                    tk.glucodata.GlucoseDelta.sanitizeIntervalMinutes(
+                        Applic.app
+                            .getSharedPreferences("tk.glucodata_preferences", android.content.Context.MODE_PRIVATE)
+                            .getInt("delta_interval_minutes", tk.glucodata.GlucoseDelta.DEFAULT_INTERVAL_MINUTES)
+                    )
+                },
+                onKeepEditing = { pendingLeave = null },
+                onDiscard = {
+                    pendingLeave = null
+                    AlertSettingsEditor.discard()
+                    proceed()
+                },
+                onSave = {
+                    pendingLeave = null
+                    AlertSettingsEditor.save(context)
+                    // The page is going: a toast outlives it, a snackbar would not.
+                    Toast.makeText(context, R.string.alert_settings_saved, Toast.LENGTH_SHORT).show()
+                    proceed()
+                }
+            )
+        }
     }
     }
 }
@@ -610,6 +693,8 @@ fun AddCustomAlertButton(text: String, onClick: () -> Unit) {
 @Composable
 fun CustomAlertCard(
     alert: CustomAlertConfig,
+    // What is stored for it; null while it is a new alert not saved yet.
+    savedAlert: CustomAlertConfig?,
     isMmol: Boolean,
     isExpanded: Boolean,
     position: CardPosition,
@@ -695,13 +780,16 @@ fun CustomAlertCard(
 
                 // Title and subtitle
                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
+                    LabelWithChange(changed = alert != savedAlert) { labelModifier ->
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = labelModifier
+                        )
+                    }
+
                     if (subtitle.isNotEmpty()) {
                         Text(
                             text = subtitle,
@@ -745,32 +833,7 @@ fun CustomAlertCard(
                         .padding(top = 16.dp)
                 ) {
                     // Map to AlertConfig for shared UI component
-                    val genericConfig = AlertConfig(
-                        type = if (alert.type == CustomAlertType.HIGH) AlertType.HIGH else AlertType.LOW,
-                        enabled = alert.enabled,
-                        threshold = alert.threshold,
-                        soundEnabled = alert.sound,
-                        customSoundUri = alert.soundUri,
-                        vibrationEnabled = alert.vibrate,
-                        flashEnabled = alert.flash,
-                        hapticProfile = customHapticProfile(alert.hapticProfile),
-                        alarmDurationSeconds = sanitizeAlertDurationSeconds(alert.durationSeconds),
-                        deliveryMode = when(alert.style.lowercase()) {
-                            "alarm", "system_alarm" -> AlertDeliveryMode.SYSTEM_ALARM
-                            "both" -> AlertDeliveryMode.BOTH
-                            "notification" -> AlertDeliveryMode.NOTIFICATION_ONLY
-                            else -> AlertDeliveryMode.SYSTEM_ALARM
-                        },
-                        overrideDND = alert.overrideDnd,
-                        retryEnabled = alert.retryEnabled,
-                        retryIntervalMinutes = alert.retryIntervalMinutes,
-                        retryCount = alert.retryCount,
-                        timeRangeEnabled = alert.timeRangeEnabled,
-                        activeStartHour = alert.startTimeMinutes / 60,
-                        activeStartMinute = alert.startTimeMinutes % 60,
-                        activeEndHour = alert.endTimeMinutes / 60,
-                        activeEndMinute = alert.endTimeMinutes % 60
-                    )
+                    val genericConfig = alert.asAlertConfig()
                     // Delete Button
                     OutlinedButton(
                         onClick = onDelete,
@@ -788,6 +851,8 @@ fun CustomAlertCard(
                     // Render common settings
                     CommonAlertSettings(
                         config = genericConfig,
+                        // Its test takes the values on screen, so it needs no note.
+                        savedConfig = savedAlert?.asAlertConfig(),
                         onReset = { onUpdate(alert.resetToDefaults(isMmol)) },
                         isModified = alert.isModifiedFromDefaults(isMmol),
                         onConfigChange = { newConfig ->
@@ -837,9 +902,14 @@ fun CustomAlertCard(
                                 value = draftName,
                                 onValueChange = { draftName = it },
                                 label = { Text(stringResource(R.string.alert_name)) },
+                                supportingText = if (savedAlert != null && savedAlert.name != alert.name) {
+                                    { ChangedMarker() }
+                                } else {
+                                    null
+                                },
                                 modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
-                            
+
                             // Threshold Slider using generic UI
                              ThresholdSlider(
                                 label = stringResource(R.string.threshold_label),
@@ -852,7 +922,8 @@ fun CustomAlertCard(
                                      // mg/dL Ranges
                                      if (alert.type == CustomAlertType.HIGH) 70f..500f else 40f..110f
                                 },
-                                onValueChange = { onUpdate(alert.copy(threshold = it)) }
+                                onValueChange = { onUpdate(alert.copy(threshold = it)) },
+                                changed = savedAlert != null && savedAlert.threshold != alert.threshold
                             )
                         }
                     )
@@ -881,6 +952,7 @@ private fun SliderSettingsItem(
     subtitle: String,
     icon: ImageVector,
     position: SettingsItemPosition,
+    changed: Boolean = false,
     slider: @Composable () -> Unit
 ) {
     Surface(
@@ -908,11 +980,14 @@ private fun SliderSettingsItem(
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                LabelWithChange(changed = changed) { labelModifier ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = labelModifier
+                    )
+                }
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = subtitle,
@@ -974,20 +1049,11 @@ private fun cardShape(position: CardPosition, radius: androidx.compose.ui.unit.D
     }
 }
 
-private fun customHapticProfile(value: String): HapticProfile {
-    return runCatching { HapticProfile.valueOf(value.uppercase()) }.getOrElse {
-        when (value.lowercase()) {
-            "soft", "low", "silent" -> HapticProfile.SOFT
-            "steady", "medium" -> HapticProfile.STEADY
-            "escalating", "ascending" -> HapticProfile.ESCALATING
-            else -> HapticProfile.STRONG
-        }
-    }
-}
-
 @Composable
 private fun AlertCard(
     config: AlertConfig,
+    // What is stored for this alert: [config] is the page's draft of it.
+    savedConfig: AlertConfig?,
     isMmol: Boolean,
     isExpanded: Boolean,
     position: CardPosition,
@@ -1041,12 +1107,15 @@ private fun AlertCard(
 
                 // Title and subtitle
                 Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(
-                        text = stringResource(config.type.nameResId),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    LabelWithChange(changed = savedConfig != null && config != savedConfig) { labelModifier ->
+                        Text(
+                            text = stringResource(config.type.nameResId),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = labelModifier
+                        )
+                    }
                     val subtitle = buildString {
                         config.threshold?.let { append(formatThreshold(it, isMmol)) }
                         config.durationMinutes?.let {
@@ -1112,11 +1181,18 @@ private fun AlertCard(
                 Column {
                     AlertSettingsExpanded(
                         config = config,
+                        savedConfig = savedConfig,
                         isMmol = isMmol,
                         onConfigChange = onConfigChange,
                         onTest = {
-                            // Use Notify.testTrigger to simulate real alarm flow
+                            // Use Notify.testTrigger to simulate real alarm flow. It reads
+                            // the alert's stored configuration, not this page's draft.
                             Notify.testTrigger(config.type.id)
+                        },
+                        testNote = if (savedConfig != null && config != savedConfig) {
+                            stringResource(R.string.alert_settings_test_uses_saved)
+                        } else {
+                            null
                         },
                         onPickSound = onPickSound
                     )
@@ -1133,11 +1209,15 @@ private fun AlertCard(
 @Composable
 private fun AlertSettingsExpanded(
     config: AlertConfig,
+    savedConfig: AlertConfig?,
     isMmol: Boolean,
     onConfigChange: (AlertConfig) -> Unit,
     onTest: () -> Unit,
+    testNote: String?,
     onPickSound: () -> Unit
 ) {
+    // Whether the draft differs from what is stored in what [read] picks out.
+    fun changed(read: (AlertConfig) -> Any?): Boolean = savedConfig != null && read(savedConfig) != read(config)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1146,9 +1226,11 @@ private fun AlertSettingsExpanded(
     ) {
         CommonAlertSettings(
             config = config,
+            savedConfig = savedConfig,
             onConfigChange = onConfigChange,
             onPickSound = { onPickSound() },
             onTest = onTest,
+            testNote = testNote,
             onReset = { onConfigChange(config.resetToDefaults(isMmol)) },
             isModified = config.isModifiedFromDefaults(isMmol),
             headerContent = {
@@ -1156,6 +1238,7 @@ private fun AlertSettingsExpanded(
                 if (config.type == AlertType.FALLING_FAST || config.type == AlertType.RISING_FAST) {
                     DeltaAlarmSettings(
                         config = config,
+                        savedConfig = savedConfig,
                         isMmol = isMmol,
                         onConfigChange = onConfigChange
                     )
@@ -1168,7 +1251,8 @@ private fun AlertSettingsExpanded(
                         value = config.threshold,
                         isMmol = isMmol,
                         range = getThresholdRange(config.type, isMmol),
-                        onValueChange = { onConfigChange(config.copy(threshold = it)) }
+                        onValueChange = { onConfigChange(config.copy(threshold = it)) },
+                        changed = changed { it.threshold }
                     )
                 }
                 
@@ -1182,7 +1266,8 @@ private fun AlertSettingsExpanded(
                                     value = it,
                                     range = 5..120,
                                     stepSize = 5,
-                                    onValueChange = { v -> onConfigChange(config.copy(durationMinutes = v)) }
+                                    onValueChange = { v -> onConfigChange(config.copy(durationMinutes = v)) },
+                                    changed = changed { c -> c.durationMinutes }
                                 )
                             }
                         }
@@ -1193,7 +1278,8 @@ private fun AlertSettingsExpanded(
                                     value = it,
                                     range = 10..60,
                                     stepSize = 5,
-                                    onValueChange = { v -> onConfigChange(config.copy(forecastMinutes = v)) }
+                                    onValueChange = { v -> onConfigChange(config.copy(forecastMinutes = v)) },
+                                    changed = changed { c -> c.forecastMinutes }
                                 )
                             }
                         }
@@ -1204,6 +1290,7 @@ private fun AlertSettingsExpanded(
                 if (config.type == AlertType.SENSOR_EXPIRY) {
                     SensorExpiryThresholdSelector(
                         selected = config.expiryWarningMinutes,
+                        changed = changed { it.expiryWarningMinutes },
                         onToggle = { minutes ->
                             val next = if (minutes in config.expiryWarningMinutes) {
                                 config.expiryWarningMinutes - minutes
@@ -1233,7 +1320,8 @@ private fun AlertSettingsExpanded(
                         range = if (isMmol) 0f..3f else 0f..50f,
                         onValueChange = { onConfigChange(config.copy(rearmMargin = it)) },
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        prominent = false
+                        prominent = false,
+                        changed = changed { it.rearmMargin }
                     )
                 }
                 if (config.type == AlertType.PRE_LOW || config.type == AlertType.PRE_HIGH) {
@@ -1243,7 +1331,8 @@ private fun AlertSettingsExpanded(
                         range = 0..60,
                         stepSize = 5,
                         onValueChange = { v -> onConfigChange(config.copy(rearmMinIntervalMinutes = v)) },
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        changed = changed { it.rearmMinIntervalMinutes }
                     )
                 }
                 // PRE_HIGH only: insulin makes a predicted LOW more likely, so PRE_LOW
@@ -1257,7 +1346,8 @@ private fun AlertSettingsExpanded(
                         stepSize = 10,
                         onValueChange = { v -> onConfigChange(config.copy(iobCoverageFactor = v / 100f)) },
                         modifier = Modifier.padding(horizontal = 16.dp),
-                        valueText = { if (it == 0) stringResource(R.string.alert_feature_off) else "$it%" }
+                        valueText = { if (it == 0) stringResource(R.string.alert_feature_off) else "$it%" },
+                        changed = changed { it.iobCoverageFactor }
                     )
                 }
 
@@ -1279,12 +1369,14 @@ private fun AlertSettingsExpanded(
                                     }
                                 )
                             )
-                        }
+                        },
+                        changed = changed { (it.fallRateSuppress ?: 0f) > 0f }
                     )
                 }
                 if (config.type == AlertType.FALLING_FAST || config.type == AlertType.RISING_FAST) {
                     DeltaAlarmAdvancedSettings(
                         config = config,
+                        savedConfig = savedConfig,
                         isMmol = isMmol,
                         onConfigChange = onConfigChange
                     )
@@ -1298,13 +1390,17 @@ private fun AlertSettingsExpanded(
 @Composable
 private fun SensorExpiryThresholdSelector(
     selected: Set<Int>,
+    changed: Boolean,
     onToggle: (Int) -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            stringResource(R.string.sensor_expiry_warnings_title),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        LabelWithChange(changed = changed) { labelModifier ->
+            Text(
+                stringResource(R.string.sensor_expiry_warnings_title),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = labelModifier
+            )
+        }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1337,9 +1433,11 @@ private fun SensorExpiryThresholdSelector(
 @Composable
 private fun DeltaAlarmSettings(
     config: AlertConfig,
+    savedConfig: AlertConfig?,
     isMmol: Boolean,
     onConfigChange: (AlertConfig) -> Unit
 ) {
+    fun changed(read: (AlertConfig) -> Any?): Boolean = savedConfig != null && read(savedConfig) != read(config)
     val falling = config.type == AlertType.FALLING_FAST
     val deltaThreshold = config.deltaThreshold
         ?: if (isMmol) AlertDefaults.DELTA_THRESHOLD_MMOL else AlertDefaults.DELTA_THRESHOLD_MGDL
@@ -1364,7 +1462,8 @@ private fun DeltaAlarmSettings(
         value = deltaThreshold,
         isMmol = isMmol,
         range = if (isMmol) 0.1f..2.5f else 1f..40f,
-        onValueChange = { onConfigChange(config.copy(deltaThreshold = it)) }
+        onValueChange = { onConfigChange(config.copy(deltaThreshold = it)) },
+        changed = changed { it.deltaThreshold }
     )
 
     DurationSlider(
@@ -1373,7 +1472,8 @@ private fun DeltaAlarmSettings(
         range = 2..12,
         stepSize = 1,
         onValueChange = { onConfigChange(config.copy(deltaCount = it)) },
-        valueText = { "$it" }
+        valueText = { "$it" },
+        changed = changed { it.deltaCount }
     )
 
     ThresholdSlider(
@@ -1386,7 +1486,8 @@ private fun DeltaAlarmSettings(
             if (isMmol) 7.0f..17.0f else 120f..300f
         },
         onValueChange = { onConfigChange(config.copy(deltaBorder = it)) },
-        prominent = false
+        prominent = false,
+        changed = changed { it.deltaBorder }
     )
 
     Text(
@@ -1408,9 +1509,11 @@ private fun DeltaAlarmSettings(
 @Composable
 private fun DeltaAlarmAdvancedSettings(
     config: AlertConfig,
+    savedConfig: AlertConfig?,
     isMmol: Boolean,
     onConfigChange: (AlertConfig) -> Unit
 ) {
+    fun changed(read: (AlertConfig) -> Any?): Boolean = savedConfig != null && read(savedConfig) != read(config)
     val deltaThreshold = config.deltaThreshold
         ?: if (isMmol) AlertDefaults.DELTA_THRESHOLD_MMOL else AlertDefaults.DELTA_THRESHOLD_MGDL
     val deltaCount = config.deltaCount ?: AlertDefaults.DELTA_COUNT_DEFAULT
@@ -1427,10 +1530,13 @@ private fun DeltaAlarmAdvancedSettings(
     ) {
         // With checkpoint counting the window directly scales the confirmation time
         // (count x window), so it must not silently change with a display preference.
-        Text(
-            text = stringResource(R.string.delta_alarm_interval_label),
-            style = MaterialTheme.typography.bodyMedium
-        )
+        LabelWithChange(changed = changed { it.deltaIntervalMinutes }) { labelModifier ->
+            Text(
+                text = stringResource(R.string.delta_alarm_interval_label),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = labelModifier
+            )
+        }
         val windowLabels = mapOf(
             0 to stringResource(R.string.delta_alarm_interval_follow, displayIntervalMinutes),
             1 to stringResource(R.string.delta_interval_1min),
@@ -1455,7 +1561,8 @@ private fun DeltaAlarmAdvancedSettings(
             stringResource(if (isMmol) R.string.unit_mmol else R.string.unit_mg)
         ),
         checked = config.earlyTriggerEnabled,
-        onCheckedChange = { onConfigChange(config.copy(earlyTriggerEnabled = it)) }
+        onCheckedChange = { onConfigChange(config.copy(earlyTriggerEnabled = it)) },
+        changed = changed { it.earlyTriggerEnabled }
     )
 }
 
@@ -1469,7 +1576,9 @@ private fun ThresholdSlider(
     modifier: Modifier = Modifier,
     // The card's headline threshold is set big; a secondary threshold (the
     // re-arm margin, under Advanced) is set like every other slider there.
-    prominent: Boolean = true
+    prominent: Boolean = true,
+    // The value differs from what is saved: a ChangedMarker after the label.
+    changed: Boolean = false
 ) {
     // Calculate step size based on range and unit
     // Lower ranges need finer control (0.1 mmol or 1 mg/dL)
@@ -1491,17 +1600,22 @@ private fun ThresholdSlider(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = label,
-                style = if (prominent) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
-                fontWeight = if (prominent) FontWeight.Medium else null,
-                color = MaterialTheme.colorScheme.onSurface,
-                // A long (localised) label must wrap, not push the value out
-                // of the row.
+            // A long (localised) label must wrap, not push the value out
+            // of the row.
+            LabelWithChange(
+                changed = changed,
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp)
-            )
+            ) { labelModifier ->
+                Text(
+                    text = label,
+                    style = if (prominent) MaterialTheme.typography.titleMedium else MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (prominent) FontWeight.Medium else null,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelModifier
+                )
+            }
             Text(
                 // Use LOCAL sliderValue for real-time updates
                 formatThreshold(sliderValue, isMmol),
@@ -1516,7 +1630,10 @@ private fun ThresholdSlider(
             onValueChange = { sliderValue = it },
             onValueChangeFinished = {
                 val rounded = (kotlin.math.round(sliderValue / stepSize) * stepSize)
-                onValueChange(rounded)
+                // A touch that leaves the shown value as it was is no edit.
+                if (formatThreshold(rounded, isMmol) != formatThreshold(value, isMmol)) {
+                    onValueChange(rounded)
+                }
             },
             valueRange = range,
             steps = steps.coerceAtLeast(0),
@@ -1543,7 +1660,9 @@ internal fun DurationSlider(
     stepSize: Int = 5,
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    valueText: @Composable (Int) -> String = { stringResource(R.string.minutes_short_format, it) }
+    valueText: @Composable (Int) -> String = { stringResource(R.string.minutes_short_format, it) },
+    // The value differs from what is saved: a ChangedMarker after the label.
+    changed: Boolean = false
 ) {
     val steps = if (stepSize <= 1) {
         0
@@ -1564,15 +1683,20 @@ internal fun DurationSlider(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.bodyMedium,
-                // A long (localised) label must wrap, not push the value out
-                // of the row.
+            // A long (localised) label must wrap, not push the value out
+            // of the row.
+            LabelWithChange(
+                changed = changed,
                 modifier = Modifier
                     .weight(1f)
                     .padding(end = 8.dp)
-            )
+            ) { labelModifier ->
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = labelModifier
+                )
+            }
             Text(
                 valueText(displayValue),
                 style = MaterialTheme.typography.bodyMedium,
@@ -1586,7 +1710,10 @@ internal fun DurationSlider(
             onValueChange = { sliderValue = it },
             onValueChangeFinished = {
                 val rounded = (kotlin.math.round(sliderValue / stepSize) * stepSize).toInt()
-                onValueChange(rounded)
+                // A touch that leaves the value as it was is no edit.
+                if (rounded != value) {
+                    onValueChange(rounded)
+                }
             },
             valueRange = range.first.toFloat()..range.last.toFloat(),
             steps = steps.coerceAtLeast(0),
@@ -1679,19 +1806,22 @@ internal fun TimeRangeSettings(
     endMinute: Int?,
     onEnabledChange: (Boolean) -> Unit,
     onStartChange: (Int, Int) -> Unit,  // (hour, minute)
-    onEndChange: (Int, Int) -> Unit      // (hour, minute)
+    onEndChange: (Int, Int) -> Unit,     // (hour, minute)
+    // The hours or the switch differ from what is saved.
+    changed: Boolean = false
 ) {
     val startH = startHour ?: 22
     val startM = startMinute ?: 0
     val endH = endHour ?: 8
     val endM = endMinute ?: 0
-    
+
     Column {
         ExpressiveExpandableHeader(
             title = stringResource(R.string.active_time_range_title),
             subtitle = if (enabled) stringResource(R.string.time_range_summary, formatTime(startH, startM), formatTime(endH, endM)) else stringResource(R.string.only_alert_during_hours),
             enabled = enabled,
-            onEnabledChange = onEnabledChange
+            onEnabledChange = onEnabledChange,
+            changed = changed
         )
         
         AnimatedVisibility(
@@ -1969,7 +2099,11 @@ internal fun RetrySettings(
     retryCount: Int,
     onEnabledChange: (Boolean) -> Unit,
     onIntervalChange: (Int) -> Unit,
-    onCountChange: (Int) -> Unit
+    onCountChange: (Int) -> Unit,
+    // Each part differs from what is saved.
+    enabledChanged: Boolean = false,
+    intervalChanged: Boolean = false,
+    countChanged: Boolean = false
 ) {
     val retrySubtitle = if (enabled) {
         when {
@@ -1987,16 +2121,19 @@ internal fun RetrySettings(
             title = stringResource(R.string.retry_if_no_reaction),
             subtitle = retrySubtitle,
             enabled = enabled,
-            onEnabledChange = onEnabledChange
+            onEnabledChange = onEnabledChange,
+            changed = enabledChanged
         )
-        
+
         AnimatedVisibility(
             visible = enabled,
             enter = expandVertically(animationSpec = tween(durationMillis = 200)),
             exit = shrinkVertically(animationSpec = tween(durationMillis = 200))
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp).padding(top = 12.dp)) {
-                Text(stringResource(R.string.retry_every), style = MaterialTheme.typography.labelMedium)
+                LabelWithChange(changed = intervalChanged) { labelModifier ->
+                    Text(stringResource(R.string.retry_every), style = MaterialTheme.typography.labelMedium, modifier = labelModifier)
+                }
                 Spacer(Modifier.height(4.dp))
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -2024,7 +2161,9 @@ internal fun RetrySettings(
                 
                 Spacer(Modifier.height(12.dp))
                 
-                Text(stringResource(R.string.max_retries), style = MaterialTheme.typography.labelMedium)
+                LabelWithChange(changed = countChanged) { labelModifier ->
+                    Text(stringResource(R.string.max_retries), style = MaterialTheme.typography.labelMedium, modifier = labelModifier)
+                }
                 Spacer(Modifier.height(4.dp))
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
@@ -2228,7 +2367,9 @@ internal fun ExpressiveExpandableHeader(
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    iconTint: Color = MaterialTheme.colorScheme.primary
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+    // What it controls differs from what is saved: a ChangedMarker after the title.
+    changed: Boolean = false
 ) {
     Row(
         modifier = modifier
@@ -2249,14 +2390,17 @@ internal fun ExpressiveExpandableHeader(
             )
             Spacer(Modifier.width(16.dp))
         }
-        
+
         // Text content
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            LabelWithChange(changed = changed) { labelModifier ->
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelModifier
+                )
+            }
             if (subtitle != null) {
                 Text(
                     subtitle,
@@ -2288,7 +2432,9 @@ internal fun ClickableToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    iconTint: Color = MaterialTheme.colorScheme.primary
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+    // The switch differs from what is saved: a ChangedMarker after the title.
+    changed: Boolean = false
 ) {
     Row(
         modifier = modifier
@@ -2307,14 +2453,17 @@ internal fun ClickableToggleRow(
             )
             Spacer(Modifier.width(16.dp))
         }
-        
+
         // Text content
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            LabelWithChange(changed = changed) { labelModifier ->
+                Text(
+                    title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelModifier
+                )
+            }
             if (subtitle != null) {
                 Text(
                     subtitle,

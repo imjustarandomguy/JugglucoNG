@@ -77,6 +77,10 @@ private val START_PRESET_MINUTES = listOf(30, 60, 120, 180, 720)
  * it opens on a tap, and opens by itself while a window runs, so the way to end
  * it is never hidden. Inside: End now, the start presets, the mode, and under
  * Advanced the breakthrough cap, its scope and the quick-settings tile.
+ *
+ * Starting and ending a window happen at once. The settings - the mode and
+ * everything under Advanced - are the alert screen's draft ([settings]) until
+ * it saves them; each one that differs from [savedSettings] is marked.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -85,11 +89,15 @@ fun QuietWindowCard(
     // for vibrate-only to keep, so the choice is hidden and a window cuts the
     // vibration - the only thing it can cut - and that becomes the stored mode.
     anySound: Boolean,
+    settings: QuietWindowSettings,
+    savedSettings: QuietWindowSettings,
+    onSettingsChange: (QuietWindowSettings) -> Unit,
     position: CardPosition = CardPosition.SINGLE
 ) {
     val context = LocalContext.current
     val state by QuietWindow.state.collectAsState()
-    val startMode = if (anySound) state.mode else AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY
+    // A window starts in the mode on screen, which it then stores.
+    val startMode = if (anySound) settings.mode else AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY
     val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
     var openedByUser by rememberSaveable { mutableStateOf(false) }
     val expanded = openedByUser || state.active
@@ -124,12 +132,15 @@ fun QuietWindowCard(
                 }
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.quiet_window_title),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    LabelWithChange(changed = settings != savedSettings) { labelModifier ->
+                        Text(
+                            text = stringResource(R.string.quiet_window_title),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = labelModifier
+                        )
+                    }
                     Text(
                         text = if (state.active) {
                             stringResource(R.string.quiet_window_active_until, timeFormat.format(Date(state.untilMs)))
@@ -197,14 +208,15 @@ fun QuietWindowCard(
 
                     // The mode: what a silenced alarm keeps.
                     if (anySound) Column(modifier = inset, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (settings.mode != savedSettings.mode) ChangedMarker(Modifier.align(Alignment.End))
                         val modeLabels = mapOf(
                             AlertDeliveryPolicy.QUIET_VIBRATE_ONLY to stringResource(R.string.quiet_window_mode_vibrate_only),
                             AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY to stringResource(R.string.quiet_window_mode_notification_only)
                         )
                         ConnectedButtonGroup(
                             options = listOf(AlertDeliveryPolicy.QUIET_VIBRATE_ONLY, AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY),
-                            selectedOption = state.mode,
-                            onOptionSelected = { QuietWindow.setMode(context, it) },
+                            selectedOption = settings.mode,
+                            onOptionSelected = { onSettingsChange(settings.copy(mode = it)) },
                             labelText = { modeLabels[it] ?: it },
                             label = { Text(modeLabels[it] ?: it, style = MaterialTheme.typography.labelMedium) },
                             modifier = Modifier.fillMaxWidth(),
@@ -212,7 +224,7 @@ fun QuietWindowCard(
                         )
                         Caption(
                             stringResource(
-                                if (state.mode == AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY)
+                                if (settings.mode == AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY)
                                     R.string.quiet_window_mode_notification_only_desc
                                 else
                                     R.string.quiet_window_mode_vibrate_only_desc
@@ -220,7 +232,7 @@ fun QuietWindowCard(
                         )
                     }
 
-                    QuietWindowAdvanced()
+                    QuietWindowAdvanced(settings, savedSettings, onSettingsChange)
                 }
             }
         }
@@ -262,14 +274,20 @@ fun QuietWindowCard(
 
 /** Breakthrough cap, its scope, and the quick-settings tile - set once, under Advanced. */
 @Composable
-private fun QuietWindowAdvanced() {
+private fun QuietWindowAdvanced(
+    settings: QuietWindowSettings,
+    savedSettings: QuietWindowSettings,
+    onSettingsChange: (QuietWindowSettings) -> Unit
+) {
     val context = LocalContext.current
     var expanded by LocalAlertsAdvancedOpen.current
-    var breakthroughMinutes by remember { mutableStateOf(QuietWindow.breakthroughMinutes()) }
-    var breakthroughScope by remember { mutableStateOf(QuietWindow.breakthroughScope()) }
-    var defaultMinutes by remember { mutableStateOf(QuietWindow.defaultMinutes()) }
+    val breakthroughScope = settings.breakthroughScope
 
-    AdvancedSectionHeader(expanded = expanded, onToggle = { expanded = !expanded })
+    AdvancedSectionHeader(
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        changed = settings.copy(mode = savedSettings.mode) != savedSettings
+    )
     // Not in a ColumnScope, so the plain AnimatedVisibility would grow from a
     // corner; every other Advanced expands vertically, and so does this one.
     AnimatedVisibility(
@@ -284,23 +302,24 @@ private fun QuietWindowAdvanced() {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DurationSlider(
                     label = stringResource(R.string.quiet_window_breakthrough_title),
-                    value = breakthroughMinutes,
+                    value = settings.breakthroughMinutes,
                     range = QuietWindow.MIN_BREAKTHROUGH_MINUTES..QuietWindow.MAX_BREAKTHROUGH_MINUTES,
                     stepSize = 5,
-                    onValueChange = {
-                        breakthroughMinutes = it
-                        QuietWindow.setBreakthroughMinutes(it)
-                    }
+                    onValueChange = { onSettingsChange(settings.copy(breakthroughMinutes = it)) },
+                    changed = settings.breakthroughMinutes != savedSettings.breakthroughMinutes
                 )
                 Caption(stringResource(R.string.quiet_window_breakthrough_desc))
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.quiet_window_breakthrough_scope_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                LabelWithChange(changed = settings.breakthroughScope != savedSettings.breakthroughScope) { labelModifier ->
+                    Text(
+                        text = stringResource(R.string.quiet_window_breakthrough_scope_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = labelModifier
+                    )
+                }
                 val scopeLabels = mapOf(
                     AlertDeliveryPolicy.BREAKTHROUGH_ALL to stringResource(R.string.quiet_window_breakthrough_scope_all),
                     AlertDeliveryPolicy.BREAKTHROUGH_VERY_ONLY to stringResource(R.string.quiet_window_breakthrough_scope_very)
@@ -308,10 +327,7 @@ private fun QuietWindowAdvanced() {
                 ConnectedButtonGroup(
                     options = listOf(AlertDeliveryPolicy.BREAKTHROUGH_ALL, AlertDeliveryPolicy.BREAKTHROUGH_VERY_ONLY),
                     selectedOption = breakthroughScope,
-                    onOptionSelected = {
-                        breakthroughScope = it
-                        QuietWindow.setBreakthroughScope(it)
-                    },
+                    onOptionSelected = { onSettingsChange(settings.copy(breakthroughScope = it)) },
                     labelText = { scopeLabels[it] ?: it },
                     label = { Text(scopeLabels[it] ?: it, style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.fillMaxWidth(),
@@ -328,18 +344,18 @@ private fun QuietWindowAdvanced() {
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = stringResource(R.string.quiet_window_tile_default_title),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                LabelWithChange(changed = settings.defaultMinutes != savedSettings.defaultMinutes) { labelModifier ->
+                    Text(
+                        text = stringResource(R.string.quiet_window_tile_default_title),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = labelModifier
+                    )
+                }
                 ConnectedButtonGroup(
                     options = QuietWindow.PRESET_MINUTES,
-                    selectedOption = defaultMinutes,
-                    onOptionSelected = {
-                        defaultMinutes = it
-                        QuietWindow.setDefaultMinutes(it)
-                    },
+                    selectedOption = settings.defaultMinutes,
+                    onOptionSelected = { onSettingsChange(settings.copy(defaultMinutes = it)) },
                     labelText = { quietDurationLabelPlain(context, it) },
                     label = { Text(quietDurationLabel(it), style = MaterialTheme.typography.labelMedium) },
                     modifier = Modifier.fillMaxWidth(),

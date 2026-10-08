@@ -2840,6 +2840,27 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%1$d hora</item>
         <item quantity="other">%1$d horas</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d alteração não guardada</item>
+        <item quantity="other">%1$d alterações não guardadas</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">e mais %1$d</item>
+        <item quantity="other">e mais %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Descartar</string>
+    <string name="alert_settings_changed">Alterado</string>
+    <string name="alert_settings_saved">Guardado</string>
+    <string name="alert_settings_leave_title">Guardar as alterações?</string>
+    <string name="alert_settings_keep_editing">Continuar a editar</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Outras definições</string>
+    <string name="alert_settings_added">Adicionado</string>
+    <string name="alert_settings_removed">Removido</string>
+    <string name="alert_settings_test_uses_saved">O teste usa as definições guardadas — guarde primeiro para testar as alterações</string>
+    <string name="alert_settings_delivery">Tipo de aviso</string>
+    <string name="alert_settings_on">Ligado</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Ponto a ponto</string>
     <string name="clone_transport_connected">Conectado</string>

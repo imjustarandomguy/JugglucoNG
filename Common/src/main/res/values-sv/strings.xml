@@ -2839,6 +2839,27 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%1$d timme</item>
         <item quantity="other">%1$d timmar</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d osparad ändring</item>
+        <item quantity="other">%1$d osparade ändringar</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">och %1$d till</item>
+        <item quantity="other">och %1$d till</item>
+    </plurals>
+    <string name="alert_settings_discard">Förkasta</string>
+    <string name="alert_settings_changed">Ändrad</string>
+    <string name="alert_settings_saved">Sparat</string>
+    <string name="alert_settings_leave_title">Spara ändringarna?</string>
+    <string name="alert_settings_keep_editing">Fortsätt redigera</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Andra inställningar</string>
+    <string name="alert_settings_added">Tillagd</string>
+    <string name="alert_settings_removed">Borttagen</string>
+    <string name="alert_settings_test_uses_saved">Testet använder sparade inställningar — spara först för att testa dina ändringar</string>
+    <string name="alert_settings_delivery">Aviseringssätt</string>
+    <string name="alert_settings_on">På</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Peer-to-peer</string>
     <string name="clone_transport_connected">Ansluten</string>

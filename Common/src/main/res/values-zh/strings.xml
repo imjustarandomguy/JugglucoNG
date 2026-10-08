@@ -2854,6 +2854,25 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <plurals name="duration_hours">
         <item quantity="other">%1$d 小时</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="other">%1$d 项更改未保存</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="other">还有 %1$d 项</item>
+    </plurals>
+    <string name="alert_settings_discard">放弃</string>
+    <string name="alert_settings_changed">已更改</string>
+    <string name="alert_settings_saved">已保存</string>
+    <string name="alert_settings_leave_title">保存更改？</string>
+    <string name="alert_settings_keep_editing">继续编辑</string>
+    <string name="alert_settings_change_line">%1$s：%2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">其他设置</string>
+    <string name="alert_settings_added">已添加</string>
+    <string name="alert_settings_removed">已删除</string>
+    <string name="alert_settings_test_uses_saved">测试使用已保存的设置——请先保存再测试更改</string>
+    <string name="alert_settings_delivery">提醒方式</string>
+    <string name="alert_settings_on">开</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">点对点</string>
     <string name="clone_transport_connected">已连接</string>

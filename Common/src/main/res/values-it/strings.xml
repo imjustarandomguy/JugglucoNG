@@ -2829,6 +2829,27 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%1$d ora</item>
         <item quantity="other">%1$d ore</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d modifica non salvata</item>
+        <item quantity="other">%1$d modifiche non salvate</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">e altre %1$d</item>
+        <item quantity="other">e altre %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Scarta</string>
+    <string name="alert_settings_changed">Modificato</string>
+    <string name="alert_settings_saved">Salvato</string>
+    <string name="alert_settings_leave_title">Salvare le modifiche?</string>
+    <string name="alert_settings_keep_editing">Continua a modificare</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Altre impostazioni</string>
+    <string name="alert_settings_added">Aggiunto</string>
+    <string name="alert_settings_removed">Rimosso</string>
+    <string name="alert_settings_test_uses_saved">Il test usa le impostazioni salvate — salva prima per provare le modifiche</string>
+    <string name="alert_settings_delivery">Modalità di avviso</string>
+    <string name="alert_settings_on">Attivo</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Peer-to-peer</string>
     <string name="clone_transport_connected">Connesso</string>

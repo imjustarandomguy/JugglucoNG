@@ -2912,6 +2912,31 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%1$d гадзін</item>
         <item quantity="other">%1$d гадзіны</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d незахаваная змена</item>
+        <item quantity="few">%1$d незахаваныя змены</item>
+        <item quantity="many">%1$d незахаваных змен</item>
+        <item quantity="other">%1$d незахаванай змены</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">і яшчэ %1$d</item>
+        <item quantity="few">і яшчэ %1$d</item>
+        <item quantity="many">і яшчэ %1$d</item>
+        <item quantity="other">і яшчэ %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Адкінуць</string>
+    <string name="alert_settings_changed">Зменена</string>
+    <string name="alert_settings_saved">Захавана</string>
+    <string name="alert_settings_leave_title">Захаваць змены?</string>
+    <string name="alert_settings_keep_editing">Працягнуць</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Іншыя налады</string>
+    <string name="alert_settings_added">Дададзена</string>
+    <string name="alert_settings_removed">Выдалена</string>
+    <string name="alert_settings_test_uses_saved">Тэст выкарыстоўвае захаваныя налады — захавайце, каб праверыць змены</string>
+    <string name="alert_settings_delivery">Спосаб апавяшчэння</string>
+    <string name="alert_settings_on">Укл.</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Паміж прыладамі</string>
     <string name="clone_transport_connected">Падключана</string>

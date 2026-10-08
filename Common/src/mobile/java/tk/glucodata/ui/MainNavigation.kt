@@ -753,14 +753,17 @@ fun MainApp(themeMode: ThemeMode, onThemeChanged: (ThemeMode) -> Unit) {
     // PendingNavigation by MainActivity and taken here, so it works from a cold start.
     // It is placed directly above the dashboard, as a tab tap would place it, so the
     // bar keeps working: whatever was open is popped (state saved), Back returns to
-    // the dashboard, and the dashboard tab is one tap away.
+    // the dashboard, and the dashboard tab is one tap away. A screen with unsaved
+    // edits asks first (LeaveGuard).
     LaunchedEffect(navController) {
         PendingNavigation.route.collect { route ->
             if (route != null) {
-                runCatching {
-                    navController.navigate(route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
+                LeaveGuard.leave {
+                    runCatching {
+                        navController.navigate(route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                        }
                     }
                 }
                 PendingNavigation.consume()
@@ -801,13 +804,16 @@ fun MainApp(themeMode: ThemeMode, onThemeChanged: (ThemeMode) -> Unit) {
         val isOnSubpageOf = parentOfCurrent == route
 
         when {
-            // If we're on a subpage of the clicked nav item, pop back to it
-            isOnSubpageOf -> navController.popBackStack(route, inclusive = false)
+            // If we're on a subpage of the clicked nav item, pop back to it. A screen
+            // with unsaved edits asks first (LeaveGuard), here and below.
+            isOnSubpageOf -> LeaveGuard.leave { navController.popBackStack(route, inclusive = false) }
             // If we're on a different top-level or subpage, navigate normally
-            currentRoute != route -> navController.navigate(route) {
-                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
+            currentRoute != route -> LeaveGuard.leave {
+                navController.navigate(route) {
+                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
             }
             // Already on the destination. Tapping the tab you are already on is how people
             // back out of a mode, so let it close Arrange rather than doing nothing.

@@ -2879,6 +2879,31 @@
         <item quantity="many">%1$d godzin</item>
         <item quantity="other">%1$d godziny</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d niezapisana zmiana</item>
+        <item quantity="few">%1$d niezapisane zmiany</item>
+        <item quantity="many">%1$d niezapisanych zmian</item>
+        <item quantity="other">%1$d niezapisanej zmiany</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">i jeszcze %1$d</item>
+        <item quantity="few">i jeszcze %1$d</item>
+        <item quantity="many">i jeszcze %1$d</item>
+        <item quantity="other">i jeszcze %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Odrzuć</string>
+    <string name="alert_settings_changed">Zmieniono</string>
+    <string name="alert_settings_saved">Zapisano</string>
+    <string name="alert_settings_leave_title">Zapisać zmiany?</string>
+    <string name="alert_settings_keep_editing">Edytuj dalej</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Inne ustawienia</string>
+    <string name="alert_settings_added">Dodano</string>
+    <string name="alert_settings_removed">Usunięto</string>
+    <string name="alert_settings_test_uses_saved">Test używa zapisanych ustawień — najpierw zapisz, aby przetestować zmiany</string>
+    <string name="alert_settings_delivery">Sposób powiadamiania</string>
+    <string name="alert_settings_on">Wł.</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Równorzędne</string>
     <string name="clone_transport_connected">Połączono</string>

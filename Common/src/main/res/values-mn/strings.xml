@@ -2940,6 +2940,27 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">%1$d цаг</item>
         <item quantity="other">%1$d цаг</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d хадгалаагүй өөрчлөлт</item>
+        <item quantity="other">%1$d хадгалаагүй өөрчлөлт</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">болон өөр %1$d</item>
+        <item quantity="other">болон өөр %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Хаях</string>
+    <string name="alert_settings_changed">Өөрчлөгдсөн</string>
+    <string name="alert_settings_saved">Хадгалсан</string>
+    <string name="alert_settings_leave_title">Өөрчлөлтийг хадгалах уу?</string>
+    <string name="alert_settings_keep_editing">Үргэлжлүүлэн засах</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Бусад тохиргоо</string>
+    <string name="alert_settings_added">Нэмсэн</string>
+    <string name="alert_settings_removed">Устгасан</string>
+    <string name="alert_settings_test_uses_saved">Туршилт хадгалсан тохиргоог ашиглана — өөрчлөлтөө турших бол эхлээд хадгална уу</string>
+    <string name="alert_settings_delivery">Мэдэгдлийн хэлбэр</string>
+    <string name="alert_settings_on">Асаалттай</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Төхөөрөмж хооронд</string>
     <string name="clone_transport_connected">Холбогдсон</string>

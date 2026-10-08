@@ -243,6 +243,23 @@ object AlertRepository {
         return minutes.coerceIn(0, AlertDefaults.SAME_DIRECTION_SUPPRESSION_MAX_MINUTES)
     }
 
+    /** The settings every alert shares, as the alert screen edits them. */
+    fun loadGlobalSettings(): GlobalAlertSettings = GlobalAlertSettings(
+        sameDirectionSuppressionMinutes = loadSameDirectionSuppressionMinutes(),
+        acknowledgedHighCoverage = loadAcknowledgedHighCoverageEnabled(),
+    )
+
+    /** Stores all of [settings] at once. */
+    fun saveGlobalSettings(settings: GlobalAlertSettings) {
+        prefs.edit {
+            putInt(
+                KEY_SAME_DIRECTION_SUPPRESSION_MINUTES,
+                sanitizeSameDirectionSuppressionMinutes(settings.sameDirectionSuppressionMinutes)
+            )
+            putBoolean(KEY_ACKNOWLEDGED_HIGH_COVERAGE, settings.acknowledgedHighCoverage)
+        }
+    }
+
     /** After a full-screen alarm is dismissed or snoozed, return to the app that was open (default) instead of opening JugglucoNG. */
     fun loadReturnToPreviousAppAfterAlarm(): Boolean {
         return prefs.getBoolean(KEY_RETURN_TO_PREVIOUS_APP_AFTER_ALARM, true)
@@ -460,9 +477,42 @@ object AlertRepository {
         // them leaves the pair firing different sets. The phone reports the
         // change; on the watch this is a no-op, since a watch-side change has
         // already gone through the phone to get here.
+        pushToWatch()
+    }
+
+    private val watchPushLock = Any()
+    private var watchPushHolds = 0
+    private var watchPushPending = false
+
+    /**
+     * Runs [block], holding back the watch update each save in it would send
+     * until it has finished, then sending one: the alert screen's Save stores
+     * several alerts at once.
+     */
+    fun saveTogether(block: () -> Unit) {
+        synchronized(watchPushLock) { watchPushHolds++ }
+        try {
+            block()
+        } finally {
+            val push = synchronized(watchPushLock) {
+                watchPushHolds--
+                (watchPushHolds == 0 && watchPushPending).also { if (it) watchPushPending = false }
+            }
+            if (push) runCatching { tk.glucodata.WearToggleSync.push() }
+        }
+    }
+
+    /** Tells the watch about a save, or leaves that to the [saveTogether] running. */
+    private fun pushToWatch() {
+        synchronized(watchPushLock) {
+            if (watchPushHolds > 0) {
+                watchPushPending = true
+                return
+            }
+        }
         runCatching { tk.glucodata.WearToggleSync.push() }
     }
-    
+
     private fun saveToPrefs(config: AlertConfig) {
         if (config.type == AlertType.SENSOR_EXPIRY) {
             adoptOpenWindowsForNewExpiryThresholds(config)

@@ -2917,6 +2917,31 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%1$d годин</item>
         <item quantity="other">%1$d години</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d незбережена зміна</item>
+        <item quantity="few">%1$d незбережені зміни</item>
+        <item quantity="many">%1$d незбережених змін</item>
+        <item quantity="other">%1$d незбереженої зміни</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">і ще %1$d</item>
+        <item quantity="few">і ще %1$d</item>
+        <item quantity="many">і ще %1$d</item>
+        <item quantity="other">і ще %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Відкинути</string>
+    <string name="alert_settings_changed">Змінено</string>
+    <string name="alert_settings_saved">Збережено</string>
+    <string name="alert_settings_leave_title">Зберегти зміни?</string>
+    <string name="alert_settings_keep_editing">Продовжити</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Інші налаштування</string>
+    <string name="alert_settings_added">Додано</string>
+    <string name="alert_settings_removed">Видалено</string>
+    <string name="alert_settings_test_uses_saved">Тест використовує збережені налаштування — збережіть, щоб перевірити зміни</string>
+    <string name="alert_settings_delivery">Спосіб сповіщення</string>
+    <string name="alert_settings_on">Увімк.</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Однорангове</string>
     <string name="clone_transport_connected">Підключено</string>

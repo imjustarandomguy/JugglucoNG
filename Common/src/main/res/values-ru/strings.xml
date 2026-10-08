@@ -2888,6 +2888,31 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%1$d часов</item>
         <item quantity="other">%1$d часа</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d несохранённое изменение</item>
+        <item quantity="few">%1$d несохранённых изменения</item>
+        <item quantity="many">%1$d несохранённых изменений</item>
+        <item quantity="other">%1$d несохранённого изменения</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">и ещё %1$d</item>
+        <item quantity="few">и ещё %1$d</item>
+        <item quantity="many">и ещё %1$d</item>
+        <item quantity="other">и ещё %1$d</item>
+    </plurals>
+    <string name="alert_settings_discard">Сбросить</string>
+    <string name="alert_settings_changed">Изменено</string>
+    <string name="alert_settings_saved">Сохранено</string>
+    <string name="alert_settings_leave_title">Сохранить изменения?</string>
+    <string name="alert_settings_keep_editing">Продолжить</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Другие настройки</string>
+    <string name="alert_settings_added">Добавлено</string>
+    <string name="alert_settings_removed">Удалено</string>
+    <string name="alert_settings_test_uses_saved">Тест использует сохранённые настройки — сохраните, чтобы проверить изменения</string>
+    <string name="alert_settings_delivery">Способ оповещения</string>
+    <string name="alert_settings_on">Вкл.</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Одноранговое</string>
     <string name="clone_transport_connected">Подключено</string>

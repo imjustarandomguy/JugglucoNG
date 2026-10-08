@@ -23,10 +23,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -205,7 +205,9 @@ fun GlobalAlertSettingsCard(
                         modifier = Modifier.padding(top = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Button(
+                        // Tonal: it fills the page's draft, and Save, in the bar that
+                        // appears, is the page's one primary action.
+                        FilledTonalButton(
                             onClick = {
                                 onApplyToAll(draftConfig)
                                 appliedDraft = draftConfig
@@ -214,9 +216,7 @@ fun GlobalAlertSettingsCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                            colors = ButtonDefaults.filledTonalButtonColors(
                                 disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                                 disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
                             )
