@@ -246,6 +246,12 @@ private int connectionTimeouts=0;
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
+            // Nothing reconnects a stopped callback: close its GATT, or the client
+            // stays registered with the stack beside the next one.
+            synchronized (this) {
+                if (bluetoothGatt == mBluetoothGatt)
+                    close();
+            }
             return;
         }
         long tim = System.currentTimeMillis();
