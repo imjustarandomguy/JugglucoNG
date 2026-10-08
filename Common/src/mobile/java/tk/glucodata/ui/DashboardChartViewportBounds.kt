@@ -1,12 +1,16 @@
 package tk.glucodata.ui
 
+import tk.glucodata.data.journal.JournalChartMarker
+
 /**
  * How far the chart's visible window may travel. Every move of the window (pan,
  * fling, preview scrub, zoom, range change, auto-scroll, date jump) goes through
  * [clampCenter], so no path can leave the window over empty time.
  *
  * - The right edge stops [FUTURE_MARGIN_MS] past now, or, while the chart shows a
- *   prediction, the prediction horizon past now.
+ *   prediction, the prediction horizon past now; and never before [FUTURE_MARGIN_MS]
+ *   past the end of the journal's latest content (an insulin activity curve, an
+ *   activity's duration, an entry dated ahead).
  * - The left edge stops [PAST_MARGIN_MS] before the earliest stored reading.
  * - When the data is shorter than the window, both cannot hold, and the window
  *   is pinned to the right bound.
@@ -18,11 +22,15 @@ internal data class ChartViewportLimits(
     val latestDataMs: Long,
     val earliestDataMs: Long,
     /** The prediction horizon while a prediction is drawn, else null. */
-    val predictionHorizonMs: Long?
+    val predictionHorizonMs: Long?,
+    /** Where the latest journal content drawn on the chart ends ([latestJournalContentEndMs]), else null. */
+    val journalContentEndMs: Long? = null
 ) {
     fun rightEdgeLimit(nowMs: Long): Long {
         val future = predictionHorizonMs?.takeIf { it > 0L } ?: FUTURE_MARGIN_MS
-        return maxOf(nowMs, latestDataMs) + future
+        val dataEdge = maxOf(nowMs, latestDataMs) + future
+        val journalEdge = journalContentEndMs?.takeIf { it > 0L }?.plus(FUTURE_MARGIN_MS) ?: return dataEdge
+        return maxOf(dataEdge, journalEdge)
     }
 
     /** Null without data: there is nothing to stop at. */
@@ -43,3 +51,10 @@ internal data class ChartViewportLimits(
         const val PAST_MARGIN_MS = 5L * 60L * 1000L
     }
 }
+
+/**
+ * The time the latest of [markers] stops drawing: an insulin curve's or an activity's
+ * end, else the entry's own time. Null without markers.
+ */
+internal fun latestJournalContentEndMs(markers: List<JournalChartMarker>): Long? =
+    markers.maxOfOrNull { marker -> maxOf(marker.timestamp, marker.activeEndMillis ?: marker.timestamp) }
