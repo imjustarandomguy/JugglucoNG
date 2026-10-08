@@ -14,6 +14,7 @@ import tk.glucodata.Applic
 import tk.glucodata.CalibrationAccess
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.DataSmoothing
+import tk.glucodata.DisplayTrendSource
 import tk.glucodata.GlucosePoint
 import tk.glucodata.GlucoseSmoothing
 import tk.glucodata.Log
@@ -83,6 +84,13 @@ object WearGlucoseStore {
         val viewMode: Int = 0,
         val sensorId: String? = null,
         val loadedAtMs: Long = 0L,
+        /**
+         * The newest reading's arrow in mg/dL per minute, as the phone's dashboard and
+         * the complications compute it: over the measured history and the live reading,
+         * not over [points], which are calibrated and smoothed for drawing. NaN when
+         * there is nothing to measure.
+         */
+        val trendRate: Float = Float.NaN,
     ) {
         val isLoaded: Boolean get() = loadedAtMs > 0L
 
@@ -276,9 +284,10 @@ object WearGlucoseStore {
         val viewMode = viewModeFor(sensor)
         if (Log.doLog) Log.i(TAG, "selection ${WearSensorSelection.selected()} primary=$sensor mode=$viewMode")
         val isRawMode = viewMode == 1 || viewMode == 3
-        val rawPoints = runCatching {
+        val measured = runCatching {
             NotificationHistorySource.getDisplayHistory(horizonStart, isMmol, sensor)
         }.getOrDefault(emptyList())
+        val rawPoints = measured
             .filter { it.timestamp in horizonStart..now && it.value.isFinite() && it.value > 0f }
         val anchors = runCatching {
             CalibrationAccess.getActiveCalibrationAnchors(
@@ -305,8 +314,21 @@ object WearGlucoseStore {
             viewMode = viewMode,
             sensorId = sensor,
             loadedAtMs = now,
+            trendRate = trendRate(measured, sensor, viewMode, isMmol),
         )
     }
+
+    /** See [Snapshot.trendRate]; resolved here, off the main thread, over the rows already read. */
+    private fun trendRate(measured: List<GlucosePoint>, sensor: String?, viewMode: Int, isMmol: Boolean): Float =
+        runCatching {
+            DisplayTrendSource.resolveDisplayArrowRate(
+                measured,
+                CurrentDisplaySource.resolveCurrent(preferredSensorId = sensor),
+                sensor,
+                viewMode,
+                isMmol,
+            )
+        }.getOrDefault(Float.NaN)
 
     /**
      * The other selected sensors' series, each through the same pipeline as the

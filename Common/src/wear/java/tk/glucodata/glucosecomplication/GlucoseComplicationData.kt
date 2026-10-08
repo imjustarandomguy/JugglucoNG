@@ -13,6 +13,7 @@ import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageType
 import tk.glucodata.Applic
 import tk.glucodata.CurrentDisplaySource
+import tk.glucodata.DisplayTrendSource
 import tk.glucodata.GlucoseRangeColors
 import tk.glucodata.Natives
 import tk.glucodata.Notify
@@ -65,7 +66,7 @@ internal object GlucoseComplicationData {
             text = snapshot.primaryStr,
             isMmol = snapshot.isMmol,
             timeMillis = snapshot.timeMillis,
-            rate = snapshot.rate,
+            rate = displayRate(snapshot),
             index = snapshot.index,
             sensorId = snapshot.sensorId,
         )
@@ -101,11 +102,19 @@ internal object GlucoseComplicationData {
             text = resolved.primaryStr,
             isMmol = resolved.isMmol,
             timeMillis = resolved.timeMillis,
-            rate = resolved.rate,
+            rate = displayRate(resolved),
             index = resolved.index,
             sensorId = resolved.sensorId,
         )
     }
+
+    /**
+     * The arrow the phone's dashboard and notification show for this reading. The
+     * snapshot's own rate is the alert engine's, measured over the smoothed series:
+     * near the flat band it drew a flat arrow here beside a rising one on the phone.
+     */
+    fun displayRate(snapshot: CurrentDisplaySource.Snapshot): Float =
+        runCatching { DisplayTrendSource.loadDisplayArrowRate(snapshot) }.getOrDefault(snapshot.rate)
 
     fun previewReading(): Reading {
         currentReading()?.let { return it }
