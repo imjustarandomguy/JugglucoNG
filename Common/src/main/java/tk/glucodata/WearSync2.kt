@@ -459,6 +459,9 @@ object WearSync2 {
             // it is the one holding the sensor.
             autoIntegration = WearCalibrationMode(canonicalIntegrationAnchors(serial, false)),
             rawIntegration = WearCalibrationMode(canonicalIntegrationAnchors(serial, true)),
+            // So the watch stops offering calibration the user switched off here.
+            autoDisabled = !CalibrationAccess.isEnabledForMode(false, serial),
+            rawDisabled = !CalibrationAccess.isEnabledForMode(true, serial),
         )
         MessageSender.sendSyncMessage(
             WearMessagePath.SYNC2_CAL,

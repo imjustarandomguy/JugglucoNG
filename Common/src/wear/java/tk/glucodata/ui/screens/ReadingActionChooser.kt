@@ -21,11 +21,13 @@ import tk.glucodata.R
 /**
  * What the phone shows when a reading is tapped and the journal is on: add a
  * journal item against that reading, or calibrate it. With the journal off the
- * caller skips this and goes straight to calibration.
+ * caller skips this and goes straight to calibration. [canCalibrate] is false
+ * when calibration is switched off on the phone, and the button is left out.
  */
 @Composable
 fun ReadingActionChooser(
     hasCalibration: Boolean,
+    canCalibrate: Boolean = true,
     onAddJournal: () -> Unit,
     onCalibrate: () -> Unit,
 ) {
@@ -48,18 +50,20 @@ fun ReadingActionChooser(
                 label = { Text(stringResource(R.string.wear_journal_add)) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(
-                onClick = onCalibrate,
-                label = {
-                    Text(
-                        stringResource(
-                            if (hasCalibration) R.string.wear_calibration_edit
-                            else R.string.calibrate_action,
-                        ),
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-            )
+            if (canCalibrate) {
+                Button(
+                    onClick = onCalibrate,
+                    label = {
+                        Text(
+                            stringResource(
+                                if (hasCalibration) R.string.wear_calibration_edit
+                                else R.string.calibrate_action,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            }
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import java.util.Date
 import tk.glucodata.Applic
 import tk.glucodata.CalibrationAccess
 import tk.glucodata.R
+import tk.glucodata.UiRefreshBus
 import tk.glucodata.ui.WearNavigationRow
 import tk.glucodata.ui.WearSectionTitle
 
@@ -55,16 +57,16 @@ fun CalibrationScreen(
     var revision by remember { mutableIntStateOf(0) }
     val isMmol = remember { runCatching { Applic.unit == 1 }.getOrDefault(false) }
     val conversion = if (isMmol) 18.0182f else 1f
+    LaunchedEffect(Unit) { UiRefreshBus.revision.collect { revision++ } }
     val entries = remember(revision) { calibrations() }
-    val enabled = remember(revision) {
-        runCatching { tk.glucodata.CalibrationAccess.hasActiveCalibration(false, null) }.getOrDefault(false)
-    }
+    // The phone's per-lane switch, not whether any calibration exists.
+    val enabled = remember(revision) { ReadingActions.calibrationAvailable() }
     val context = LocalContext.current
     val formatter = remember(context) { DateFormat.getDateFormat(context) }
     val timeFormatter = remember(context) { DateFormat.getTimeFormat(context) }
-    val canCalibrate = remember {
-        findCalibratableDriver() != null ||
-            (tk.glucodata.MessageSender.isWearTransportAvailable() && tk.glucodata.MessageSender.getMessageSender() != null)
+    val canCalibrate = remember(revision) {
+        enabled && (findCalibratableDriver() != null ||
+            (tk.glucodata.MessageSender.isWearTransportAvailable() && tk.glucodata.MessageSender.getMessageSender() != null))
     }
 
     ScreenScaffold(timeText = { TimeText() }) {

@@ -55,7 +55,7 @@ class TrendConsumerPointListTests {
         return points
     }
 
-    private fun snapshot(ts: Long, value: Float) = CurrentDisplaySource.Snapshot(
+    private fun snapshot(ts: Long, value: Float, isMmol: Boolean = false) = CurrentDisplaySource.Snapshot(
         timeMillis = ts,
         rate = Float.NaN,
         sensorId = serial,
@@ -67,7 +67,7 @@ class TrendConsumerPointListTests {
         rawValue = 0f,
         sharedDisplayValue = 0f,
         sharedMgdl = 0,
-        isMmol = false,
+        isMmol = isMmol,
         displayValues = DisplayValues(primaryValue = value, primaryStr = "", fullFormatted = "")
     )
 
@@ -87,6 +87,33 @@ class TrendConsumerPointListTests {
         return DisplayTrendSource.resolveTrendPoints(base.filter { it.timestamp >= startT }, snap, serial)
     }
 
+    // ---- The watch's arrows, through DisplayTrendSource.resolveDisplayArrowRate ----
+
+    /** The rows DisplayTrendSource.loadDisplayArrowRate reads: from 2×window before the snapshot. */
+    private fun watchSnapshotRows(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
+        base.filter { it.timestamp >= snap.timeMillis - 2 * DisplayTrendSource.TREND_WINDOW_MS }
+
+    /** Watch complications, the watch face and the alarm screen (GlucoseComplicationData.displayRate). */
+    private fun complicationVelocity(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
+        DisplayTrendSource.resolveDisplayArrowRate(watchSnapshotRows(base, snap), snap, serial, 0, false)
+
+    /** Watch main screen's hero and newest row: the store's whole horizon (WearGlucoseStore.trendRate). */
+    private fun watchMainVelocity(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
+        DisplayTrendSource.resolveDisplayArrowRate(base, snap, serial, 0, false)
+
+    private fun dashboardVelocity(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
+        TrendEngine.calculateTrend(dashboardList(base, snap), useRaw = false, isMmol = false).velocity
+
+    private fun deadZoneSide(v: Float) = when {
+        v > 0.5f -> 1
+        v < -0.5f -> -1
+        else -> 0
+    }
+
+    /** A G7: one reading every 5 minutes, oldest first, the newest at [newestTs]; [valueAt] by age in readings. */
+    private fun g7Rows(count: Int, valueAt: (Int) -> Float): List<GlucosePoint> =
+        (count - 1 downTo 0).map { k -> GlucosePoint(newestTs - k * 5 * minute, valueAt(k), 0f) }
+
     /** GlucosePoint has no value equals — compare the fields the regression reads. */
     private fun triples(points: List<GlucosePoint>) =
         points.map { Triple(it.timestamp, it.value, it.rawValue) }
@@ -101,9 +128,11 @@ class TrendConsumerPointListTests {
         val dashboard = triples(dashboardList(base, snap))
         val notification = triples(notificationList(base, snap))
         val alarm = triples(alarmList(base, snap))
+        val watch = triples(DisplayTrendSource.resolveTrendPoints(watchSnapshotRows(base, snap), snap, serial))
 
         assertEquals(dashboard, notification)
         assertEquals(dashboard, alarm)
+        assertEquals(dashboard, watch)
         // The tail row exactly one window before the newest point stays in for everyone.
         assertEquals(21, dashboard.size)
         assertEquals(newestTs - 20 * minute, dashboard.first().first)
@@ -118,9 +147,11 @@ class TrendConsumerPointListTests {
         val dashboard = triples(dashboardList(base, snap))
         val notification = triples(notificationList(base, snap))
         val alarm = triples(alarmList(base, snap))
+        val watch = triples(DisplayTrendSource.resolveTrendPoints(watchSnapshotRows(base, snap), snap, serial))
 
         assertEquals(dashboard, notification)
         assertEquals(dashboard, alarm)
+        assertEquals(dashboard, watch)
         // The live point is appended for every consumer, dashboard included.
         assertEquals(newestTs, dashboard.last().first)
         assertEquals(133.1f, dashboard.last().second)
@@ -148,22 +179,25 @@ class TrendConsumerPointListTests {
         val broadcastVelocity =
             DisplayTrendSource.resolveArrowRate(alarmList(base, snap), null, 0, false, Float.NaN)
 
+        // The watch's complications and main screen.
+        val complicationVelocity = complicationVelocity(base, snap)
+        val watchMainVelocity = watchMainVelocity(base, snap)
+
         assertEquals(dashboardResult.velocity, notificationVelocity, 1e-6f)
         assertEquals(dashboardResult.velocity, alarmVelocity, 1e-6f)
         assertEquals(dashboardResult.velocity, broadcastVelocity, 1e-6f)
+        assertEquals(dashboardResult.velocity, complicationVelocity, 1e-6f)
+        assertEquals(dashboardResult.velocity, watchMainVelocity, 1e-6f)
 
         // Identical velocity means one glyph decision: every consumer sits on the
         // same side of the ±0.5 dead zone, whatever the estimator reads for the
         // fixture. Pre-fix, the one-tail-point list difference put the dashboard
         // and the notification on opposite sides here.
-        fun deadZoneSide(v: Float) = when {
-            v > 0.5f -> 1
-            v < -0.5f -> -1
-            else -> 0
-        }
         assertEquals(deadZoneSide(dashboardResult.velocity), deadZoneSide(notificationVelocity))
         assertEquals(deadZoneSide(dashboardResult.velocity), deadZoneSide(alarmVelocity))
         assertEquals(deadZoneSide(dashboardResult.velocity), deadZoneSide(broadcastVelocity))
+        assertEquals(deadZoneSide(dashboardResult.velocity), deadZoneSide(complicationVelocity))
+        assertEquals(deadZoneSide(dashboardResult.velocity), deadZoneSide(watchMainVelocity))
     }
 
     @Test
@@ -177,7 +211,160 @@ class TrendConsumerPointListTests {
             DisplayTrendSource.resolveArrowRate(notificationList(base, snap), snap, 0, false, Float.NaN)
 
         assertEquals(dashboardResult.velocity, notificationVelocity, 1e-6f)
+        assertEquals(dashboardResult.velocity, complicationVelocity(base, snap), 1e-6f)
+        assertEquals(dashboardResult.velocity, watchMainVelocity(base, snap), 1e-6f)
         assertEquals(TrendEngine.TrendState.Flat, dashboardResult.state)
         assertTrue("must stay inside the dead zone", kotlin.math.abs(notificationVelocity) <= 0.5f)
+    }
+
+    // ---- The watch draws the dashboard's arrow ----
+    //
+    // The watch used to draw two other ones: its complications took the snapshot's
+    // own rate (the alert engine's, over the locally smoothed series, which
+    // "collapse into chunks" leaves without the newest reading), and its main
+    // screen regressed over the calibrated, smoothed chart series with no live
+    // reading. Observed on a G7: the phone ↗, the watch face →.
+
+    @Test
+    fun watchArrowsTiltWithTheDashboardJustPastTheFlatBand() {
+        // A steady 0.55 mg/dL/min rise: past the flat band by 0.05, a 4.5° tilt
+        // that any estimate reading a little lower draws flat.
+        val base = g7Rows(7) { k -> 140f - 2.75f * k }
+        val snap = snapshot(newestTs, 140f)
+
+        val dashboard = dashboardVelocity(base, snap)
+        val complication = complicationVelocity(base, snap)
+        val watchMain = watchMainVelocity(base, snap)
+
+        assertEquals(0.55f, dashboard, 1e-4f)
+        assertEquals(dashboard, complication, 1e-6f)
+        assertEquals(dashboard, watchMain, 1e-6f)
+        val tilt = TrendArrowAngle.rotationDegrees(dashboard)
+        assertTrue("slightly up, not flat: $tilt", tilt < 0f)
+        assertEquals(tilt, TrendArrowAngle.rotationDegrees(complication), 0f)
+        assertEquals(tilt, TrendArrowAngle.rotationDegrees(watchMain), 0f)
+    }
+
+    @Test
+    fun watchArrowsKeepTheNewestReadingTheHistoryLacks() {
+        // The stored readings drift up at 0.4 mg/dL/min, inside the flat band. The
+        // newest, 4 mg/dL above that line, is in the live reading only: storage has
+        // not caught up yet (a collapsed smoothed series lacks it the same way). With
+        // it the trend is just past the band; without it, flat.
+        val stored = g7Rows(7) { k -> 120f - 2f * k }.dropLast(1)
+        val snap = snapshot(newestTs, 124f)
+
+        val dashboard = dashboardVelocity(stored, snap)
+        val complication = complicationVelocity(stored, snap)
+        val watchMain = watchMainVelocity(stored, snap)
+        val storedOnly = TrendEngine.calculateTrend(stored, useRaw = false, isMmol = false).velocity
+
+        assertEquals(0, deadZoneSide(storedOnly))
+        assertEquals(1, deadZoneSide(dashboard))
+        assertEquals(dashboard, complication, 1e-6f)
+        assertEquals(dashboard, watchMain, 1e-6f)
+        assertEquals(TrendArrowAngle.rotationDegrees(dashboard), TrendArrowAngle.rotationDegrees(complication), 0f)
+    }
+
+    // ---- A live reading and its stored row under different times ----
+    //
+    // As seen on a G7 (mmol/L): 5.4, 5.45, 5.5, 5.6, 5.9, 6.1, the phone's arrow up and
+    // the watch's flat. Native rows keep whole seconds, but the live reading the watch
+    // takes from the G7 itself keeps the milliseconds it arrived at (now less the
+    // reading's age). The phone's Room rows keep each live reading's own time.
+
+    private val g7Readings = listOf(5.4f, 5.45f, 5.5f, 5.6f, 5.9f, 6.1f)
+    private val liveTs = newestTs + 417L
+
+    private fun watchRows() = g7Rows(g7Readings.size) { k -> g7Readings[g7Readings.lastIndex - k] }
+
+    private fun phoneRows() = watchRows().map { GlucosePoint(it.timestamp + 417L, it.value, it.rawValue) }
+
+    /** The alert engine's rate: CurrentDisplaySource's resolution of the live G7 reading. */
+    private fun alertRate(rows: List<GlucosePoint>, smoothingMinutes: Int): Float {
+        val live = CurrentGlucoseSource.Snapshot.of(
+            reading = LiveReadingLanes.stock(g7Readings.last(), Float.NaN),
+            timeMillis = liveTs,
+            valueText = "",
+            rate = Float.NaN,
+            sensorId = serial,
+            sensorGen = 0,
+            index = 0,
+            source = "callback"
+        )
+        return requireNotNull(
+            CurrentDisplaySource.resolveSnapshot(
+                current = live,
+                recentPoints = rows,
+                historyStart = liveTs - DisplayTrendSource.TREND_WINDOW_MS,
+                viewMode = 0,
+                isMmol = true,
+                smoothingMode = CurrentDisplaySource.SmoothingMode(
+                    smoothAllData = smoothingMinutes > 0,
+                    smoothingMinutes = smoothingMinutes,
+                    collapseChunks = false
+                ),
+                sensorId = serial
+            )
+        ).rate
+    }
+
+    @Test
+    fun watchArrowRisesWithTheDashboardWhenItsRowsKeepWholeSeconds() {
+        // With local smoothing on, the snapshot carries the smoothed 6.0 where its own
+        // stored row says 6.1.
+        val watchRows = watchRows()
+        val snap = snapshot(liveTs, 6.0f, isMmol = true)
+
+        val dashboard = TrendEngine.calculateTrend(
+            DisplayTrendSource.resolveTrendPoints(phoneRows(), snap, null), useRaw = false, isMmol = true
+        )
+        val watch = DisplayTrendSource.resolveDisplayArrowRate(watchRows, snap, serial, 0, true)
+        // Beside its own row, as it used to go in, the live point sat 417 ms after it and
+        // 0.1 mmol/L off it: a > 20 mg/dL/min artifact to TrendEngine, which then
+        // measured the newest point alone.
+        val besideItsRow = TrendEngine.calculateTrend(
+            watchRows + GlucosePoint(liveTs, 6.0f, 0f), useRaw = false, isMmol = true
+        ).velocity
+
+        assertEquals(0f, besideItsRow, 0f)
+        assertEquals(1, deadZoneSide(dashboard.velocity))
+        assertEquals(dashboard.velocity, watch, 1e-4f)
+        assertEquals(TrendArrowAngle.rotationDegrees(dashboard.velocity), TrendArrowAngle.rotationDegrees(watch), 0.01f)
+    }
+
+    @Test
+    fun alertRateOnWatchRowsIsThePhones() {
+        // The snapshot takes its value from the same rows, so here the duplicate was no
+        // step but the newest reading counted twice: 0.77 on the watch, 0.65 on the phone.
+        for (smoothingMinutes in listOf(0, 10)) {
+            assertEquals(
+                "smoothing $smoothingMinutes min",
+                alertRate(phoneRows(), smoothingMinutes),
+                alertRate(watchRows(), smoothingMinutes),
+                1e-4f
+            )
+        }
+    }
+
+    @Test
+    fun phoneRowsSharingTheLiveTimestampMergeAsBefore() {
+        val rows = phoneRows()
+        val snap = snapshot(liveTs, 6.0f, isMmol = true)
+
+        // The live reading replaces its own row in place, nothing added.
+        assertEquals(
+            triples(rows.dropLast(1) + GlucosePoint(liveTs, 6.0f, 0f)),
+            triples(DisplayTrendSource.resolveTrendPoints(rows, snap, null))
+        )
+        // The alert engine measures the rows as stored, the live value being the newest row's.
+        assertEquals(
+            TrendEngine.calculateTrend(rows, useRaw = false, isMmol = true).velocity,
+            alertRate(rows, smoothingMinutes = 0),
+            1e-6f
+        )
+        // A live reading 30 s or more from every row is a reading of its own.
+        val later = DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTs + 30_000L, 6.2f, isMmol = true), null)
+        assertEquals(listOf(rows.last().timestamp, liveTs + 30_000L), later.takeLast(2).map { it.timestamp })
     }
 }

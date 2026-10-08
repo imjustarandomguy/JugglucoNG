@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,10 @@ fun SettingsScreen(
     onOpenSensor: () -> Unit,
     onOpenExchange: () -> Unit = {},
 ) {
+    // The phone's last report, requested on entry.
+    val toggles by tk.glucodata.WearToggleSync.state.collectAsState()
+    LaunchedEffect(Unit) { tk.glucodata.WearToggleSync.requestState() }
+
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -44,7 +51,7 @@ fun SettingsScreen(
             // the state is visible from the wrist.
             item {
                 val known = tk.glucodata.WearToggleSync
-                    .knownEnabled(tk.glucodata.WearToggleSync.SCOPE_PREF, "prediction")
+                    .knownEnabled(toggles, tk.glucodata.WearToggleSync.SCOPE_PREF, "prediction")
                 androidx.wear.compose.material3.SwitchButton(
                     checked = known ?: tk.glucodata.ui.WearPrediction.isEnabled(),
                     onCheckedChange = { on ->

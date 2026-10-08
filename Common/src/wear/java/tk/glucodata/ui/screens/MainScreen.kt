@@ -1,6 +1,7 @@
 package tk.glucodata.ui.screens
 
 import android.text.format.DateFormat
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,8 +39,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
+import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
@@ -92,8 +98,7 @@ internal fun primaryLaneValue(point: GlucosePoint, viewMode: Int): Float =
 
 /**
  * Trend velocity for each of [rows], measured over the ~35 minutes of [history]
- * leading up to that reading — the same window the hero uses, so a row's arrow
- * and the hero's agree on the newest reading.
+ * leading up to that reading.
  *
  * The sweep itself is in tk.glucodata.TrendWindows, where it can be tested;
  * the wear source set is not on the unit-test classpath.
@@ -104,6 +109,23 @@ internal fun rowVelocities(
     useRaw: Boolean,
     isMmol: Boolean,
 ): Map<Long, Float> = tk.glucodata.TrendWindows.velocities(history, rows, useRaw, isMmol)
+
+/**
+ * [rowVelocities] for [rows] of the store's primary series, except the newest reading,
+ * which takes [WearGlucoseStore.Snapshot.trendRate]: the arrow the hero, the
+ * complications and the phone show for it. The sweep reads the drawn series, smoothed
+ * and without the live reading, and near the flat band it tilted differently.
+ */
+internal fun readingVelocities(
+    snapshot: WearGlucoseStore.Snapshot,
+    rows: List<GlucosePoint>,
+    isMmol: Boolean,
+): Map<Long, Float> {
+    val swept = rowVelocities(snapshot.points, rows, snapshot.isRawMode, isMmol)
+    val newest = snapshot.points.lastOrNull()?.timestamp ?: return swept
+    if (!snapshot.trendRate.isFinite() || newest !in swept) return swept
+    return swept + (newest to snapshot.trendRate)
+}
 
 internal fun trendArrow(rate: Float): String = runCatching {
     when (Natives.getxDripTrendName(rate)) {
@@ -132,6 +154,23 @@ fun MainScreen(
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var chartRangeIndex by remember { mutableIntStateOf(0) }
     var chartOwnsDrag by remember { mutableStateOf(false) }
+    // Opens on the chart and the hero. The default state centres the second item,
+    // which put the first readings mid-screen with the chart half scrolled away.
+    // The chart is about a screen tall: centring it would scroll past the start of
+    // the list, so the list stays at its top.
+    val listState = rememberScalingLazyListState(initialCenterItemIndex = 0)
+    // The activity outlives each visit (back at the root only backgrounds it), and
+    // the position with it: leaving the app puts the list back on top for the next
+    // open, from the launcher, a complication or the ongoing activity. This is the
+    // activity's lifecycle, not this destination's, so coming back from a screen
+    // opened here keeps the position.
+    val listScope = rememberCoroutineScope()
+    val activity = LocalActivity.current as? LifecycleOwner
+    if (activity != null) {
+        LifecycleEventEffect(Lifecycle.Event.ON_STOP, lifecycleOwner = activity) {
+            listScope.launch { listState.scrollToItem(0) }
+        }
+    }
 
     LaunchedEffect(Unit) {
         WearGlucoseStore.start()
@@ -147,9 +186,10 @@ fun MainScreen(
     val recent = remember(storeSnapshot) { WearGlucoseStore.recent(count = 6) }
     val newestReading = recent.firstOrNull()
     // One pass over the shared history gives every row its own arrow, instead of
-    // each row walking the snapshot again on the main thread.
+    // each row walking the snapshot again on the main thread. The hero shares the
+    // newest row's.
     val velocities = remember(storeSnapshot, recent, isMmol) {
-        rowVelocities(storeSnapshot.points, recent, storeSnapshot.isRawMode, isMmol)
+        readingVelocities(storeSnapshot, recent, isMmol)
     }
     val rowPeers = remember(storeSnapshot, recent, isMmol) {
         readingPeers(recent, storeSnapshot.peers, isMmol)
@@ -162,9 +202,16 @@ fun MainScreen(
     val peerReadings = remember(storeSnapshot, isMmol, now / TICK_MS) {
         peerReadings(storeSnapshot.peers, isMmol, now)
     }
+    // Calibration off on the phone hides it here; readings stay tappable while the journal is on.
+    // loadedAtMs changes on each store reload, which a new phone payload triggers.
+    val calibrationAvailable = remember(storeSnapshot.isRawMode, storeSnapshot.sensorId, storeSnapshot.loadedAtMs) {
+        ReadingActions.calibrationAvailable(storeSnapshot.isRawMode, storeSnapshot.sensorId)
+    }
+    val onReadingTap = onCalibrateReading.takeIf { calibrationAvailable || ReadingActions.journalAvailable() }
 
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(
+            state = listState,
             contentPadding = PaddingValues(top = 34.dp, bottom = 28.dp),
             userScrollEnabled = !chartOwnsDrag,
         ) {
@@ -193,7 +240,7 @@ fun MainScreen(
                         onGestureOwnership = { chartOwnsDrag = it },
                         // The scrub chip acts on the reading it shows, the same
                         // way the hero and the rows act on theirs.
-                        onSelectedReadingClick = onCalibrateReading,
+                        onSelectedReadingClick = onReadingTap,
                         headlineTopPadding = heroBottom,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -206,7 +253,7 @@ fun MainScreen(
                             sensorId = snap?.sensorId,
                             velocity = velocities[newestReading.timestamp] ?: 0f,
                             peers = peerReadings,
-                            onClick = { onCalibrateReading(newestReading) },
+                            onClick = onReadingTap?.let { tap -> { tap(newestReading) } },
                             // As on the phone's hero: a peer's chip promotes it.
                             onPeerClick = { tk.glucodata.ui.WearSensorSelection.makePrimary(it) },
                             // Sits as high as the clock allows so the big value
@@ -251,7 +298,7 @@ fun MainScreen(
                         // Tapping a reading acts on that reading, as on the
                         // phone: it calibrates against it, or edits the
                         // calibration it already carries.
-                        onClick = { onCalibrateReading(point) },
+                        onClick = onReadingTap?.let { tap -> { tap(point) } },
                         onAddJournal = onAddJournalAt
                             ?.takeIf { ReadingActions.journalAvailable() }
                             ?.let { add -> { add(point) } },
@@ -273,9 +320,11 @@ fun MainScreen(
                     modifier = Modifier.padding(horizontal = 18.dp),
                 )
             }
-            item {
-                Box(Modifier.padding(horizontal = 18.dp)) {
-                    WearNavigationRow(stringResource(R.string.calibration), onClick = onOpenCalibrations)
+            if (calibrationAvailable) {
+                item {
+                    Box(Modifier.padding(horizontal = 18.dp)) {
+                        WearNavigationRow(stringResource(R.string.calibration), onClick = onOpenCalibrations)
+                    }
                 }
             }
             // Only offered when the phone reports the journal as enabled, so the
@@ -361,7 +410,7 @@ private fun ReadingRow(
     isMmol: Boolean,
     viewMode: Int,
     velocity: Float,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     peers: List<WearReadingPeer> = emptyList(),
     primaryColorArgb: Int? = null,
     onAddJournal: (() -> Unit)? = null,
@@ -375,7 +424,7 @@ private fun ReadingRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(MaterialTheme.colorScheme.surfaceContainer)
-            .clickable(onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -37,6 +37,7 @@ class CalibrationProviderDefaultsTest {
             engine.tuningForMode(false),
         )
         assertEquals(0L, engine.getIntegratedCalibrationFingerprint("sensor", false))
+        assertTrue(engine.isEnabledForMode(false, null))
     }
 
     @Test

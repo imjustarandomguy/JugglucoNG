@@ -1290,12 +1290,57 @@ public class Notify {
     }
 
     public static void scheduleDataChangedRefresh() {
+        if (isWearable) {
+            scheduleOngoingStatusRefresh();
+            return;
+        }
         final Notify noti = onenot;
         if (noti == null) {
             return;
         }
         noti.scheduleDataChangedNotificationRefresh();
     }
+
+    /**
+     * Watch: brings the ongoing activity's status, which is the current value, up to
+     * date. Otherwise only fornotify and the service start set it, which on the watch
+     * means alerts, opening the app and the service starting, never a reading, whether
+     * read locally or synced from the phone: the status showed whatever value one of
+     * those last saw. Called on every data change, and by the per-timeout alarm, which
+     * takes the value down once readings stop.
+     *
+     * Posted without delay, as nothing keeps a dozing watch awake for a delayed run. A
+     * request made while a run is queued is covered by it, since the run resolves the
+     * newest reading: a chunk of history costs one status update.
+     */
+    static void scheduleOngoingStatusRefresh() {
+        final Notify noti = onenot;
+        if (noti == null || !isWearable) {
+            return;
+        }
+        if (noti.ongoingStatusRefreshPending.compareAndSet(false, true)) {
+            glucoseRefreshHandler.post(noti.ongoingStatusRefreshRunnable);
+        }
+    }
+
+    private final java.util.concurrent.atomic.AtomicBoolean ongoingStatusRefreshPending =
+            new java.util.concurrent.atomic.AtomicBoolean();
+
+    private final Runnable ongoingStatusRefreshRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // Cleared before resolving: data stored from here on queues the next run.
+            ongoingStatusRefreshPending.set(false);
+            try {
+                final var ongoing = OngoingNotificationAccess.get();
+                if (ongoing != null) {
+                    ongoing.updateStatus(Applic.app, glucosenotificationid);
+                }
+            } catch (Throwable th) {
+                Log.stack(LOG_ID, "ongoingStatusRefresh", th);
+            }
+        }
+    };
 
     private void scheduleDataChangedNotificationRefresh() {
         if (!shouldKeepForegroundGlucoseNotification()) {

@@ -11,6 +11,24 @@ object DisplayTrendSource {
      */
     const val TREND_WINDOW_MS = 25L * 60L * 1000L
 
+    /**
+     * Closer than this, two rows are one reading: half the shortest interval any
+     * sensor reads at (one minute).
+     */
+    private const val SAME_READING_MS = 30_000L
+
+    /**
+     * [historyPoints] with [current]'s reading merged in: onto its own stored row when
+     * there is one, else as a point of its own.
+     *
+     * A live reading and its stored row do not always share a timestamp. Room keeps
+     * the live reading's time, but a native row keeps whole seconds while a G7 read
+     * on the watch keeps the milliseconds it arrived at. Added beside its row, the
+     * same reading went in twice, under a second apart: counted double in the slope
+     * or, when the snapshot carries a smoothed value, a step TrendEngine rejects as a
+     * > 20 mg/dL/min artifact, after which it measured the newest point alone and
+     * read flat on any rise.
+     */
     @JvmStatic
     fun augmentHistory(
         historyPoints: List<GlucosePoint>?,
@@ -40,7 +58,7 @@ object DisplayTrendSource {
             return history
         }
 
-        val candidate = GlucosePoint(current.timeMillis, autoValue, rawValue)
+        val candidate = GlucosePoint(storedTimeOf(history, current.timeMillis), autoValue, rawValue)
         if (history.isEmpty()) {
             return listOf(candidate)
         }
@@ -63,6 +81,13 @@ object DisplayTrendSource {
             merged.add(candidate)
         }
         return merged
+    }
+
+    /** The time of the stored row holding the reading taken at [timeMillis], or [timeMillis]. */
+    private fun storedTimeOf(history: List<GlucosePoint>, timeMillis: Long): Long {
+        val nearest = history.minByOrNull { kotlin.math.abs(it.timestamp - timeMillis) }?.timestamp
+            ?: return timeMillis
+        return if (kotlin.math.abs(nearest - timeMillis) < SAME_READING_MS) nearest else timeMillis
     }
 
     /**
@@ -112,6 +137,54 @@ object DisplayTrendSource {
             }
         }
         return current?.rate?.takeIf { it.isFinite() } ?: fallbackRate
+    }
+
+    /**
+     * The rate a display arrow shows: [resolveTrendPoints], then [resolveArrowRate], the
+     * computation behind the dashboard hero and the notification arrow.
+     *
+     * [historyPoints] must be measured rows, neither calibrated nor smoothed (both reshape
+     * the recent slope), reaching back at least [TREND_WINDOW_MS] before the newest one.
+     *
+     * Not [CurrentDisplaySource.Snapshot.rate]: that one feeds the alert engine and is
+     * measured over the locally smoothed series, which "collapse into chunks" can leave
+     * without the newest reading. Near the ±0.5 mg/dL/min flat band the two differ enough
+     * to put one arrow flat and the other one up for the same readings.
+     */
+    @JvmStatic
+    fun resolveDisplayArrowRate(
+        historyPoints: List<GlucosePoint>?,
+        current: CurrentDisplaySource.Snapshot?,
+        activeSensorSerial: String?,
+        viewMode: Int,
+        isMmol: Boolean
+    ): Float = resolveArrowRate(
+        resolveTrendPoints(historyPoints, current, activeSensorSerial),
+        current,
+        viewMode,
+        isMmol,
+        Float.NaN
+    )
+
+    /**
+     * [resolveDisplayArrowRate] for [current], over the rows stored for its sensor: for
+     * surfaces that hold a snapshot but no history, such as the watch's complications.
+     */
+    @JvmStatic
+    fun loadDisplayArrowRate(current: CurrentDisplaySource.Snapshot): Float {
+        // Two windows back, as the alarm notification reads: resolveTrendPoints cuts at
+        // the newest point, and the reading at the far edge of the window must not
+        // depend on where this read starts.
+        val history = try {
+            NotificationHistorySource.getDisplayHistory(
+                current.timeMillis - 2 * TREND_WINDOW_MS,
+                current.isMmol,
+                current.sensorId
+            )
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        return resolveDisplayArrowRate(history, current, current.sensorId, current.viewMode, current.isMmol)
     }
 
     private fun hasUsableTrendHistory(points: List<GlucosePoint>, useRaw: Boolean): Boolean {

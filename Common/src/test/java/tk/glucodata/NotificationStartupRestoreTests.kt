@@ -15,7 +15,8 @@ import org.junit.Test
  *
  * Covered production wiring: placeholder-first promotion before any blocked
  * history query, ticket invalidation by any genuine fornotify publication,
- * superseded epochs, stop/destroy invalidation, Wear synchronous path, pinned
+ * superseded epochs, stop/destroy invalidation, Wear synchronous path, Wear
+ * ongoing-status refresh on data changes (coalesced, phone untouched), pinned
  * snapshot time passed to the renderer, honest stale/waiting/no-sensor statuses,
  * history-failure propagation, and header-timestamp application.
  */
@@ -644,6 +645,34 @@ class NotificationStartupRestoreTests {
         assertEquals(listOf("notify:81432"), getNested(manager, "calls"))
         assertEquals(1, get(h, "updateCalls"))
         assertEquals(0, call(h, "queuedCount"))
+    }
+
+    @Test fun wearDataChangesRefreshOngoingStatusOncePerQueuedRun() {
+        val h = harness()
+        set(h, "isWearable", true)
+        // A synced chunk, then the alert runtime's pass over the same reading.
+        staticCall("scheduleDataChangedRefresh")
+        staticCall("scheduleDataChangedRefresh")
+        assertEquals("the queued run covers the later request", 1, call(h, "queuedCount"))
+        assertTrue(drainOne(h))
+        assertEquals(1, get(h, "updateCalls"))
+        assertEquals("a data change posts no glucose notification on the watch",
+            emptyList<String>(), getNested(get(h, "notificationManager")!!, "calls"))
+        assertEquals(0L, get(h, "pendingDataRefreshAtUptimeMs"))
+        // Once the run has started, the next request (here the timeout alarm's) queues again.
+        staticCall("scheduleOngoingStatusRefresh")
+        assertEquals(1, call(h, "queuedCount"))
+        assertTrue(drainOne(h))
+        assertEquals(2, get(h, "updateCalls"))
+    }
+
+    @Test fun phoneDataChangesDoNotTouchTheWatchStatus() {
+        val h = harness()
+        staticCall("scheduleOngoingStatusRefresh")
+        assertEquals(0, call(h, "queuedCount"))
+        staticCall("scheduleDataChangedRefresh")
+        assertNotEquals(0L, get(h, "pendingDataRefreshAtUptimeMs"))
+        assertEquals(0, get(h, "updateCalls"))
     }
 
     @Test fun startupPublicationFailureGetsQuietRetryWithoutNewInput() {
