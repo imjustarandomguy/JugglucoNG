@@ -567,6 +567,11 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="preview_window_expanded_only">Yalnızca genişletilmiş görünümde (varsayılan)</string>
     <string name="preview_window_always">Her zaman</string>
     <string name="preview_window_never">Asla</string>
+    <string name="chart_readings_style_title">Ölçümleri şöyle göster</string>
+    <string name="chart_readings_style_desc">Ölçümlerin grafiklerde nasıl çizileceği: uygulamada, bildirimde, widget’ta ve saatte</string>
+    <string name="chart_readings_style_line">Çizgi</string>
+    <string name="chart_readings_style_dots">Noktalar</string>
+    <string name="chart_readings_style_line_and_dots">Çizgi ve noktalar</string>
     <string name="debug_logs_desc">trace.log ve logcat\'i görüntüle</string>
     <string name="data_management">Veri Yönetimi</string>
     <string name="export_data">Geçmişi Dışa Aktar</string>

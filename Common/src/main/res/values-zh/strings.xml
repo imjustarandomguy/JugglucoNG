@@ -522,6 +522,11 @@
     <string name="preview_window_expanded_only">仅在展开视图中（默认）</string>
     <string name="preview_window_always">始终</string>
     <string name="preview_window_never">从不</string>
+    <string name="chart_readings_style_title">读数显示为</string>
+    <string name="chart_readings_style_desc">读数在图表上的绘制方式：应用、通知、小组件和手表</string>
+    <string name="chart_readings_style_line">线</string>
+    <string name="chart_readings_style_dots">点</string>
+    <string name="chart_readings_style_line_and_dots">线和点</string>
     <string name="debug_logs_desc">查看 trace.log 和 logcat</string>
     <string name="data_management">数据管理</string>
     <string name="export_data">导出历史记录</string>

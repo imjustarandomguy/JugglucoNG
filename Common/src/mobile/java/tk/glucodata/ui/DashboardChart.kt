@@ -115,6 +115,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
@@ -732,6 +733,8 @@ fun DashboardChartSection(
     graphSmoothingMinutes: Int = 0,
     collapseSmoothedData: Boolean = false,
     previewWindowMode: Int = 0,
+    /** Line, dots, or line and dots ([tk.glucodata.ChartReadingsStyle]); null reads the setting. */
+    readingsStyle: Int? = null,
     graphLow: Float,
     graphHigh: Float,
     targetLow: Float,
@@ -786,6 +789,7 @@ fun DashboardChartSection(
                         graphSmoothingMinutes = graphSmoothingMinutes,
                         collapseSmoothedData = collapseSmoothedData,
                         previewWindowMode = previewWindowMode,
+                        readingsStyle = readingsStyle,
                         graphLow = graphLow,
                         graphHigh = graphHigh,
                         targetLow = targetLow,
@@ -862,6 +866,8 @@ fun InteractiveGlucoseChart(
     graphSmoothingMinutes: Int = 0,
     collapseSmoothedData: Boolean = false,
     previewWindowMode: Int = 0,
+    /** Line, dots, or line and dots ([tk.glucodata.ChartReadingsStyle]); null reads the setting. */
+    readingsStyle: Int? = null,
     graphLow: Float,
     graphHigh: Float,
     targetLow: Float,
@@ -1124,6 +1130,20 @@ fun InteractiveGlucoseChart(
     val reusablePeerPath = remember { Path() }
     val reusableRawPath = remember { Path() }
     val reusableAutoPath = remember { Path() }
+    // Reading positions for the dot styles, reused across frames like the paths.
+    val reusableMainDots = remember { ChartDotBuffer() }
+    val reusableDemotedDots = remember { ChartDotBuffer() }
+    val reusableLaneDots = remember { ChartDotBuffer() }
+    val reusablePeerDots = remember { ChartDotBuffer() }
+    val readingDotPaint = remember { androidx.compose.ui.graphics.Paint() }
+    // The dashboard passes the live setting; the other screens read it as they open.
+    val settingsReadingsStyle = remember(context) { tk.glucodata.ChartReadingsStyle.read(context) }
+    val resolvedReadingsStyle = readingsStyle ?: settingsReadingsStyle
+    val readingLines = tk.glucodata.ChartReadingsStyle.drawsLine(resolvedReadingsStyle)
+    val readingDots = tk.glucodata.ChartReadingsStyle.drawsDots(resolvedReadingsStyle)
+    // With dots on it the line is thinner and fainter, so the dots carry the readings.
+    val readingLineWidth = if (readingDots) tk.glucodata.ChartReadingsStyle.LINE_WITH_DOTS_WIDTH else 1f
+    val readingLineAlpha = if (readingDots) tk.glucodata.ChartReadingsStyle.LINE_WITH_DOTS_ALPHA else 1f
     val reusableDate = remember { java.util.Date() }
 
     // Hoist intervals array to avoid allocation in Canvas loop
@@ -2704,6 +2724,7 @@ fun InteractiveGlucoseChart(
                             if (lane.kind == tk.glucodata.chart.ChartLaneKind.CALIBRATION_PREVIEW) continue
                             for (run in lane.runs) {
                                 reusablePeerPath.rewind()
+                                reusablePeerDots.clear()
                                 var first = true
                                 var hasPath = false
                                 val points = run.points
@@ -2715,23 +2736,38 @@ fun InteractiveGlucoseChart(
                                     val py = valToY(point.value)
                                     if (!px.isFinite() || !py.isFinite()) { first = true; continue }
                                     if (first) { reusablePeerPath.moveTo(px, py); first = false } else reusablePeerPath.lineTo(px, py)
+                                    if (readingDots) reusablePeerDots.add(px, py)
                                     hasPath = true
                                 }
                                 if (!hasPath) continue
-                                val style = Stroke(width = peerStroke * 0.84f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                if (brush != null) {
-                                    drawPath(path = reusablePeerPath, brush = brush, alpha = 0.68f, style = style)
-                                } else {
-                                    drawPath(
-                                        path = reusablePeerPath,
-                                        color = androidx.compose.ui.graphics.lerp(color, peerNeutralBase, 0.46f).copy(alpha = 0.5f * 0.68f),
-                                        style = style
+                                val laneWidth = peerStroke * 0.84f
+                                val style = Stroke(width = laneWidth * readingLineWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                val laneColor = androidx.compose.ui.graphics.lerp(color, peerNeutralBase, 0.46f).copy(alpha = 0.5f * 0.68f)
+                                if (readingLines) {
+                                    if (brush != null) {
+                                        drawPath(path = reusablePeerPath, brush = brush, alpha = 0.68f * readingLineAlpha, style = style)
+                                    } else {
+                                        drawPath(
+                                            path = reusablePeerPath,
+                                            color = laneColor.copy(alpha = laneColor.alpha * readingLineAlpha),
+                                            style = style
+                                        )
+                                    }
+                                }
+                                if (readingDots) {
+                                    drawReadingDots(
+                                        reusablePeerDots,
+                                        brush ?: SolidColor(laneColor),
+                                        tk.glucodata.ChartReadingsStyle.dotRadius(laneWidth, currentDur),
+                                        readingDotPaint,
+                                        alpha = if (brush != null) 0.68f else 1f
                                     )
                                 }
                             }
                         }
                         for (run in series.runs) {
                             reusablePeerPath.rewind()
+                            reusablePeerDots.clear()
                             val peerRun = ChartLineRun()
                             var hasPath = false
                             var first = true
@@ -2745,24 +2781,50 @@ fun InteractiveGlucoseChart(
                                 if (!px.isFinite() || !py.isFinite()) { first = true; continue }
                                 if (first) { reusablePeerPath.moveTo(px, py); peerRun.begin(px, py); first = false }
                                 else { reusablePeerPath.lineTo(px, py); peerRun.extend() }
+                                if (readingDots) reusablePeerDots.add(px, py)
                                 hasPath = true
                             }
                             if (!hasPath) continue
                             peerRun.flush()
                             if (run.look == tk.glucodata.chart.ChartLook.MAIN) {
                                 // The main look, exactly as the primary line gets it.
-                                val style = Stroke(width = mainStroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                                drawPath(path = reusablePeerPath, brush = gradientBrush, style = style)
-                                peerRun.isolatedPoints.forEach { dot -> drawCircle(color = primaryColor, radius = mainStroke / 2f, center = dot) }
+                                val style = Stroke(width = mainStroke * readingLineWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                if (readingLines) {
+                                    drawPath(path = reusablePeerPath, brush = gradientBrush, alpha = readingLineAlpha, style = style)
+                                }
+                                if (readingDots) {
+                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(mainStroke, currentDur)
+                                    drawReadingDots(reusablePeerDots, gradientBrush, radius, readingDotPaint)
+                                } else {
+                                    peerRun.isolatedPoints.forEach { dot -> drawCircle(color = primaryColor, radius = mainStroke / 2f, center = dot) }
+                                }
                             } else {
                                 val alpha = 0.88f
-                                val style = Stroke(width = peerStroke, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                val style = Stroke(width = peerStroke * readingLineWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
                                 val dotColor = androidx.compose.ui.graphics.lerp(color, peerNeutralBase, 0.46f).copy(alpha = 0.5f * alpha)
-                                peerRun.isolatedPoints.forEach { dot -> drawCircle(color = dotColor, radius = peerStroke / 2f, center = dot) }
-                                if (brush != null) {
-                                    drawPath(path = reusablePeerPath, brush = brush, alpha = alpha, style = style)
-                                } else {
-                                    drawPath(path = reusablePeerPath, color = dotColor, style = style)
+                                if (!readingDots) {
+                                    peerRun.isolatedPoints.forEach { dot -> drawCircle(color = dotColor, radius = peerStroke / 2f, center = dot) }
+                                }
+                                if (readingLines) {
+                                    if (brush != null) {
+                                        drawPath(path = reusablePeerPath, brush = brush, alpha = alpha * readingLineAlpha, style = style)
+                                    } else {
+                                        drawPath(
+                                            path = reusablePeerPath,
+                                            color = dotColor.copy(alpha = dotColor.alpha * readingLineAlpha),
+                                            style = style
+                                        )
+                                    }
+                                }
+                                if (readingDots) {
+                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(peerStroke, currentDur)
+                                    drawReadingDots(
+                                        reusablePeerDots,
+                                        brush ?: SolidColor(dotColor),
+                                        radius,
+                                        readingDotPaint,
+                                        alpha = if (brush != null) alpha else 1f
+                                    )
                                 }
                             }
                         }
@@ -2842,7 +2904,12 @@ fun InteractiveGlucoseChart(
                         0.46f
                     ).copy(alpha = 0.44f)
 
-                    fun addRun(path: Path, run: tk.glucodata.chart.ChartRun, lineRun: ChartLineRun) {
+                    fun addRun(
+                        path: Path,
+                        run: tk.glucodata.chart.ChartRun,
+                        lineRun: ChartLineRun,
+                        dots: ChartDotBuffer? = null
+                    ) {
                         var first = true
                         var lastX = -10000f
                         var lastY = -10000f
@@ -2868,11 +2935,42 @@ fun InteractiveGlucoseChart(
                             } else {
                                 path.lineTo(px, py); lineRun.extend()
                             }
+                            dots?.add(px, py)
                             lastX = px; lastY = py
                         }
                     }
                     fun drawIsolated(run: ChartLineRun, color: Color, strokeWidth: Float) {
                         run.isolatedPoints.forEach { point -> drawCircle(color = color, radius = strokeWidth / 2f, center = point) }
+                    }
+                    // One series' readings in the chosen style: the line, its dots (every
+                    // reading, so no separate dot for a lone one), or both. The dots take
+                    // the line's own brush, so each has the range colour the line has there.
+                    fun drawReadings(
+                        path: Path,
+                        lineRun: ChartLineRun,
+                        dots: ChartDotBuffer,
+                        brush: Brush,
+                        strokeWidth: Float,
+                        isolatedColor: Color
+                    ) {
+                        if (readingLines) {
+                            drawPath(
+                                path,
+                                brush = brush,
+                                alpha = readingLineAlpha,
+                                style = Stroke(width = strokeWidth * readingLineWidth, cap = strokeCap, join = strokeJoin)
+                            )
+                        }
+                        if (readingDots) {
+                            drawReadingDots(
+                                dots,
+                                brush,
+                                tk.glucodata.ChartReadingsStyle.dotRadius(strokeWidth, currentDur),
+                                readingDotPaint
+                            )
+                        } else {
+                            drawIsolated(lineRun, isolatedColor, strokeWidth)
+                        }
                     }
 
                     // Secondary lanes first, under everything.
@@ -2883,8 +2981,14 @@ fun InteractiveGlucoseChart(
                             tk.glucodata.chart.ChartLaneKind.CALIBRATION_PREVIEW -> reusableDemotedPath
                         }
                         path.rewind()
+                        reusableLaneDots.clear()
                         val lineRun = ChartLineRun()
-                        lane.runs.forEach { addRun(path, it, lineRun) }
+                        // The calibration preview stays a line in every style: it is a
+                        // question about the readings, not readings.
+                        val laneDots = reusableLaneDots.takeIf {
+                            readingDots && lane.kind != tk.glucodata.chart.ChartLaneKind.CALIBRATION_PREVIEW
+                        }
+                        lane.runs.forEach { addRun(path, it, lineRun, laneDots) }
                         lineRun.flush()
                         when (lane.kind) {
                             tk.glucodata.chart.ChartLaneKind.CALIBRATION_PREVIEW -> {
@@ -2897,8 +3001,7 @@ fun InteractiveGlucoseChart(
                             }
                             else -> {
                                 val color = if (lane.kind == tk.glucodata.chart.ChartLaneKind.RAW) rawLaneColor else autoLaneColor
-                                drawPath(path, color, style = Stroke(width = laneStroke, cap = strokeCap, join = strokeJoin))
-                                drawIsolated(lineRun, color, laneStroke)
+                                drawReadings(path, lineRun, reusableLaneDots, SolidColor(color), laneStroke, color)
                             }
                         }
                     }
@@ -2906,22 +3009,27 @@ fun InteractiveGlucoseChart(
                     // Then the primary where it is not main, then where it is.
                     reusableDemotedPath.rewind()
                     reusablePath.rewind()
+                    reusableDemotedDots.clear()
+                    reusableMainDots.clear()
                     val demotedRun = ChartLineRun()
                     val mainRun = ChartLineRun()
+                    val demotedDots = reusableDemotedDots.takeIf { readingDots }
+                    val mainDots = reusableMainDots.takeIf { readingDots }
                     for (run in primarySeries.runs) {
-                        if (run.look == tk.glucodata.chart.ChartLook.MAIN) addRun(reusablePath, run, mainRun)
-                        else addRun(reusableDemotedPath, run, demotedRun)
+                        if (run.look == tk.glucodata.chart.ChartLook.MAIN) addRun(reusablePath, run, mainRun, mainDots)
+                        else addRun(reusableDemotedPath, run, demotedRun, demotedDots)
                     }
                     demotedRun.flush()
                     mainRun.flush()
-                    drawPath(reusableDemotedPath, demotedColor, style = Stroke(width = laneStroke, cap = strokeCap, join = strokeJoin))
-                    drawIsolated(demotedRun, demotedColor, laneStroke)
-                    if (doTintMain) {
-                        drawPath(reusablePath, brush = gradientBrush, style = Stroke(width = mainStroke, cap = strokeCap, join = strokeJoin))
-                    } else {
-                        drawPath(reusablePath, primaryColor, style = Stroke(width = mainStroke, cap = strokeCap, join = strokeJoin))
-                    }
-                    drawIsolated(mainRun, primaryColor, mainStroke)
+                    drawReadings(reusableDemotedPath, demotedRun, reusableDemotedDots, SolidColor(demotedColor), laneStroke, demotedColor)
+                    drawReadings(
+                        reusablePath,
+                        mainRun,
+                        reusableMainDots,
+                        if (doTintMain) gradientBrush else SolidColor(primaryColor),
+                        mainStroke,
+                        primaryColor
+                    )
                 }
 
                 fun addSmoothedPredictionOffsets(path: Path, samples: List<Offset>, moveToFirst: Boolean) {

@@ -885,6 +885,11 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="preview_window_expanded_only">Aragtida la fidiyay (default)</string>
     <string name="preview_window_always">Had iyo jeer</string>
     <string name="preview_window_never">Marna</string>
+    <string name="chart_readings_style_title">Akhrinada u muuji sidii</string>
+    <string name="chart_readings_style_desc">Sida akhrinada loogu sawiro jaantusyada: app-ka, ogeysiiska, widget-ka iyo saacadda</string>
+    <string name="chart_readings_style_line">Xariiq</string>
+    <string name="chart_readings_style_dots">Dhibco</string>
+    <string name="chart_readings_style_line_and_dots">Xariiq iyo dhibco</string>
     <string name="debug_logs_desc">Eeg trace.log iyo logcat</string>
 
     

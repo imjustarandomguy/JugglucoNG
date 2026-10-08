@@ -388,6 +388,11 @@
     <string name="preview_window_expanded_only">Solo in vista espansa (predefinito)</string>
     <string name="preview_window_always">Sempre</string>
     <string name="preview_window_never">Mai</string>
+    <string name="chart_readings_style_title">Mostra le letture come</string>
+    <string name="chart_readings_style_desc">Come vengono disegnate le letture nei grafici: nell\'app, nella notifica, nel widget e sull\'orologio</string>
+    <string name="chart_readings_style_line">Linea</string>
+    <string name="chart_readings_style_dots">Punti</string>
+    <string name="chart_readings_style_line_and_dots">Linea e punti</string>
     <string name="debug_logs_desc">Vedi trace.log e logcat</string>
     <string name="data_management">Gestione Dati</string>
     <string name="export_data">Esporta Cronologia</string>

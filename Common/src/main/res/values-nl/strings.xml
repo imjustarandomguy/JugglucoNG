@@ -607,6 +607,11 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="preview_window_expanded_only">Alleen in uitgebreide weergave (standaard)</string>
     <string name="preview_window_always">Altijd</string>
     <string name="preview_window_never">Nooit</string>
+    <string name="chart_readings_style_title">Metingen tonen als</string>
+    <string name="chart_readings_style_desc">Hoe metingen in de grafieken worden getekend: in de app, de melding, de widget en op het horloge</string>
+    <string name="chart_readings_style_line">Lijn</string>
+    <string name="chart_readings_style_dots">Punten</string>
+    <string name="chart_readings_style_line_and_dots">Lijn en punten</string>
     <string name="debug_logs_desc">Bekijk trace.log en logcat</string>
     <string name="data_management">Gegevensbeheer</string>
     <string name="export_data">Geschiedenis exporteren</string>
