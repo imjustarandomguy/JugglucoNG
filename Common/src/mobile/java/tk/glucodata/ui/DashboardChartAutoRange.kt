@@ -5,6 +5,12 @@ internal data class ChartYRange(
     val max: Float
 )
 
+/**
+ * The chart's y range: the configured chart range ([baselineMin]..[baselineMax]),
+ * widened just enough to hold the values in the visible window that fall outside it,
+ * with a little padding, rounded out to 1 mmol/L or 18 mg/dL. It never shrinks below
+ * the configured range, and is that range again once those values leave the window.
+ */
 internal fun autoExpandedChartYRange(
     baselineMin: Float,
     baselineMax: Float,
@@ -36,39 +42,4 @@ internal fun autoExpandedChartYRange(
         ?: safeMax
 
     return ChartYRange(min = low, max = high)
-}
-
-internal fun manuallyAdjustedChartYRange(
-    startMin: Float,
-    startMax: Float,
-    totalDragY: Float,
-    chartHeight: Float,
-    adjustsMax: Boolean,
-    minimumSpan: Float
-): ChartYRange {
-    if (
-        !startMin.isFinite() ||
-        !startMax.isFinite() ||
-        startMax <= startMin ||
-        !totalDragY.isFinite() ||
-        !chartHeight.isFinite() ||
-        chartHeight <= 0f
-    ) {
-        return ChartYRange(min = startMin, max = startMax)
-    }
-
-    val safeMinimumSpan = minimumSpan.takeIf { it.isFinite() && it > 0f } ?: 0.1f
-    val scaleDelta = totalDragY * (startMax - startMin) / chartHeight * 2f
-    return if (adjustsMax) {
-        ChartYRange(
-            min = startMin,
-            max = (startMax + scaleDelta).coerceAtLeast(startMin + safeMinimumSpan)
-        )
-    } else {
-        ChartYRange(
-            min = (startMin + scaleDelta)
-                .coerceIn(0f, (startMax - safeMinimumSpan).coerceAtLeast(0f)),
-            max = startMax
-        )
-    }
 }
