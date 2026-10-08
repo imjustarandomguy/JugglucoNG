@@ -159,25 +159,70 @@ private void docmd0(BluetoothGatt bluetoothGatt) {
 //private long connectedtime=0L;
 //private ArrayList<String> triedsensors=new ArrayList<>();
 
+/* One non-reference-counted lock per callback, acquired with a timeout so a GATT closed without a DISCONNECTED callback cannot keep it held. */
 private static PowerManager.WakeLock getwakelock() {
-      return ((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      final var lock=((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      lock.setReferenceCounted(false);
+      return lock;
       }
-private PowerManager.WakeLock wakelock=null;
+private final PowerManager.WakeLock wakelock=getwakelock();
+/** Covers a session, pairing included; a G7 session takes a few seconds. */
+private static final long WAKELOCK_TIMEOUT_MSEC=2L*60L*1000L;
 
 private void getlock() {
-    wakelock=getwakelock();
-    wakelock.acquire();
+    wakelock.acquire(WAKELOCK_TIMEOUT_MSEC);
     {if(doLog) {Log.i(LOG_ID,"getlock");};};
     }
 private void releaselock() {
-    var lock=wakelock;
-    if(lock!=null) {
-        wakelock=null;
-        lock.release();
+    if(wakelock.isHeld()) {
+        wakelock.release();
         {if(doLog) {Log.i(LOG_ID,"releaselock");};};
         }
    } 
 private int triedinvain=0;
+
+/**
+ * A known, bonded G7 reconnects with autoConnect. It is connectable only around its
+ * five-minute session, so a direct connect issued in between times out (status 147)
+ * and is retried; a background connect lets the controller wait for the next
+ * advertisement with the CPU asleep. If it never fires, the loss-of-signal
+ * reconnect re-arms it. Before bonding the stack may not know the sensor's address
+ * type, so pairing keeps direct connects and scans.
+ */
+@SuppressLint("MissingPermission")
+@Override
+protected boolean useAutoConnect() {
+    if(super.useAutoConnect())
+        return true;
+    final var device=mActiveBluetoothDevice;
+    try {
+        return known&&!removedBond&&device!=null&&device.getBondState()==BOND_BONDED;
+    } catch(Throwable th) {
+        return false;
+    }
+}
+
+/**
+ * After a session the G7 keeps advertising for a second or two, and a background
+ * connect armed at once linked up again, idled (the reading was in) and was dropped
+ * by the sensor, up to five times a session. Arming it once the advertising is over
+ * saves those links. A wake lock covers the wait: the scheduler stops while the CPU
+ * sleeps.
+ */
+private static final long REARM_AFTER_SESSION_MSEC = 5_000L;
+private final PowerManager.WakeLock rearmlock = newRearmLock();
+
+private static PowerManager.WakeLock newRearmLock() {
+    final var lock = ((PowerManager) Applic.app.getSystemService(POWER_SERVICE))
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::DexcomRearm");
+    lock.setReferenceCounted(false);
+    return lock;
+}
+
+private void rearmAfterSession(SensorBluetooth sensorbluetooth) {
+    rearmlock.acquire(REARM_AFTER_SESSION_MSEC + 2_000L);
+    sensorbluetooth.connectToActiveDevice(this, REARM_AFTER_SESSION_MSEC);
+}
 
 private boolean connected=false;
 private int connectionTimeouts=0;
@@ -185,6 +230,19 @@ private int connectionTimeouts=0;
     @Override
     public void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
+        // Ignore, and close, callbacks from a GATT this callback has replaced: a late
+        // DISCONNECTED would schedule a second reconnect, a late CONNECTED would start a
+        // handshake on a retired link.
+        final boolean currentGatt;
+        synchronized (this) {
+            // The connect runnable assigns mBluetoothGatt under this monitor.
+            currentGatt = bluetoothGatt == mBluetoothGatt;
+        }
+        if (!currentGatt) {
+            {if(doLog) {Log.i(LOG_ID, SerialNumber + " ignore stale onConnectionStateChange state=" + newState);};};
+            try { bluetoothGatt.close(); } catch (Throwable th) { Log.stack(LOG_ID, "close stale gatt", th); }
+            return;
+        }
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
@@ -301,6 +359,13 @@ private int connectionTimeouts=0;
                                 sensorbluetooth.connectToActiveDevice(this, stillwait);
                             }
                         }
+                        else if(useAutoConnect()) {
+                            // A background connect waits for the next advertisement
+                            // itself: no alarm to wake for, no direct connect to time out.
+                            cancelalarm();
+                            {if(doLog) {Log.i(LOG_ID, "autoConnect: wait for the next session");};};
+                            rearmAfterSession(sensorbluetooth);
+                        }
                         else if(getalarmclock()) {
                             //long stillwait=justdata?(6700-alreadywaited):0;
                             final long mmsectimebetween = 5 * 60 * 1000;
@@ -318,6 +383,10 @@ private int connectionTimeouts=0;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
                     }
+                    else if((tim-datatime)<60000&&useAutoConnect()) {
+                            // An idle re-link just after a session, dropped by the sensor.
+                            rearmAfterSession(sensorbluetooth);
+                            }
                     else {
                             {if(doLog) {Log.i(LOG_ID,"connect direct");};};
                             sensorbluetooth.connectToActiveDevice(this,0);
@@ -449,11 +518,6 @@ private void sendcertthread() {
     public void onCharacteristicWrite(BluetoothGatt bluetoothGatt, BluetoothGattCharacteristic bluetoothGattCharacteristic, int status) {
 //        {if(doLog) {Log.d(LOG_ID, bluetoothGatt.getDevice().getAddress() + " onCharacteristicWrite, status:" + status + " UUID:" + bluetoothGattCharacteristic.getUuid().toString());};};
         showCharacter("onCharacteristicWrite " + bluetoothGatt.getDevice().getAddress() + " status:" + status + " ", bluetoothGattCharacteristic);
-    }
-
-    @SuppressWarnings("unused")
-    public void onConnectionUpdated(BluetoothGatt gatt, int interval, int latency, int timeout, int status) {
-        {if(doLog) {Log.i(LOG_ID, "onConnectionUpdated interval=" + interval + " latency=" + latency + " timeout=" + timeout + " status=" + status);};};
     }
 
 
@@ -797,17 +861,20 @@ private    void getdata(byte[] value) {
     public void onCharacteristicChanged(@NonNull BluetoothGatt gatt, @NonNull BluetoothGattCharacteristic bluetoothGattCharacteristic, @NonNull byte[] value) {
         if(doLog)
             {if(doLog){Log.showbytes("DexGattCallback onCharacteristicChanged UUID: " + bluetoothGattCharacteristic.getUuid().toString(), value);};}
+        if (bluetoothGattCharacteristic.equals(charact[0])) {
+            getdata(value);
+            return;
+        }
         if (bluetoothGattCharacteristic.equals(charact[2])) {
             Natives.dexbackfill(dataptr, value);
             return;
         }
-
         if (bluetoothGattCharacteristic.equals(charact[3])) {
             getcert(value);
-        } else if (bluetoothGattCharacteristic.equals(charact[1])) {
+            return;
+        }
+        if (bluetoothGattCharacteristic.equals(charact[1])) {
             authenticate(value);
-        } else if (bluetoothGattCharacteristic.equals(charact[0])) {
-            getdata(value);
         }
     }
 
@@ -936,7 +1003,13 @@ private    void getdata(byte[] value) {
                 getdatacmd();
                 if(!has_service) {
                     Applic.RunOnUiThread(() -> {
-                        if (!mBluetoothGatt.discoverServices()) {
+                        // The GATT may be closed by the time this runs (bond broadcast after a disconnect).
+                        final var gatt = mBluetoothGatt;
+                        if (gatt == null) {
+                            Log.e(LOG_ID, "bonded(): mBluetoothGatt==null");
+                            return;
+                        }
+                        if (!gatt.discoverServices()) {
                             Log.e(LOG_ID, "bonded(): bluetoothGatt.discoverServices()  failed");
                             disconnect();
                         }
@@ -1029,6 +1102,7 @@ private void resetconnect() {
 @Override
 public void close() {
    resetconnect();
+   releaselock();
    super.close();
    }
 

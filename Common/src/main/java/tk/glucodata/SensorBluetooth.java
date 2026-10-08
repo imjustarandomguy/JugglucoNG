@@ -36,7 +36,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.ParcelUuid;
+import android.os.SystemClock;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
@@ -602,6 +604,24 @@ public class SensorBluetooth {
         return blue != null && (blue.mScanning || blue.scanstart);
     }
 
+    private static final int MAX_SCAN_STARTS = 5;
+    private static final long SCAN_START_WINDOW_MS = 31_000L; // 30 s platform window + 1 s margin
+    private static final ArrayDeque<Long> scanStarts = new ArrayDeque<>();
+
+    /** How long until another scan may start without tripping Android's limit. */
+    private static synchronized long delayUntilScanAllowed() {
+        final long now = SystemClock.elapsedRealtime();
+        while (!scanStarts.isEmpty() && now - scanStarts.peekFirst() >= SCAN_START_WINDOW_MS)
+            scanStarts.removeFirst();
+        if (scanStarts.size() < MAX_SCAN_STARTS)
+            return 0L;
+        return SCAN_START_WINDOW_MS - (now - scanStarts.peekFirst());
+    }
+
+    private static synchronized void noteScanStart() {
+        scanStarts.addLast(SystemClock.elapsedRealtime());
+    }
+
     long scantime = 0L;
     final private Runnable scanRunnable = new Runnable() {
         @Override
@@ -621,7 +641,19 @@ public class SensorBluetooth {
                         }
                         return;
                     }
+                    // Android silently ignores a sixth scan start within 30 s per app; postpone instead.
+                    final long scanDelay = delayUntilScanAllowed();
+                    if (scanDelay > 0L) {
+                        Log.i(LOG_ID, "scanRunnable: scan start limit, retry in " + scanDelay + "ms");
+                        if (scanOnUI) {
+                            Applic.app.getHandler().postDelayed(scanRunnable, scanDelay);
+                        } else {
+                            scanFuture = Applic.scheduler.schedule(scanRunnable, scanDelay, TimeUnit.MILLISECONDS);
+                        }
+                        return;
+                    }
                     if (scanner.start()) {
+                        noteScanStart();
                         mScanning = true;
                         if (scanOnUI) {
                             Applic.app.getHandler().postDelayed(mScanTimeoutRunnable, scantimeout);
@@ -2096,6 +2128,9 @@ public class SensorBluetooth {
     private BroadcastReceiver bondStateReceiver = null;
 
     private void addBondStateReceiver() {
+        // Registered once; addReceivers() runs on every updateDevicers()/addDevice().
+        if (bondStateReceiver != null)
+            return;
         bondStateReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
