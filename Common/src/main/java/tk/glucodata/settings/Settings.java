@@ -1545,7 +1545,7 @@ static private void exchanges(MainActivity context, View parent) {
                         if (isChecked) {
                             MainActivity.tryHealth = 5;
                             var health = HealthConnectAccess.get();
-                            if (health != null) health.start(context);
+                            if (health != null) health.exportSwitchedOn(context);
                         } else {
                             MainActivity.tryHealth = 0;
                             var health = HealthConnectAccess.get();

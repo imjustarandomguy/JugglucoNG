@@ -2008,6 +2008,36 @@ uint32_t getlastpolltime() const {
       setlastscantime(tim);
   }
 
+  // Health Connect exports the polls from info->healthconnectiter up, so a
+  // reading that fills an empty slot below that cursor (a backfill, a gap
+  // filled in from another device, a refill after a rebase) would never be
+  // sent. The cursor moves back to such a slot; the export gives every record
+  // a clientRecordId, so what it sends again replaces its earlier copy.
+  static constexpr int healthConnectCursorAfterFill(int cursor, int slot,
+                                                    bool slotWasEmpty,
+                                                    int glu) {
+    return (glu > 0 && slotWasEmpty && slot >= 0 && slot < cursor) ? slot
+                                                                   : cursor;
+  }
+  // Every writer of a poll slot calls this before it writes the slot.
+  void healthConnectSlotFilled(int slot, int glu) {
+    auto *info = getinfo();
+    if (!info || glu <= 0 || slot < 0 || slot > UINT16_MAX)
+      return;
+    const bool wasEmpty = slot >= pollcount() || polls[slot].g <= 0;
+    uint16_t cursor =
+        __atomic_load_n(&info->healthconnectiter, __ATOMIC_RELAXED);
+    for (;;) {
+      const int target =
+          healthConnectCursorAfterFill(cursor, slot, wasEmpty, glu);
+      if (target == cursor ||
+          __atomic_compare_exchange_n(&info->healthconnectiter, &cursor,
+                                      static_cast<uint16_t>(target), false,
+                                      __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+        return;
+    }
+  }
+
   bool savepoll(time_t tim, int id, int glu, int trend, float change,
                 int raw = 0) {
     if (pollcount()) {
@@ -2085,6 +2115,7 @@ uint32_t getlastpolltime() const {
              id, index, capacity);
       return true;
     }
+    healthConnectSlotFilled(index, glu);
     polls[index] = {static_cast<uint32_t>(tim), id, (int32_t)glu, trend,
                     change};
     rawpolls[index] = {(uint16_t)raw};
@@ -2106,6 +2137,8 @@ uint32_t getlastpolltime() const {
              capacity, id);
       return false;
     }
+    if (&streamscans == &polls)
+      healthConnectSlotFilled(count, glu);
     streamscans[count] = {static_cast<uint32_t>(tim), id, (int32_t)glu, trend,
                           change};
     if (&streamscans == &polls) {
@@ -2156,6 +2189,7 @@ uint32_t getlastpolltime() const {
     }
     LOGGER("count=%d savepollallIDsonly(%lu,%d,%.1f,%d,%.1f) %s", count, tim,
            id, glu / convfactordL, trend, change, ctime(&tim));
+    healthConnectSlotFilled(id, glu);
     polls[id] = {static_cast<uint32_t>(tim), id, (int32_t)glu, trend, change};
     rawpolls[id] = {(uint16_t)raw};
     temppolls[id] = temp;
@@ -2189,6 +2223,7 @@ uint32_t getlastpolltime() const {
         getinfo()->pollstart = id;
       }
     }
+    healthConnectSlotFilled(id, glu);
     polls[id] = {static_cast<uint32_t>(tim), id, (int32_t)glu, trend, change};
     rawpolls[id] = {(uint16_t)raw};
     temppolls[id] = temp;
