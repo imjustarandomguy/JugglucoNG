@@ -189,11 +189,17 @@ private int triedinvain=0;
  * reconnect re-arms it. Before bonding the stack may not know the sensor's address
  * type, so pairing keeps direct connects and scans.
  */
-@SuppressLint("MissingPermission")
 @Override
 protected boolean useAutoConnect() {
-    if(super.useAutoConnect())
-        return true;
+    return super.useAutoConnect() || reconnectsInBackground();
+}
+
+/**
+ * A known G7 Android has bonded: the only sensor the background-connect paths are
+ * for. The application-wide autoconnect setting does not make a sensor one.
+ */
+@SuppressLint("MissingPermission")
+private boolean reconnectsInBackground() {
     final var device=mActiveBluetoothDevice;
     try {
         return known&&!removedBond&&device!=null&&device.getBondState()==BOND_BONDED;
@@ -207,9 +213,11 @@ protected boolean useAutoConnect() {
  * connect armed at once linked up again, idled (the reading was in) and was dropped
  * by the sensor, up to five times a session. Arming it once the advertising is over
  * saves those links. A wake lock covers the wait: the scheduler stops while the CPU
- * sleeps.
+ * sleeps. It is held until that connect runs or is dropped (pendingConnectEnded).
  */
 private static final long REARM_AFTER_SESSION_MSEC = 5_000L;
+/** Upper bound only, so a late scheduler still connects before the lock lapses. */
+private static final long REARM_LOCK_TIMEOUT_MSEC = REARM_AFTER_SESSION_MSEC + 2_000L;
 private final PowerManager.WakeLock rearmlock = newRearmLock();
 
 private static PowerManager.WakeLock newRearmLock() {
@@ -220,8 +228,20 @@ private static PowerManager.WakeLock newRearmLock() {
 }
 
 private void rearmAfterSession(SensorBluetooth sensorbluetooth) {
-    rearmlock.acquire(REARM_AFTER_SESSION_MSEC + 2_000L);
+    rearmlock.acquire(REARM_LOCK_TIMEOUT_MSEC);
     sensorbluetooth.connectToActiveDevice(this, REARM_AFTER_SESSION_MSEC);
+    if (!connectScheduled())
+        releaseRearmLock();
+}
+
+private void releaseRearmLock() {
+    if (rearmlock.isHeld())
+        rearmlock.release();
+}
+
+@Override
+protected void pendingConnectEnded() {
+    releaseRearmLock();
 }
 
 private boolean connected=false;
@@ -248,6 +268,12 @@ private int connectionTimeouts=0;
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
+            // Nothing reconnects a stopped callback: close its GATT, or the client
+            // stays registered with the stack beside the next one.
+            synchronized (this) {
+                if (bluetoothGatt == mBluetoothGatt)
+                    close();
+            }
             return;
         }
         long tim = System.currentTimeMillis();
@@ -361,7 +387,7 @@ private int connectionTimeouts=0;
                                 sensorbluetooth.connectToActiveDevice(this, stillwait);
                             }
                         }
-                        else if(useAutoConnect()) {
+                        else if(reconnectsInBackground()) {
                             // A background connect waits for the next advertisement
                             // itself: no alarm to wake for, no direct connect to time out.
                             cancelalarm();
@@ -385,7 +411,7 @@ private int connectionTimeouts=0;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
                     }
-                    else if((tim-datatime)<60000&&useAutoConnect()) {
+                    else if((tim-datatime)<60000&&reconnectsInBackground()) {
                             // An idle re-link just after a session, dropped by the sensor.
                             rearmAfterSession(sensorbluetooth);
                             }
@@ -1178,6 +1204,7 @@ public void close() {
    resetconnect();
    releaselock();
    super.close();
+   releaseRearmLock();
    }
 
 

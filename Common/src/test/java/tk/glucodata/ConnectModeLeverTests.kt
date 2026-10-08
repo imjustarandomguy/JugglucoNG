@@ -123,24 +123,38 @@ class ConnectModeLeverTests {
         // the sensor's address type, so pairing must keep the user's setting (direct by default).
         val text = File(repoRoot(), "Common/src/dex/java/tk/glucodata/DexGattCallback.java")
             .readText().replace(Regex("\\s+"), "")
-        val signature = "booleanuseAutoConnect(){"
-        val start = text.indexOf(signature)
-        assertTrue("DexGattCallback must override useAutoConnect()", start >= 0)
-        val open = start + signature.length - 1
-        var end = open
-        var depth = 0
-        do {
-            if (text[end] == '{') depth++ else if (text[end] == '}') depth--
-            end++
-        } while (depth > 0 && end < text.length)
-        val body = text.substring(open + 1, end - 1)
+        fun body(signature: String): String {
+            val start = text.indexOf(signature)
+            assertTrue("DexGattCallback must declare $signature", start >= 0)
+            val open = start + signature.length - 1
+            var end = open
+            var depth = 0
+            do {
+                if (text[end] == '{') depth++ else if (text[end] == '}') depth--
+                end++
+            } while (depth > 0 && end < text.length)
+            return text.substring(open + 1, end - 1)
+        }
+        val override = body("booleanuseAutoConnect(){")
         assertTrue(
             "the Dexcom override must start from the application-wide setting",
-            body.contains("super.useAutoConnect()"),
+            override.contains("super.useAutoConnect()"),
         )
         assertTrue(
+            "the Dexcom override may only add the bond check",
+            override.contains("reconnectsInBackground()"),
+        )
+        val bondCheck = body("booleanreconnectsInBackground(){")
+        assertTrue(
             "the Dexcom override may only switch modes for a known, bonded sensor",
-            body.contains("known") && body.contains("BOND_BONDED"),
+            bondCheck.contains("known") && bondCheck.contains("BOND_BONDED"),
+        )
+        // The application-wide setting turns useAutoConnect() on for unbonded sensors too;
+        // the background re-arm paths are for the bonded sensor alone.
+        assertTrue(
+            "the Dexcom re-arm paths must be gated on the bond, not on useAutoConnect()",
+            !body("voidonConnectionStateChange(BluetoothGattbluetoothGatt,intstatus,intnewState){")
+                .contains("useAutoConnect()"),
         )
     }
 

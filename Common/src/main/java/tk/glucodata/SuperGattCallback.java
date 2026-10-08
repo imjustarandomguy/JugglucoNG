@@ -1530,11 +1530,26 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     }
 
     private synchronized void clearPendingConnect() {
+        final boolean wasPending = connectPending;
         connectPending = false;
         if (pendingConnectFuture != null) {
             pendingConnectFuture.cancel(false);
             pendingConnectFuture = null;
         }
+        if (wasPending)
+            pendingConnectEnded();
+    }
+
+    /** Whether a connect is scheduled and has not run yet. */
+    protected final boolean connectScheduled() {
+        return connectPending;
+    }
+
+    /**
+     * A scheduled connect ended: it ran (connectGatt issued or declined) or was
+     * cancelled. Called once per scheduled connect, under this callback's monitor.
+     */
+    protected void pendingConnectEnded() {
     }
 
     public synchronized boolean connectDevice(long delayMillis) {
