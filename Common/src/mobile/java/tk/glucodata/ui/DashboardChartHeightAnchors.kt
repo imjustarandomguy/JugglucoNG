@@ -62,3 +62,32 @@ internal object DashboardChartHeightAnchors {
     /** Stored anchors from an older or newer build fall back to collapsed. */
     fun fromPreference(value: Int): Int = if (value in COLLAPSED..FULL) value else COLLAPSED
 }
+
+/**
+ * Which resting heights of the chart are remembered: one the user chose, with the
+ * handle or by pulling the list at its top, and not the collapse that scrolling the
+ * list brings, which lasts only until the list is back at the top.
+ */
+internal class DashboardChartHeightChoice {
+    private var chosen = false
+
+    /** The user resized the chart: the handle, or the pull on the list at its top. */
+    fun onUserResize() {
+        chosen = true
+    }
+
+    /**
+     * The chart is at rest, on [anchor] (null between anchors). Returns the anchor to
+     * remember, or null. A rest away from the top of the list ends the choice: the
+     * gesture that resized the chart went on to scroll the list.
+     */
+    fun anchorToRemember(anchor: Int?, listAtTop: Boolean): Int? {
+        if (!listAtTop) {
+            chosen = false
+            return null
+        }
+        if (!chosen || anchor == null) return null
+        chosen = false
+        return anchor
+    }
+}
