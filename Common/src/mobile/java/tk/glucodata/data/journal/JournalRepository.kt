@@ -564,7 +564,7 @@ class JournalRepository {
             curveProfileId = storedProfile?.storageValue,
             curveModelVersion = if (storedProfile == null) 0 else JournalInsulinCurveCatalogue.MODEL_VERSION,
             curveEvidence = storedEvidence.storageValue,
-            doseStep = JournalInsulinDosing.sanitizeStep(input.doseStep),
+            doseStep = JournalInsulinDosing.storedStep(input.doseStep),
             defaultDose = JournalInsulinDosing.sanitizeDefaultDose(input.defaultDose),
             reminderTimes = JournalInsulinDosing.encodeReminderTimes(
                 JournalInsulinDosing.reminderTimesFor(input.countsTowardIob, input.reminderTimes)

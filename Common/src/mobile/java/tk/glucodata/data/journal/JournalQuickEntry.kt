@@ -3,24 +3,29 @@ package tk.glucodata.data.journal
 import java.util.Calendar
 import java.util.TimeZone
 import kotlin.math.abs
-import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.roundToLong
 import kotlinx.coroutines.CancellationException
 
 /**
  * Per-insulin dosing settings kept in the insulin library: the pen's dial step, a default dose,
  * and, for long-acting insulin, the times of day to be reminded of it.
+ *
+ * The step and the default dose are what the user sets. Until they do, the entry sheet goes by
+ * the log ([JournalAmountAssist]): the step its typed doses keep to, and the usual dose for the
+ * time of day, shown dim.
  */
 object JournalInsulinDosing {
     /**
-     * Whole units: what the common disposable pens (FlexTouch, KwikPen, SoloStar) dial in. Every
-     * preset starts here, built-in or not; a half-unit pen is set to 0.5 in the library.
+     * The steps the library offers besides the learned one: syringe tenths, half-unit pens,
+     * whole units, U200 pens.
      */
-    const val DEFAULT_STEP = 1f
-
-    /** The steps the library offers: syringe tenths, half-unit pens, whole units, U200 pens. */
     val STEP_CHOICES: List<Float> = listOf(0.1f, 0.5f, 1f, 2f)
+
+    /**
+     * How a preset without a step of its own stores it. The column is NOT NULL (its schema is
+     * fixed at v33), so 0, which no step can be, stands for none.
+     */
+    const val NO_STEP = 0f
 
     private const val MAX_STEP = 10f
     private const val MINUTES_PER_DAY = 24 * 60
@@ -28,38 +33,19 @@ object JournalInsulinDosing {
     /** Values closer than this to a grid point count as on it (float noise, typed decimals). */
     private const val GRID_TOLERANCE = 1e-3
 
-    fun sanitizeStep(step: Float?): Float =
-        step?.takeIf { it.isFinite() && it > 0f && it <= MAX_STEP } ?: DEFAULT_STEP
+    /** A step is a positive amount up to 10 U; anything else is none, and the sheet learns one. */
+    fun sanitizeStep(step: Float?): Float? = step?.takeIf { it.isFinite() && it > 0f && it <= MAX_STEP }
+
+    /** The stored form of [step]: itself when usable, else [NO_STEP]. */
+    fun storedStep(step: Float?): Float = sanitizeStep(step) ?: NO_STEP
 
     /** A default dose is a positive amount or nothing; never 0, which would read as a dose. */
     fun sanitizeDefaultDose(dose: Float?): Float? = dose?.takeIf { it.isFinite() && it > 0f }
 
-    /** [value] rounded to the nearest multiple of [step]. */
+    /** [value] rounded to the nearest multiple of [step], a usable step. */
     fun roundToStep(value: Float, step: Float): Float {
-        val safeStep = sanitizeStep(step).toDouble()
+        val safeStep = (sanitizeStep(step) ?: JournalAmountAssist.DEFAULT_INSULIN_STEP).toDouble()
         return (Math.round(value / safeStep) * safeStep).toCleanFloat()
-    }
-
-    /**
-     * What a -/+ press turns [current] into: the next multiple of [step] in [direction]. A value
-     * already on the grid moves a whole step; one between two grid points moves to the neighbour
-     * on that side (5.3 with a step of 1: + gives 6, - gives 5). Never below 0. An empty amount
-     * counts as 0.
-     */
-    fun stepped(current: Float?, direction: Int, step: Float): Float {
-        val safeStep = sanitizeStep(step).toDouble()
-        val value = current?.takeIf { it.isFinite() }?.toDouble()?.coerceAtLeast(0.0) ?: 0.0
-        if (direction == 0) return value.toCleanFloat()
-        val position = value / safeStep
-        val nearest = Math.round(position).toDouble()
-        val onGrid = abs(position - nearest) < GRID_TOLERANCE
-        val nextIndex = when {
-            onGrid && direction > 0 -> nearest + 1
-            onGrid -> nearest - 1
-            direction > 0 -> ceil(position)
-            else -> floor(position)
-        }
-        return (nextIndex * safeStep).coerceAtLeast(0.0).toCleanFloat()
     }
 
     /**

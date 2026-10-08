@@ -164,7 +164,8 @@ private data class JournalPresetDraft(
     val curveModelVersion: Int = 0,
     val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
     val scientificName: String? = null,
-    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    /** Null for Auto: the step the doses typed for it keep to. */
+    val doseStep: Float? = null,
     /** Empty for no default dose, which is not the same as 0. */
     val defaultDoseText: String = "",
     /** Minutes after midnight; kept while the preset counts toward IOB, saved only when it does not. */
@@ -1713,7 +1714,7 @@ private fun buildPresetDraft(preset: JournalInsulinPreset?): JournalPresetDraft 
         curveModelVersion = preset?.curveModelVersion ?: 0,
         curveEvidence = preset?.curveEvidence ?: JournalCurveEvidence.UNVERIFIED,
         scientificName = preset?.scientificName,
-        doseStep = preset?.doseStep ?: JournalInsulinDosing.DEFAULT_STEP,
+        doseStep = preset?.doseStep,
         defaultDoseText = preset?.defaultDose?.let(::formatFloatForEditor).orEmpty(),
         reminderTimes = preset?.reminderTimes.orEmpty()
     )

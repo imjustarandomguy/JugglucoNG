@@ -1111,7 +1111,7 @@ object ExportPackageExporter {
             .put("curveProfileId", curveProfileId ?: JSONObject.NULL)
             .put("curveModelVersion", curveModelVersion)
             .put("curveEvidence", curveEvidence)
-            .put("doseStep", doseStep.toDouble())
+            .put("doseStep", JournalInsulinDosing.sanitizeStep(doseStep)?.toDouble() ?: JSONObject.NULL)
             .put("defaultDose", defaultDose?.toDouble() ?: JSONObject.NULL)
             .put("reminderTimes", reminderTimes)
     }
@@ -1277,7 +1277,7 @@ object ExportPackageExporter {
                         curveProfileId = item.optNullableString("curveProfileId"),
                         curveModelVersion = item.optInt("curveModelVersion", 0),
                         curveEvidence = item.optString("curveEvidence", "unverified"),
-                        doseStep = JournalInsulinDosing.sanitizeStep(item.optNullableFloat("doseStep")),
+                        doseStep = JournalInsulinDosing.storedStep(item.optNullableFloat("doseStep")),
                         defaultDose = JournalInsulinDosing.sanitizeDefaultDose(item.optNullableFloat("defaultDose")),
                         reminderTimes = JournalInsulinDosing.encodeReminderTimes(
                             JournalInsulinDosing.decodeReminderTimes(item.optNullableString("reminderTimes"))

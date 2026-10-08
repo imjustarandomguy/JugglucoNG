@@ -235,8 +235,8 @@ data class JournalInsulinPreset(
     val curveModelVersion: Int = 0,
     val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
     val scientificName: String? = null,
-    /** See [JournalInsulinPresetEntity.doseStep]. */
-    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    /** See [JournalInsulinPresetEntity.doseStep]; null when none is set. */
+    val doseStep: Float? = null,
     val defaultDose: Float? = null,
     /** Minutes after midnight, long-acting insulin only. */
     val reminderTimes: List<Int> = emptyList()
@@ -293,7 +293,7 @@ data class JournalInsulinPresetInput(
     val curveProfileId: String? = null,
     val curveModelVersion: Int = 0,
     val curveEvidence: JournalCurveEvidence = JournalCurveEvidence.UNVERIFIED,
-    val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
+    val doseStep: Float? = null,
     val defaultDose: Float? = null,
     val reminderTimes: List<Int> = emptyList()
 )

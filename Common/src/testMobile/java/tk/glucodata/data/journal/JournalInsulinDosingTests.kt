@@ -10,46 +10,32 @@ class JournalInsulinDosingTests {
     }
 
     @Test
-    fun aStepOnTheGridMovesAWholeStep() {
-        assertEquals(7f, JournalInsulinDosing.stepped(6f, +1, 1f))
-        assertEquals(5f, JournalInsulinDosing.stepped(6f, -1, 1f))
-        assertEquals(6.5f, JournalInsulinDosing.stepped(6f, +1, 0.5f))
-        assertEquals(8f, JournalInsulinDosing.stepped(6f, +1, 2f))
+    fun anUnusableStepIsNoStep() {
+        assertNull(JournalInsulinDosing.sanitizeStep(0f))
+        assertNull(JournalInsulinDosing.sanitizeStep(-0.5f))
+        assertNull(JournalInsulinDosing.sanitizeStep(Float.NaN))
+        assertNull(JournalInsulinDosing.sanitizeStep(20f))
+        assertNull(JournalInsulinDosing.sanitizeStep(null))
+        assertEquals(1f, JournalInsulinDosing.sanitizeStep(1f))
     }
 
     @Test
-    fun aValueBetweenGridPointsMovesToTheNeighbourOnThatSide() {
-        assertEquals(6f, JournalInsulinDosing.stepped(5.3f, +1, 1f))
-        assertEquals(5f, JournalInsulinDosing.stepped(5.3f, -1, 1f))
-        assertEquals(5.5f, JournalInsulinDosing.stepped(5.3f, +1, 0.5f))
-        assertEquals(4f, JournalInsulinDosing.stepped(5f, -1, 2f))
-        assertEquals(6f, JournalInsulinDosing.stepped(5f, +1, 2f))
+    fun noStepIsStoredAsZero() {
+        assertEquals(0f, JournalInsulinDosing.storedStep(null))
+        assertEquals(0f, JournalInsulinDosing.storedStep(-1f))
+        assertEquals(0.5f, JournalInsulinDosing.storedStep(0.5f))
+        assertNull(JournalInsulinDosing.sanitizeStep(JournalInsulinDosing.storedStep(null)))
     }
 
     @Test
-    fun tenthStepsDoNotAccumulateFloatNoise() {
-        var value: Float? = null
-        repeat(3) { value = JournalInsulinDosing.stepped(value, +1, 0.1f) }
-        assertEquals(0.3f, value!!, 0f)
-        assertEquals(0.2f, JournalInsulinDosing.stepped(0.30000001f, -1, 0.1f), 0f)
-    }
-
-    @Test
-    fun anEmptyAmountStartsFromZeroAndNeverGoesBelowIt() {
-        assertEquals(1f, JournalInsulinDosing.stepped(null, +1, 1f))
-        assertEquals(0f, JournalInsulinDosing.stepped(null, -1, 1f))
-        assertEquals(0f, JournalInsulinDosing.stepped(0.4f, -1, 1f))
-        assertEquals(0f, JournalInsulinDosing.stepped(0f, -1, 0.5f))
-    }
-
-    @Test
-    fun anUnusableStepFallsBackToWholeUnits() {
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(0f))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(-0.5f))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(Float.NaN))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(null))
-        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(0.5f))
-        assertEquals(7f, JournalInsulinDosing.stepped(6f, +1, 0f))
+    fun theSheetsStepperKeepsToEveryStepTheLibraryOffers() {
+        JournalInsulinDosing.STEP_CHOICES.forEach { step ->
+            assertEquals(step * 4, JournalAmountAssist.stepped(step * 3, +1, step), 1e-4f)
+            assertEquals(step * 2, JournalAmountAssist.stepped(step * 3, -1, step), 1e-4f)
+        }
+        // Off the grid, a press lands on it: 5 U with 2 U steps goes to 6 or 4.
+        assertEquals(6f, JournalAmountAssist.stepped(5f, +1, 2f))
+        assertEquals(4f, JournalAmountAssist.stepped(5f, -1, 2f))
     }
 
     @Test

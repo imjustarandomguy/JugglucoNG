@@ -46,18 +46,18 @@ import tk.glucodata.data.journal.JournalInsulinDosing
 import tk.glucodata.journal.InsulinReminders
 
 /**
- * The insulin library's dosing settings for one preset: the step the entry sheet's -/+ use, the
- * dose filled in when the insulin is chosen, and, for long-acting insulin (not counted toward
- * IOB), the times of day the dose is due.
+ * The insulin library's dosing settings for one preset: the step the entry sheet's -/+ use (Auto,
+ * null: the step the doses typed for it keep to), the dose filled in when the insulin is chosen,
+ * and, for long-acting insulin (not counted toward IOB), the times of day the dose is due.
  */
 @Composable
 internal fun JournalPresetDosingSection(
-    doseStep: Float,
+    doseStep: Float?,
     defaultDoseText: String,
     reminderTimes: List<Int>,
     remindersEditable: Boolean,
     enabled: Boolean,
-    onDoseStepChange: (Float) -> Unit,
+    onDoseStepChange: (Float?) -> Unit,
     onDefaultDoseChange: (String) -> Unit,
     onReminderTimesChange: (List<Int>) -> Unit,
     modifier: Modifier = Modifier
@@ -75,9 +75,16 @@ internal fun JournalPresetDosingSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            FilterChip(
+                selected = doseStep == null,
+                onClick = { onDoseStepChange(null) },
+                enabled = enabled,
+                label = { Text(stringResource(R.string.auto)) },
+                shapes = FilterChipDefaults.shapes()
+            )
             JournalInsulinDosing.STEP_CHOICES.forEach { step ->
                 FilterChip(
-                    selected = abs(doseStep - step) < 0.001f,
+                    selected = doseStep != null && abs(doseStep - step) < 0.001f,
                     onClick = { onDoseStepChange(step) },
                     enabled = enabled,
                     label = { Text(stringResource(R.string.unit_insulin_value, formatFloatForEditor(step))) }

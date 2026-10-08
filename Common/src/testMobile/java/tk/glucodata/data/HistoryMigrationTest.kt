@@ -272,7 +272,7 @@ class HistoryMigrationTest {
                 assertTrue("preset $id survived", cursor.moveToNext())
                 assertEquals(id, cursor.getInt(0))
                 assertEquals(name, cursor.getString(1))
-                assertEquals("whole-unit step, built-in or not", 1.0, cursor.getDouble(3), 0.0)
+                assertEquals("no step of its own, built-in or not", 0.0, cursor.getDouble(3), 0.0)
                 assertTrue("no default dose, rather than 0", cursor.isNull(4))
                 assertEquals("no reminders", "", cursor.getString(5))
             }

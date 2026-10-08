@@ -589,7 +589,7 @@ object SettingsExporter {
             .putNullable("curveProfileId", curveProfileId)
             .put("curveModelVersion", curveModelVersion)
             .put("curveEvidence", curveEvidence)
-            .put("doseStep", doseStep.toDouble())
+            .putNullable("doseStep", JournalInsulinDosing.sanitizeStep(doseStep)?.toDouble())
             .putNullable("defaultDose", defaultDose?.toDouble())
             .put("reminderTimes", reminderTimes)
     }
@@ -726,7 +726,7 @@ object SettingsExporter {
                         curveProfileId = item.optNullableString("curveProfileId"),
                         curveModelVersion = item.optInt("curveModelVersion", 0),
                         curveEvidence = item.optString("curveEvidence", "unverified"),
-                        doseStep = JournalInsulinDosing.sanitizeStep(item.optNullableFloat("doseStep")),
+                        doseStep = JournalInsulinDosing.storedStep(item.optNullableFloat("doseStep")),
                         defaultDose = JournalInsulinDosing.sanitizeDefaultDose(item.optNullableFloat("defaultDose")),
                         reminderTimes = JournalInsulinDosing.encodeReminderTimes(
                             JournalInsulinDosing.decodeReminderTimes(item.optNullableString("reminderTimes"))

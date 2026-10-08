@@ -427,10 +427,12 @@ fun JournalEntrySheet(
     val activeFoods = remember(foods) { foods.filter { !it.isArchived } }
     val foodPicker = rememberFoodPickerState(activeFoods)
     val foodSuggestions = remember(activeFoods) { FoodCatalog.suggestions(activeFoods) }
-    // The insulin a new entry starts on, until one is chosen: its step rounds a suggested dose.
-    val preferredInsulinStep = remember(calculationInsulinPresets) {
-        JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets)?.doseStep
-            ?: JournalInsulinDosing.DEFAULT_STEP
+    // The insulin a new entry starts on, until one is chosen: its step (its own, else the one its
+    // log keeps to) rounds a suggested dose.
+    val preferredInsulinStep = remember(calculationInsulinPresets, doseJournalEntries, selectedTimestamp) {
+        val preset = JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets)
+        preset?.doseStep
+            ?: JournalAmountAssist.insulinHabit(doseJournalEntries, preset?.id, selectedTimestamp).step
     }
     val initialDraft = remember(
         existingEntry?.id,
@@ -555,6 +557,12 @@ fun JournalEntrySheet(
         openingHint?.kind == StateDoseHintKind.CARBS -> null
         else -> uncoveredMealDose ?: insulinHabit.usual
     }
+    // The default dose set for an insulin goes in the field when it is chosen. For an insulin the
+    // dose hint applies to, the hint goes in instead: it is worked out for this moment, the
+    // default is a habit. With neither, the usual amount above sits dim.
+    fun defaultDoseOf(preset: JournalInsulinPreset?): Float? = preset?.defaultDose?.takeUnless {
+        existingEntry == null && preset.useForCalculation && openingHint?.kind == StateDoseHintKind.INSULIN
+    }
     LaunchedEffect(existingEntry?.id, draft.type, suggestedAmount) {
         if (existingEntry == null) {
             draft = draft.withSuggestedAmount(suggestedAmount?.let(::formatFloatForEditor))
@@ -635,7 +643,7 @@ fun JournalEntrySheet(
                     JournalInsulinDosing.amountAfterPresetChange(
                         amountText = draft.amountText,
                         previousDefault = null,
-                        selectedDefault = preset.defaultDose,
+                        selectedDefault = defaultDoseOf(preset),
                         format = ::formatFloatForEditor
                     )
                 } else {
@@ -827,16 +835,25 @@ fun JournalEntrySheet(
                             presets = activeInsulinPresets,
                             selectedPresetId = draft.insulinPresetId,
                             onPresetSelected = { preset ->
-                                val previousDefault = draft.insulinPresetId?.let(presetsById::get)?.defaultDose
+                                val previousDefault = defaultDoseOf(draft.insulinPresetId?.let(presetsById::get))
+                                val selectedDefault = defaultDoseOf(preset)
+                                // The hint's dose stays for an insulin without a default (the
+                                // hint's effect keeps or clears it); a default replaces it.
+                                val keepSuggested = draft.amountSuggested && selectedDefault == null
                                 draft = draft.copy(
                                     insulinPresetId = preset.id,
                                     title = preset.displayName,
-                                    amountText = JournalInsulinDosing.amountAfterPresetChange(
-                                        amountText = draft.amountText,
-                                        previousDefault = previousDefault,
-                                        selectedDefault = preset.defaultDose,
-                                        format = ::formatFloatForEditor
-                                    ),
+                                    amountText = if (keepSuggested) {
+                                        draft.amountText
+                                    } else {
+                                        JournalInsulinDosing.amountAfterPresetChange(
+                                            amountText = draft.amountText.takeUnless { draft.amountSuggested }.orEmpty(),
+                                            previousDefault = previousDefault,
+                                            selectedDefault = selectedDefault,
+                                            format = ::formatFloatForEditor
+                                        )
+                                    },
+                                    amountSuggested = keepSuggested,
                                     pairWithDose = draft.pairWithDose && preset.useForCalculation,
                                     pairedAmountText = draft.pairedAmountText.takeIf {
                                         preset.useForCalculation
@@ -1394,7 +1411,7 @@ private fun buildDraft(
     suggestedGlucoseMgDl: Float? = null,
     suggestedChartAnchorGlucoseMgDl: Float? = null,
     suggestedAmountFraction: Float? = null,
-    insulinStep: Float = JournalInsulinDosing.DEFAULT_STEP
+    insulinStep: Float = JournalAmountAssist.DEFAULT_INSULIN_STEP
 ): JournalEntryDraft {
     if (existingEntry == null) {
         return JournalEntryDraft(
@@ -1505,7 +1522,7 @@ private fun JournalEntryDraft.normalizedForType(
     unit: String,
     suggestedGlucoseMgDl: Float? = null,
     suggestedAmountFraction: Float? = null,
-    insulinStep: Float = JournalInsulinDosing.DEFAULT_STEP
+    insulinStep: Float = JournalAmountAssist.DEFAULT_INSULIN_STEP
 ): JournalEntryDraft {
     return when (type) {
         JournalEntryType.INSULIN -> copy(
@@ -3521,7 +3538,7 @@ private fun adjustDecimalDraft(value: String, direction: Int, step: Float, start
 /** A dose from where on the chart the user tapped (0..20 U), on the insulin's step grid. */
 private fun suggestedInsulinAmountForFraction(fraction: Float, step: Float): String {
     val normalized = fraction.coerceIn(0f, 1f)
-    val safeStep = JournalInsulinDosing.sanitizeStep(step)
+    val safeStep = JournalInsulinDosing.sanitizeStep(step) ?: JournalAmountAssist.DEFAULT_INSULIN_STEP
     val stepped = JournalInsulinDosing.roundToStep(normalized * 20f, safeStep)
     return formatFloatForEditor(stepped.coerceAtLeast(safeStep))
 }
