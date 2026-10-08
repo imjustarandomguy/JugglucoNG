@@ -1804,6 +1804,7 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="insulin_reminder_log_dose">%1$s invoeren</string>
     <string name="insulin_reminder_snooze">30 min snoozen</string>
     <string name="insulin_reminder_logged">Ingevoerd: %1$s</string>
+    <string name="insulin_reminder_changed">Niet ingevoerd: deze insuline is gewijzigd sinds de herinnering. Tik om de dosis te controleren en in te voeren.</string>
     <string name="journal_visible_events">Zichtbare gebeurtenissen</string>
     <string name="journal_empty">Nog geen dagboekitems in dit venster</string>
     <string name="journal_type_insulin">Insuline</string>

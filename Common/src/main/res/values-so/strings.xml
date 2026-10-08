@@ -2027,6 +2027,7 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="insulin_reminder_log_dose">Diiwaangeli %1$s</string>
     <string name="insulin_reminder_snooze">Hurdo 30 daqiiqo</string>
     <string name="insulin_reminder_logged">La diiwaangeliyay: %1$s</string>
+    <string name="insulin_reminder_changed">Lama diiwaangelin: insulinkan wuu isbeddelay tan iyo xasuusinta. Taabo si aad u hubiso qiyaasta oo aad u diiwaangeliso.</string>
     <string name="notification_show_iob_title">Muuji insulin jirka ku jirta</string>
     <string name="notification_show_iob_desc">IOB/eIOB-ka joornaalka ee xariiqda xaaladda</string>
     <string name="notification_show_cob_title">Muuji karbohaydraytka jirka ku jira</string>

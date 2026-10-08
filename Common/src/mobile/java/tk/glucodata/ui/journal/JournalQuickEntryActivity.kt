@@ -132,19 +132,27 @@ class JournalQuickEntryActivity : ComponentActivity() {
         // Also set by the glucose notification's Log insulin and Log food (src/main).
         private const val EXTRA_TYPE = QUICK_ENTRY_EXTRA_TYPE
         private const val EXTRA_INSULIN_PRESET_ID = "tk.glucodata.journal.quick_entry.INSULIN_PRESET_ID"
+        private const val EXTRA_INSULIN_AMOUNT = "tk.glucodata.journal.quick_entry.INSULIN_AMOUNT"
 
         /**
          * Opens the sheet on [type], or on the type last added when null; [insulinPresetId]
-         * picks the insulin it starts on.
+         * picks the insulin it starts on, and [insulinAmount] the dose filled in instead of
+         * that insulin's default.
          */
         @JvmStatic
         @JvmOverloads
-        fun intent(context: Context, type: JournalEntryType? = null, insulinPresetId: Long? = null): Intent =
+        fun intent(
+            context: Context,
+            type: JournalEntryType? = null,
+            insulinPresetId: Long? = null,
+            insulinAmount: Float? = null
+        ): Intent =
             Intent(context, JournalQuickEntryActivity::class.java).apply {
                 // Launcher shortcuts need an action; the other ways in do not mind one.
                 action = Intent.ACTION_VIEW
                 type?.let { putExtra(EXTRA_TYPE, it.storageValue) }
                 insulinPresetId?.let { putExtra(EXTRA_INSULIN_PRESET_ID, it) }
+                insulinAmount?.let { putExtra(EXTRA_INSULIN_AMOUNT, it) }
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
@@ -167,6 +175,11 @@ class JournalQuickEntryActivity : ComponentActivity() {
             intent?.takeIf { it.hasExtra(EXTRA_INSULIN_PRESET_ID) }
                 ?.getLongExtra(EXTRA_INSULIN_PRESET_ID, -1L)
                 ?.takeIf { it >= 0L }
+
+        internal fun insulinAmountOf(intent: Intent?): Float? =
+            intent?.takeIf { it.hasExtra(EXTRA_INSULIN_AMOUNT) }
+                ?.getFloatExtra(EXTRA_INSULIN_AMOUNT, 0f)
+                ?.takeIf { it.isFinite() && it > 0f }
     }
 }
 
@@ -219,7 +232,8 @@ private fun QuickEntryContent(
             onSaveEntries = { inputs -> save(inputs) },
             onSaveFood = QuickEntryWrites::saveFood,
             sensorSerialProvider = { loaded.sensorSerial },
-            initialInsulinPresetId = request.insulinPresetId
+            initialInsulinPresetId = request.insulinPresetId,
+            initialInsulinAmount = request.insulinAmount
         )
     } else {
         QuickEntryUndoBar(

@@ -59,18 +59,27 @@ internal object JournalQuickEntryPrefs {
 internal fun journalQuickEntryEnabled(context: Context): Boolean =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(JOURNAL_ENABLED_KEY, true)
 
-/** What the standalone sheet opens on; [openedAt] is also the time a new entry starts at. */
+/**
+ * What the standalone sheet opens on; [openedAt] is also the time a new entry starts at, and
+ * [insulinAmount] the dose a new insulin entry is filled in with (a reminder's, to confirm).
+ */
 internal data class QuickEntryRequest(
     val type: JournalEntryType,
     val insulinPresetId: Long?,
-    val openedAt: Long
+    val openedAt: Long,
+    val insulinAmount: Float? = null
 ) {
     companion object {
         fun from(intent: Intent?): QuickEntryRequest {
             val presetId = JournalQuickEntryActivity.insulinPresetIdOf(intent)
             val type = JournalQuickEntryActivity.typeOf(intent)
                 ?: if (presetId != null) JournalEntryType.INSULIN else JournalQuickEntryPrefs.lastType()
-            return QuickEntryRequest(type, presetId, System.currentTimeMillis())
+            return QuickEntryRequest(
+                type,
+                presetId,
+                System.currentTimeMillis(),
+                JournalQuickEntryActivity.insulinAmountOf(intent)
+            )
         }
     }
 }

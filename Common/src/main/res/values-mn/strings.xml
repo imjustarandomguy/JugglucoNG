@@ -1769,6 +1769,7 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="insulin_reminder_log_dose">%1$s бүртгэх</string>
     <string name="insulin_reminder_snooze">30 мин хойшлуулах</string>
     <string name="insulin_reminder_logged">Бүртгэсэн: %1$s</string>
+    <string name="insulin_reminder_changed">Бүртгэгдээгүй: сануулгаас хойш инсулин өөрчлөгдсөн. Тунг шалгаж бүртгэхийн тулд товшино уу.</string>
     <string name="journal_visible_events">Visible events</string>
     <string name="journal_empty">No journal events in this window yet</string>
     <string name="journal_type_insulin">Insulin</string>

@@ -1777,6 +1777,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">记录 %1$s</string>
     <string name="insulin_reminder_snooze">30 分钟后提醒</string>
     <string name="insulin_reminder_logged">已记录 %1$s</string>
+    <string name="insulin_reminder_changed">未记录：此胰岛素在提醒后已更改。点按以核对剂量并记录。</string>
     <string name="journal_visible_events">可见事件</string>
     <string name="journal_empty">此时间窗口内还没有日志事件</string>
     <string name="journal_type_insulin">胰岛素</string>

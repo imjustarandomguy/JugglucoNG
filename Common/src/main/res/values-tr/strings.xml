@@ -1789,6 +1789,7 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="insulin_reminder_log_dose">%1$s kaydet</string>
     <string name="insulin_reminder_snooze">30 dk ertele</string>
     <string name="insulin_reminder_logged">Kaydedildi: %1$s</string>
+    <string name="insulin_reminder_changed">Kaydedilmedi: insülin hatırlatmadan sonra değişti. Dozu kontrol edip kaydetmek için dokunun.</string>
     <string name="journal_visible_events">Görünür olaylar</string>
     <string name="journal_empty">Bu aralıkta henüz günlük olayı yok</string>
     <string name="journal_type_insulin">İnsülin</string>

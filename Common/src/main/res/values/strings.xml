@@ -2269,6 +2269,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">Log %1$s</string>
     <string name="insulin_reminder_snooze">Snooze 30 min</string>
     <string name="insulin_reminder_logged">Logged %1$s</string>
+    <string name="insulin_reminder_changed">Not logged: this insulin changed since the reminder. Tap to check the dose and log it.</string>
     <string name="notification_show_iob_title">Insulin on board</string>
     <string name="notification_show_iob_desc">Show Journal IOB/eIOB in the status line</string>
     <string name="notification_show_cob_title">Carbs on board</string>

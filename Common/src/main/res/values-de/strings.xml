@@ -1893,6 +1893,7 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="insulin_reminder_log_dose">%1$s eintragen</string>
     <string name="insulin_reminder_snooze">30 Min. schlummern</string>
     <string name="insulin_reminder_logged">Eingetragen: %1$s</string>
+    <string name="insulin_reminder_changed">Nicht eingetragen: Das Insulin wurde seit der Erinnerung geändert. Tippen, um die Dosis zu prüfen und einzutragen.</string>
     <string name="notification_show_iob_title">Aktives Insulin</string>
     <string name="notification_show_iob_desc">Journal-IOB/eIOB in der Statuszeile anzeigen</string>
     <string name="notification_show_cob_title">Aktive Kohlenhydrate</string>

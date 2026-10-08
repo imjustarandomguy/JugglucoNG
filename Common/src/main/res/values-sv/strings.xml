@@ -1761,6 +1761,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">Logga %1$s</string>
     <string name="insulin_reminder_snooze">Snooza 30 min</string>
     <string name="insulin_reminder_logged">Loggat: %1$s</string>
+    <string name="insulin_reminder_changed">Inte loggad: insulinet har ändrats sedan påminnelsen. Tryck för att kontrollera dosen och logga den.</string>
     <string name="journal_visible_events">Synliga händelser</string>
     <string name="journal_empty">Inga journalhändelser i det här fönstret ännu</string>
     <string name="journal_type_insulin">Insulin</string>

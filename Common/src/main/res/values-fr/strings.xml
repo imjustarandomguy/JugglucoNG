@@ -1767,6 +1767,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">Saisir %1$s</string>
     <string name="insulin_reminder_snooze">Rappeler dans 30 min</string>
     <string name="insulin_reminder_logged">Saisi : %1$s</string>
+    <string name="insulin_reminder_changed">Non saisie : cette insuline a changé depuis le rappel. Touchez pour vérifier la dose et la saisir.</string>
     <string name="journal_visible_events">Événements visibles</string>
     <string name="journal_empty">Aucun événement de journal dans cette fenêtre pour le moment</string>
     <string name="journal_type_insulin">Insuline</string>

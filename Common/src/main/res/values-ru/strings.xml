@@ -1804,6 +1804,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">Записать %1$s</string>
     <string name="insulin_reminder_snooze">Отложить на 30 мин</string>
     <string name="insulin_reminder_logged">Записано: %1$s</string>
+    <string name="insulin_reminder_changed">Не записано: инсулин изменился после напоминания. Нажмите, чтобы проверить дозу и записать её.</string>
     <string name="journal_visible_events">События в окне</string>
     <string name="journal_empty">В этом окне пока нет событий журнала</string>
     <string name="journal_type_insulin">Инсулин</string>
