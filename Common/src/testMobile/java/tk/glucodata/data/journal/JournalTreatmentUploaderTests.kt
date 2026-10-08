@@ -3,6 +3,7 @@ package tk.glucodata.data.journal
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tk.glucodata.data.journal.JournalTreatmentUploader.MAX_DELETE_ATTEMPTS
@@ -167,21 +168,99 @@ class JournalTreatmentUploaderTests {
     }
 
     @Test
-    fun aRefusedDeleteIsRetriedUntilTheAttemptCapIsReached() {
+    fun aRefusedDeleteIsRetriedUntilTheAttemptCapThenKeptHere() {
         // 403 is the reported case: a role with api:treatments:create but not :delete.
         assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 403, attemptsSoFar = 0))
         assertEquals(
             TombstoneAction.RETRY,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS - 2)
         )
+        // No longer sent, but the tombstone stays: the treatment stays deleted here.
         assertEquals(
-            TombstoneAction.GIVE_UP,
+            TombstoneAction.KEEP_LOCAL,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1)
         )
         assertEquals(
-            TombstoneAction.GIVE_UP,
+            TombstoneAction.KEEP_LOCAL,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS)
         )
+        assertFalse(
+            JournalTreatmentUploader.sendsDelete(
+                JournalPendingDeleteEntity(entryId = 1L, nsRemoteId = "65a1", deletedAt = 0L, attempts = MAX_DELETE_ATTEMPTS)
+            )
+        )
+    }
+
+    @Test
+    fun aServerErrorOnOneDeleteIsCountedForThatDeleteAlone() {
+        // A document the server fails on every time no longer holds the queue for good; it is
+        // retried on its own, and past the cap kept here, never dropped.
+        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0, answeredByNightscout = false))
+        assertEquals(TombstoneAction.KEEP_LOCAL, tombstoneAction(code = 500, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+    }
+
+    @Test
+    fun onlyWhatIsAboutTheWholeServerMakesTheQueueWait() {
+        val wait = JournalTreatmentUploader.OperationFailure.WAIT
+        for (code in listOf(-1, 401, 408, 429, 502, 503, 504)) {
+            assertEquals("$code", wait, JournalTreatmentUploader.operationFailure(code, answeredByNightscout = true))
+        }
+        assertEquals(wait, JournalTreatmentUploader.operationFailure(403, answeredByNightscout = false))
+        assertEquals(
+            JournalTreatmentUploader.OperationFailure.RETRY,
+            JournalTreatmentUploader.operationFailure(500, answeredByNightscout = true)
+        )
+        for (code in listOf(400, 403, 422)) {
+            assertEquals(
+                JournalTreatmentUploader.OperationFailure.REFUSED,
+                JournalTreatmentUploader.operationFailure(code, answeredByNightscout = true)
+            )
+        }
+    }
+
+    @Test
+    fun aFailedOperationWaitsLongerEachTimeUpToItsCap() {
+        val retryDelay = JournalTreatmentUploader::retryDelayMillis
+        assertEquals(0L, retryDelay(0))
+        assertEquals(60_000L, retryDelay(1))
+        assertEquals(120_000L, retryDelay(2))
+        assertEquals(240_000L, retryDelay(3))
+        assertEquals(6 * 60 * 60_000L, retryDelay(12))
+        assertEquals(6 * 60 * 60_000L, retryDelay(MAX_DELETE_ATTEMPTS))
+        assertEquals(6 * 60 * 60_000L, retryDelay(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun aFailedOperationGoesAgainOnceItsWaitIsUp() {
+        val last = 1_700_000_000_000L
+        val isDue = JournalTreatmentUploader::isRetryDue
+        assertTrue("never failed", isDue(0, 0L, last))
+        assertFalse(isDue(1, last, last + 59_000L))
+        assertTrue(isDue(1, last, last + 60_000L))
+        assertFalse(isDue(3, last, last + 200_000L))
+        assertTrue("the clock went back", isDue(3, last, last - 1_000L))
+    }
+
+    @Test
+    fun anEditThatKeepsFailingCountsItsAttemptsUntilItIsEditedAgain() {
+        val retries = JournalTreatmentUploader.EditRetries()
+        val now = 1_700_000_000_000L
+        val updatedAt = now - 60_000L
+
+        assertTrue(retries.isDue(7L, updatedAt, now))
+        assertNull(retries.dueAt(7L, updatedAt))
+        assertEquals(1, retries.recordFailure(7L, updatedAt, now))
+        assertFalse(retries.isDue(7L, updatedAt, now + 1_000L))
+        assertEquals(now + 60_000L, retries.dueAt(7L, updatedAt))
+        assertEquals(2, retries.recordFailure(7L, updatedAt, now + 60_000L))
+        // Another entry is not held for it.
+        assertTrue(retries.isDue(8L, updatedAt, now + 1_000L))
+        // A further edit is a new one: tried at once, counted afresh.
+        assertTrue(retries.isDue(7L, updatedAt + 5_000L, now + 61_000L))
+        assertEquals(1, retries.recordFailure(7L, updatedAt + 5_000L, now + 61_000L))
+        retries.clear(7L)
+        assertTrue(retries.isDue(7L, updatedAt + 5_000L, now + 62_000L))
     }
 
     @Test
@@ -363,8 +442,8 @@ class JournalTreatmentUploaderTests {
         // dropped the tombstone, and the next read at home brought the treatment back.
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = 0))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = MAX_DELETE_ATTEMPTS))
-        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 500, attemptsSoFar = 0))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 502, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 503, attemptsSoFar = 0))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 408, attemptsSoFar = 0))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 429, attemptsSoFar = 0))
     }

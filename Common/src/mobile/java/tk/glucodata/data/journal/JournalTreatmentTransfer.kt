@@ -379,7 +379,8 @@ object JournalTreatmentTransfer {
     /**
      * When [treatment] was last changed, as far as it says: API v3's srvModified, which v3 sets on
      * every write, else an `updated_at` its writer kept. Null when it says nothing; a document only
-     * ever written over v1 usually carries neither.
+     * ever written over v1 usually carries neither. Server or writer time: a revision to compare
+     * with another of the same document, never with this phone's clock.
      */
     fun serverModifiedMillis(treatment: JSONObject): Long? =
         treatment.optEpochMillis("srvModified")
@@ -391,6 +392,23 @@ object JournalTreatmentTransfer {
         treatment.optBoolean("isReadOnly", false) ||
             treatment.optBoolean("readOnly", false) ||
             treatment.optBoolean("readonly", false)
+
+    /**
+     * Whether [treatment] was written by a closed loop or a pump (AAPS, Loop, Trio, iAPS, OpenAPS,
+     * a pump uploader): a pump field, or such a writer named in enteredBy, app or device. A loop
+     * counts these documents toward its insulin on board, so this app never changes or deletes
+     * one on the server, whatever is done to its row here.
+     */
+    fun isLoopSystemDocument(treatment: JSONObject): Boolean =
+        LOOP_SYSTEM_FIELDS.any { treatment.has(it) && !treatment.isNull(it) } ||
+            LOOP_SYSTEM_WRITER_FIELDS.any { key -> treatment.optNonBlankString(key)?.let(::namesLoopSystem) == true }
+
+    /** Whether [writer] names a loop or a pump as a word of its own: "openaps://AndroidAPS", not "LoopFollow". */
+    internal fun namesLoopSystem(writer: String): Boolean = words(writer).any { it in LOOP_SYSTEM_WORDS }
+
+    private val LOOP_SYSTEM_FIELDS = arrayOf("pumpId", "pumpSerial", "pumpType", "isSMB")
+    private val LOOP_SYSTEM_WRITER_FIELDS = arrayOf("enteredBy", "app", "device")
+    private val LOOP_SYSTEM_WORDS = setOf("aaps", "androidaps", "openaps", "loop", "trio", "iaps", "freeaps", "pump")
 
     /**
      * What an edit of a treatment received from Nightscout changes on the document it came from.
