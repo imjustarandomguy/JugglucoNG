@@ -2,6 +2,7 @@ package tk.glucodata.data.journal
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.annotation.Keep
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -20,7 +21,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Sends Kotlin Journal entries to Nightscout as treatments. Replaces the legacy C++
@@ -49,11 +50,17 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private const val RECEIVE_MIN_INTERVAL_MILLIS = 5L * 60 * 1000
 
     /**
-     * Refused deletes the tombstone survives before it is dropped. A document Nightscout
-     * will never let us delete (a token without `api:treatments:delete` answers 403 forever)
-     * must not stay queued for the rest of the install's life.
+     * Failed attempts a delete, or an edit of a received treatment, gets before it is no longer
+     * sent on its own. A document Nightscout will never let us delete (a token without
+     * `api:treatments:delete` answers 403 forever), or one it fails on every time, must not be
+     * tried for the rest of the install's life. What the user did stays here: the row stays
+     * deleted (its tombstone is kept) or edited.
      */
     internal const val MAX_DELETE_ATTEMPTS = 20
+
+    /** The wait after an operation's first failure, doubled after each further one up to the max. */
+    private const val RETRY_FIRST_MILLIS = 60_000L
+    private const val RETRY_MAX_MILLIS = 6L * 60 * 60_000L
 
     /**
      * Lower date bound for a v1 delete by query. Without a date in the query Nightscout only
@@ -62,7 +69,92 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private const val V1_QUERY_ALL_TIME = "2000-01-01"
     private const val HTTP_TOO_MANY_REQUESTS = 429
 
-    internal enum class TombstoneAction { CLEAR, RETRY, WAIT, GIVE_UP }
+    internal enum class TombstoneAction {
+        CLEAR,
+        /** Failed and counted; sent again once its own wait is up ([isRetryDue]). */
+        RETRY,
+        /** The server is out of reach or busy: not counted, and the rest of the queue waits too. */
+        WAIT,
+        /** Failed too often: no longer sent, the tombstone kept so the document does not come back. */
+        KEEP_LOCAL
+    }
+
+    /** How a failed request for one delete or edit is taken. */
+    internal enum class OperationFailure {
+        /**
+         * No answer, a busy or unreachable server (408, 429, 502-504), credentials it does not
+         * take (401), or a page not Nightscout's.
+         */
+        WAIT,
+        /** The server failed on this request (another 5xx). */
+        RETRY,
+        /** Nightscout refused this request. */
+        REFUSED
+    }
+
+    /**
+     * What a failed request for one operation says. Only what is about the whole server makes
+     * the rest of the queue wait; a server error on one document is that document's, so it is
+     * counted and retried on its own, and the others go on.
+     */
+    internal fun operationFailure(code: Int, answeredByNightscout: Boolean): OperationFailure = when {
+        code < 0 -> OperationFailure.WAIT
+        code == HttpURLConnection.HTTP_UNAUTHORIZED ||
+            code == HttpURLConnection.HTTP_CLIENT_TIMEOUT ||
+            code == HTTP_TOO_MANY_REQUESTS ||
+            code in HttpURLConnection.HTTP_BAD_GATEWAY..HttpURLConnection.HTTP_GATEWAY_TIMEOUT -> OperationFailure.WAIT
+        code >= HttpURLConnection.HTTP_INTERNAL_ERROR -> OperationFailure.RETRY
+        !answeredByNightscout -> OperationFailure.WAIT
+        else -> OperationFailure.REFUSED
+    }
+
+    /** How long an operation that failed [attempts] times waits before it is tried again. */
+    internal fun retryDelayMillis(attempts: Int): Long =
+        if (attempts <= 0) 0L else minOf(RETRY_FIRST_MILLIS shl minOf(attempts - 1, 20), RETRY_MAX_MILLIS)
+
+    /** Whether an operation that failed [attempts] times, last at [lastAttemptAt], may go again. */
+    internal fun isRetryDue(attempts: Int, lastAttemptAt: Long, nowMillis: Long): Boolean =
+        // A clock that went back must not hold it for longer than one wait.
+        nowMillis >= lastAttemptAt + retryDelayMillis(attempts) || nowMillis < lastAttemptAt
+
+    /**
+     * The failed attempts of each edit of a received treatment, while it keeps failing. Kept in
+     * memory: a restart only tries an edit once more, and an edit made since starts afresh.
+     */
+    internal class EditRetries {
+        private class State(val updatedAt: Long, val attempts: Int, val lastAttemptAt: Long)
+
+        private val states = HashMap<Long, State>()
+
+        private fun current(entryId: Long, updatedAt: Long): State? =
+            states[entryId]?.takeIf { it.updatedAt == updatedAt }
+
+        @Synchronized
+        fun isDue(entryId: Long, updatedAt: Long, nowMillis: Long): Boolean {
+            val state = current(entryId, updatedAt) ?: return true
+            return isRetryDue(state.attempts, state.lastAttemptAt, nowMillis)
+        }
+
+        /** When the edit may go again; null when it has not failed. */
+        @Synchronized
+        fun dueAt(entryId: Long, updatedAt: Long): Long? =
+            current(entryId, updatedAt)?.let { it.lastAttemptAt + retryDelayMillis(it.attempts) }
+
+        /** @return the failed attempts so far, this one included */
+        @Synchronized
+        fun recordFailure(entryId: Long, updatedAt: Long, nowMillis: Long): Int {
+            val attempts = (current(entryId, updatedAt)?.attempts ?: 0) + 1
+            states[entryId] = State(updatedAt, attempts, nowMillis)
+            return attempts
+        }
+
+        @Synchronized
+        fun clear(entryId: Long) {
+            states.remove(entryId)
+        }
+    }
+
+    private val editRetries = EditRetries()
 
     /** What a pass does with a tombstone once it knows whether the server still serves it. */
     internal enum class Settlement { DROP, KEEP, NOT_TAKEN }
@@ -195,26 +287,29 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * What to do with a tombstone after a delete answered [code]. 404/410 count as done:
      * the document we wanted gone is gone, and the old code kept retrying those forever.
      *
-     * Only a refusal counts toward [MAX_DELETE_ATTEMPTS]. No answer at all (a server reachable
-     * only at home, seen from elsewhere), a gateway or server error, or a page that is not
-     * Nightscout's says nothing about the document: counting those dropped the tombstone after
-     * a few days away, and the next read brought the deleted treatment back.
+     * A refusal or a server error counts toward [MAX_DELETE_ATTEMPTS]. No answer at all (a server
+     * reachable only at home, seen from elsewhere), a busy or unreachable server, or a page that
+     * is not Nightscout's says nothing about the document and does not count. Past the cap the
+     * delete is no longer sent, but the tombstone stays: dropped, the next read brought the
+     * deleted treatment back.
      */
     internal fun tombstoneAction(
         code: Int,
         attemptsSoFar: Int,
         answeredByNightscout: Boolean = true
     ): TombstoneAction = when {
-        !answeredByNightscout || isTransientDeleteFailure(code) -> TombstoneAction.WAIT
-        code == HttpURLConnection.HTTP_OK ||
-            code == HttpURLConnection.HTTP_NO_CONTENT ||
-            code == HttpURLConnection.HTTP_NOT_FOUND ||
-            code == HttpURLConnection.HTTP_GONE -> TombstoneAction.CLEAR
-        else -> refusedDeleteAction(attemptsSoFar)
+        answeredByNightscout && (
+            code == HttpURLConnection.HTTP_OK ||
+                code == HttpURLConnection.HTTP_NO_CONTENT ||
+                code == HttpURLConnection.HTTP_NOT_FOUND ||
+                code == HttpURLConnection.HTTP_GONE
+            ) -> TombstoneAction.CLEAR
+        operationFailure(code, answeredByNightscout) == OperationFailure.WAIT -> TombstoneAction.WAIT
+        else -> failedDeleteAction(attemptsSoFar)
     }
 
-    internal fun refusedDeleteAction(attemptsSoFar: Int): TombstoneAction =
-        if (attemptsSoFar + 1 >= MAX_DELETE_ATTEMPTS) TombstoneAction.GIVE_UP else TombstoneAction.RETRY
+    internal fun failedDeleteAction(attemptsSoFar: Int): TombstoneAction =
+        if (attemptsSoFar + 1 >= MAX_DELETE_ATTEMPTS) TombstoneAction.KEEP_LOCAL else TombstoneAction.RETRY
 
     /**
      * What a failed read of the document to delete does to its tombstone: a refusal counts as a
@@ -247,12 +342,6 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         ReceivedDocumentRead.Ambiguous -> DeleteCheck.KEEP_LOCAL
         is ReceivedDocumentRead.Failed -> null
     }
-
-    private fun isTransientDeleteFailure(code: Int): Boolean =
-        code < 0 ||
-            code >= HttpURLConnection.HTTP_INTERNAL_ERROR ||
-            code == HttpURLConnection.HTTP_CLIENT_TIMEOUT ||
-            code == HTTP_TOO_MANY_REQUESTS
 
     /**
      * Whether a delete was answered by Nightscout at all. Nightscout answers in JSON, refusals
@@ -411,15 +500,28 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     }
 
     private val receiveFloor = ReceiveFloor(RECEIVE_MIN_INTERVAL_MILLIS)
-    private val deferredReceiveBooked = AtomicBoolean(false)
 
-    private fun bookDeferredReceive(delayMillis: Long) {
-        if (!deferredReceiveBooked.compareAndSet(false, true)) return
-        Handler(Looper.getMainLooper()).postDelayed({
-            deferredReceiveBooked.set(false)
+    /** When the booked treatment wake is due (uptime); Long.MAX_VALUE while none is. */
+    private val bookedWakeAt = AtomicLong(Long.MAX_VALUE)
+
+    /**
+     * Wakes the treatment pass after [delayMillis]: a receive held back by the interval, or an
+     * operation waiting out its retry. A pass that went through says nothing more to the native
+     * uploader, which then has no reason to come back for them. One wake at a time, the
+     * earliest; the pass it brings books the next.
+     */
+    private fun bookTreatmentWake(delayMillis: Long) {
+        val at = SystemClock.uptimeMillis() + delayMillis.coerceAtLeast(0L)
+        while (true) {
+            val booked = bookedWakeAt.get()
+            if (booked <= at) return
+            if (bookedWakeAt.compareAndSet(booked, at)) break
+        }
+        Handler(Looper.getMainLooper()).postAtTime({
+            bookedWakeAt.compareAndSet(at, Long.MAX_VALUE)
             runCatching { Natives.waketreatments() }
-                .onFailure { Log.e(LOG_ID, "deferred receive wake failed: ${Log.stackline(it)}") }
-        }, delayMillis)
+                .onFailure { Log.e(LOG_ID, "treatment wake failed: ${Log.stackline(it)}") }
+        }, at)
     }
 
     /** Path only: the host is already known and repeating it just crowds the line. */
@@ -496,6 +598,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             null
         }
         if (deletes?.acceptedDocument == true) acceptedDocument = true
+        // The earliest time an operation that failed on its own may go again (wall clock).
+        var retryAt: Long? = deletes?.retryAt
 
         val sinceMillis = System.currentTimeMillis() - LOOKBACK_MILLIS
         if (sendEnabled) {
@@ -511,27 +615,50 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                     // putting long-acting doses on the server; this one is there already.
                     if (isNightscoutEditKeptLocal(entry.source, entry.nsUploadedAt)) continue
                     if (receivedEditHold(entry, receivedPrefix) != null) continue
-                    if (sendBackoff.shouldHold(entry.id, System.currentTimeMillis())) {
-                        uploadOk = false
-                        break
+                    if (!editRetries.isDue(entry.id, entry.updatedAt, System.currentTimeMillis())) {
+                        editRetries.dueAt(entry.id, entry.updatedAt)?.let { retryAt = minOf(retryAt ?: it, it) }
+                        continue
                     }
                     val result = sendReceivedEdit(entry, baseUrl, rawSecret, secretHashed, useV3)
                     val now = System.currentTimeMillis()
-                    if (result.action == ReceivedEditAction.FAIL) {
+                    if (result.action == ReceivedEditAction.WAIT) {
                         Log.e(
                             LOG_ID,
-                            "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} not taken " +
+                            "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} not answered " +
                                 "code=${failureText(result.code, result.message)}; kept pending"
                         )
-                        sendBackoff.recordFailure(entry.id, now)
                         uploadFailureCode = result.code
                         uploadOk = false
                         break
                     }
-                    if (result.action == ReceivedEditAction.KEEP_LOCAL) {
-                        // Refused or not the server's to change: the rest of the queue goes on, and
-                        // the edit stays here, unconfirmed, until the row is edited again.
-                        if (result.code != 0) {
+                    var keepLocal = result.action == ReceivedEditAction.KEEP_LOCAL
+                    if (result.action == ReceivedEditAction.RETRY) {
+                        // The server failed on this edit: it waits on its own, the queue goes on.
+                        val attempts = editRetries.recordFailure(entry.id, entry.updatedAt, now)
+                        uploadFailureCode = result.code
+                        if (attempts < MAX_DELETE_ATTEMPTS) {
+                            Log.e(
+                                LOG_ID,
+                                "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} failed " +
+                                    "code=${failureText(result.code, result.message)} attempt=$attempts; kept pending"
+                            )
+                            val dueAt = now + retryDelayMillis(attempts)
+                            retryAt = minOf(retryAt ?: dueAt, dueAt)
+                            continue
+                        }
+                        Log.e(
+                            LOG_ID,
+                            "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} failed $attempts times " +
+                                "(last code=${failureText(result.code, result.message)}); kept here, not sent again"
+                        )
+                        keepLocal = true
+                    }
+                    editRetries.clear(entry.id)
+                    if (keepLocal) {
+                        // Refused, failed too often, or not the server's to change: the rest of the
+                        // queue goes on, and the edit stays here, unconfirmed, until the row is
+                        // edited again.
+                        if (result.action == ReceivedEditAction.KEEP_LOCAL && result.code != 0) {
                             Log.e(
                                 LOG_ID,
                                 "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} refused " +
@@ -646,11 +773,13 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             ReceiveOutcome(ReceiveResult.DONE)
         }
         settleTombstones(dao, deletes, receiveEnabled, receive.readBody)
-        // A refused delete is deliberately not folded in here: returning false backs off the
-        // whole treatment path, and a token that may not delete would then hold every new entry
-        // back too. A delete nobody answered is folded in, so the native backoff tries again
-        // once the server may be reachable rather than waiting for the next journal change.
-        // The receive follows the same rule (see treatmentPassOk).
+        retryAt?.let { bookTreatmentWake(it - System.currentTimeMillis()) }
+        // A delete or an edit that failed on its own is deliberately not folded in here:
+        // returning false backs off the whole treatment path, and a token that may not delete
+        // would then hold every new entry back too; it has its own wait, booked above. A delete
+        // nobody answered is folded in, so the native backoff tries again once the server may be
+        // reachable rather than waiting for the next journal change. The receive follows the same
+        // rule (see treatmentPassOk).
         return treatmentPassOk(
             sendsOk = uploadOk,
             deletesUnanswered = deletes?.unanswered == true,
@@ -669,6 +798,12 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         var failureCode: Int? = null
         /** Nightscout did not answer; the rest of the queue waits for the uploader's backoff. */
         var unanswered = false
+        /** The earliest time a delete that failed on its own may be sent again. */
+        var retryAt: Long? = null
+
+        fun retryAt(at: Long) {
+            retryAt = minOf(retryAt ?: at, at)
+        }
     }
 
     private suspend fun sendPendingDeletes(
@@ -691,6 +826,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             // server too, so the delete waits for the last of them; until then the tombstone
             // only keeps the deleted part from being received again.
             if (dao.countOtherEntriesWithNightscoutRemoteId(tomb.nsRemoteId, tomb.entryId) > 0) continue
+            // One that failed waits on its own; the rest of the queue does not.
+            if (!isRetryDue(tomb.attempts, tomb.lastAttemptAt, System.currentTimeMillis())) {
+                pass.retryAt(tomb.lastAttemptAt + retryDelayMillis(tomb.attempts))
+                continue
+            }
 
             var documentId = tomb.nsRemoteId
             val ownDocument = isOwnIdentifier(documentId)
@@ -776,16 +916,18 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                         "tombstone delete failed for entryId=${tomb.entryId} " +
                             "remoteId=$documentId code=$code attempt=$attempts"
                     )
-                    dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
+                    val now = System.currentTimeMillis()
+                    dao.recordFailedNightscoutDelete(tomb.entryId, attempts, now)
+                    pass.retryAt(now + retryDelayMillis(attempts))
                     pass.failureCode = code
                 }
-                TombstoneAction.GIVE_UP -> {
+                TombstoneAction.KEEP_LOCAL -> {
                     Log.e(
                         LOG_ID,
-                        "giving up on tombstone entryId=${tomb.entryId} remoteId=$documentId " +
-                            "after $attempts refused deletes (last code=$code); dropping it"
+                        "tombstone entryId=${tomb.entryId} remoteId=$documentId failed $attempts times " +
+                            "(last code=$code); no longer sent, kept so the treatment stays deleted here"
                     )
-                    dao.clearPendingNightscoutDelete(tomb.entryId)
+                    dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
                     pass.failureCode = code
                 }
             }
@@ -825,18 +967,15 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 Settlement.KEEP -> Unit
                 Settlement.NOT_TAKEN -> {
                     // Deleted by the server's own account, yet served again: the delete did not
-                    // take. Counted like a refusal, so a document that will not go is let go of.
+                    // take. Counted like a refusal, so a document that will not go is no longer
+                    // sent; the tombstone stays and keeps it from coming back.
                     val attempts = tomb.attempts + 1
                     Log.e(
                         LOG_ID,
                         "tombstone entryId=${tomb.entryId} remoteId=$documentId still served after its delete " +
                             "(attempt=$attempts)"
                     )
-                    if (refusedDeleteAction(tomb.attempts) == TombstoneAction.GIVE_UP) {
-                        dao.clearPendingNightscoutDelete(tomb.entryId)
-                    } else {
-                        dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
-                    }
+                    dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
                 }
             }
         }
@@ -1126,8 +1265,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
          * a loop system's document, or an edit the server refused.
          */
         KEEP_LOCAL,
-        /** Not taken; the edit stays pending and is sent again, like any failed upload. */
-        FAIL
+        /** The server failed on this edit: it stays pending and waits on its own ([EditRetries]). */
+        RETRY,
+        /** The server is out of reach: the edit stays pending and the pass waits. */
+        WAIT
     }
 
     /**
@@ -1136,26 +1277,28 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * good, which would hold every later entry back.
      */
     internal fun receivedEditWriteAction(code: Int, answeredByNightscout: Boolean): ReceivedEditAction = when {
-        !answeredByNightscout -> ReceivedEditAction.FAIL
-        code == HttpURLConnection.HTTP_OK ||
-            code == HttpURLConnection.HTTP_CREATED ||
-            code == HttpURLConnection.HTTP_NO_CONTENT ||
-            code == HttpURLConnection.HTTP_NOT_FOUND ||
-            code == HttpURLConnection.HTTP_GONE -> ReceivedEditAction.CONFIRM
+        answeredByNightscout && (
+            code == HttpURLConnection.HTTP_OK ||
+                code == HttpURLConnection.HTTP_CREATED ||
+                code == HttpURLConnection.HTTP_NO_CONTENT ||
+                code == HttpURLConnection.HTTP_NOT_FOUND ||
+                code == HttpURLConnection.HTTP_GONE
+            ) -> ReceivedEditAction.CONFIRM
         else -> receivedEditFailureAction(code, answeredByNightscout)
     }
 
     /**
      * What a failed read or write of an edit does to it. Nightscout's own refusal (403 for a token
      * that may create but not change, 422, 400) is not retried: asking again only gets the same
-     * answer, and the edit stays on the row instead. Anything else is tried again.
+     * answer, and the edit stays on the row instead. A server error on it is retried on its own;
+     * anything about the whole server makes the pass wait.
      */
     internal fun receivedEditFailureAction(code: Int, answeredByNightscout: Boolean): ReceivedEditAction =
-        if (answeredByNightscout && isRefusal(code)) ReceivedEditAction.KEEP_LOCAL else ReceivedEditAction.FAIL
-
-    /** A 4xx that is the server's answer about this request, not a request to come back later. */
-    private fun isRefusal(code: Int): Boolean =
-        code in 400..499 && code != HttpURLConnection.HTTP_CLIENT_TIMEOUT && code != HTTP_TOO_MANY_REQUESTS
+        when (operationFailure(code, answeredByNightscout)) {
+            OperationFailure.WAIT -> ReceivedEditAction.WAIT
+            OperationFailure.RETRY -> ReceivedEditAction.RETRY
+            OperationFailure.REFUSED -> ReceivedEditAction.KEEP_LOCAL
+        }
 
     /** One pass's outcome for one edit. */
     private class ReceivedEditResult(
@@ -1452,7 +1595,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val floorKey = "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
         val waitMillis = receiveFloor.waitMillis(floorKey, System.currentTimeMillis())
         if (waitMillis > 0L) {
-            bookDeferredReceive(waitMillis)
+            bookTreatmentWake(waitMillis)
             return ReceiveOutcome(ReceiveResult.DONE)
         }
         var readBody: String? = null
