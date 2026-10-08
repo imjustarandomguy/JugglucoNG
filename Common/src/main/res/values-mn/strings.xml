@@ -1762,8 +1762,9 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="notification_quick_log_buttons_desc">Глюкозын мэдэгдэл болон хөвөгч глюкозын дэлгэрэнгүйд «Инсулин бүртгэх», «Хоол бүртгэх»</string>
     <string name="insulin_reminder_channel">Инсулины сануулга</string>
     <string name="insulin_reminder_channel_desc">Удаан үйлчилгээтэй тунг цагт нь бүртгээгүй үед</string>
-    <string name="insulin_reminder_not_logged">%1$s бүртгэгдээгүй</string>
-    <string name="insulin_reminder_not_logged_since">%1$s-аас хойш тун алга</string>
+    <string name="insulin_reminder_due">%1$s %2$s-д хийх</string>
+    <string name="insulin_reminder_last_dose">Сүүлийн тун: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Одоогоор бүртгэгдээгүй</string>
     <string name="insulin_reminder_public_title">Инсулины сануулга</string>
     <string name="insulin_reminder_log_dose">%1$s бүртгэх</string>
     <string name="insulin_reminder_snooze">30 мин хойшлуулах</string>

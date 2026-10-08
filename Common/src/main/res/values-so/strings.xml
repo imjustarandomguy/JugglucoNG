@@ -2020,8 +2020,9 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="notification_quick_log_buttons_desc">Diiwaangeli insulin iyo Diiwaangeli cunto ogeysiiska gulukooska iyo faahfaahinta gulukooska sabaynaysa</string>
     <string name="insulin_reminder_channel">Xasuusinta insulinka</string>
     <string name="insulin_reminder_channel_desc">Marka qiyaasta muddada dheer aan waqtigeeda la diiwaangelin</string>
-    <string name="insulin_reminder_not_logged">%1$s lama diiwaangelin</string>
-    <string name="insulin_reminder_not_logged_since">Qiyaas ma jirto tan iyo %1$s</string>
+    <string name="insulin_reminder_due">%1$s waqtigiisu waa %2$s</string>
+    <string name="insulin_reminder_last_dose">Qiyaastii u dambeysay: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Weli lama diiwaangelin</string>
     <string name="insulin_reminder_public_title">Xasuusinta insulinka</string>
     <string name="insulin_reminder_log_dose">Diiwaangeli %1$s</string>
     <string name="insulin_reminder_snooze">Hurdo 30 daqiiqo</string>

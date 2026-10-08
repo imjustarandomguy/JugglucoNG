@@ -1886,8 +1886,9 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="notification_quick_log_buttons_desc">„Insulin eintragen“ und „Essen eintragen“ in der Glukose-Benachrichtigung und in den Details der schwebenden Glukose</string>
     <string name="insulin_reminder_channel">Insulin-Erinnerungen</string>
     <string name="insulin_reminder_channel_desc">Wenn eine Langzeitdosis nicht rechtzeitig eingetragen ist</string>
-    <string name="insulin_reminder_not_logged">%1$s nicht eingetragen</string>
-    <string name="insulin_reminder_not_logged_since">Keine Dosis seit %1$s</string>
+    <string name="insulin_reminder_due">%1$s fällig um %2$s</string>
+    <string name="insulin_reminder_last_dose">Letzte Dosis: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Noch nicht eingetragen</string>
     <string name="insulin_reminder_public_title">Insulin-Erinnerung</string>
     <string name="insulin_reminder_log_dose">%1$s eintragen</string>
     <string name="insulin_reminder_snooze">30 Min. schlummern</string>

@@ -1760,8 +1760,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="notification_quick_log_buttons_desc">« Saisir l’insuline » et « Saisir un aliment » dans la notification de glycémie et le détail du glucose flottant</string>
     <string name="insulin_reminder_channel">Rappels d’insuline</string>
     <string name="insulin_reminder_channel_desc">Quand une dose lente n’est pas saisie à l’heure</string>
-    <string name="insulin_reminder_not_logged">%1$s : dose non saisie</string>
-    <string name="insulin_reminder_not_logged_since">Aucune dose depuis %1$s</string>
+    <string name="insulin_reminder_due">%1$s prévu à %2$s</string>
+    <string name="insulin_reminder_last_dose">Dernière dose : %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Pas encore saisie</string>
     <string name="insulin_reminder_public_title">Rappel d’insuline</string>
     <string name="insulin_reminder_log_dose">Saisir %1$s</string>
     <string name="insulin_reminder_snooze">Rappeler dans 30 min</string>

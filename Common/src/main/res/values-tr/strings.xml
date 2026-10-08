@@ -1782,8 +1782,9 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="notification_quick_log_buttons_desc">Glikoz bildiriminde ve yüzen glikoz ayrıntılarında İnsülin kaydet ve Yiyecek kaydet</string>
     <string name="insulin_reminder_channel">İnsülin hatırlatıcıları</string>
     <string name="insulin_reminder_channel_desc">Uzun etkili doz zamanında kaydedilmediğinde</string>
-    <string name="insulin_reminder_not_logged">%1$s kaydedilmedi</string>
-    <string name="insulin_reminder_not_logged_since">%1$s saatinden beri doz yok</string>
+    <string name="insulin_reminder_due">%1$s zamanı: %2$s</string>
+    <string name="insulin_reminder_last_dose">Son doz: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Henüz kaydedilmedi</string>
     <string name="insulin_reminder_public_title">İnsülin hatırlatıcısı</string>
     <string name="insulin_reminder_log_dose">%1$s kaydet</string>
     <string name="insulin_reminder_snooze">30 dk ertele</string>

@@ -1770,8 +1770,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="notification_quick_log_buttons_desc">在血糖通知和悬浮血糖详情中显示“记录胰岛素”和“记录食物”</string>
     <string name="insulin_reminder_channel">胰岛素提醒</string>
     <string name="insulin_reminder_channel_desc">长效剂量未按时记录时提醒</string>
-    <string name="insulin_reminder_not_logged">%1$s 未记录</string>
-    <string name="insulin_reminder_not_logged_since">自 %1$s 起无剂量记录</string>
+    <string name="insulin_reminder_due">%1$s 应于 %2$s 注射</string>
+    <string name="insulin_reminder_last_dose">上次剂量：%1$s，%2$s</string>
+    <string name="insulin_reminder_not_logged_yet">尚未记录</string>
     <string name="insulin_reminder_public_title">胰岛素提醒</string>
     <string name="insulin_reminder_log_dose">记录 %1$s</string>
     <string name="insulin_reminder_snooze">30 分钟后提醒</string>

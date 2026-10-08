@@ -1789,8 +1789,9 @@
     <string name="notification_quick_log_buttons_desc">Zapisz insulinę i Zapisz jedzenie w powiadomieniu o glukozie i w szczegółach pływającej glukozy</string>
     <string name="insulin_reminder_channel">Przypomnienia o insulinie</string>
     <string name="insulin_reminder_channel_desc">Gdy dawka długodziałająca nie została zapisana na czas</string>
-    <string name="insulin_reminder_not_logged">%1$s: nie zapisano dawki</string>
-    <string name="insulin_reminder_not_logged_since">Brak dawki od %1$s</string>
+    <string name="insulin_reminder_due">%1$s zaplanowany na %2$s</string>
+    <string name="insulin_reminder_last_dose">Ostatnia dawka: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Jeszcze nie zapisano</string>
     <string name="insulin_reminder_public_title">Przypomnienie o insulinie</string>
     <string name="insulin_reminder_log_dose">Zapisz %1$s</string>
     <string name="insulin_reminder_snooze">Odłóż o 30 min</string>

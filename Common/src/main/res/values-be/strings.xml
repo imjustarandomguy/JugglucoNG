@@ -1824,8 +1824,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="notification_quick_log_buttons_desc">«Запісаць інсулін» і «Запісаць ежу» ў апавяшчэнні з глюкозай і ў падрабязнасцях плаваючай глюкозы</string>
     <string name="insulin_reminder_channel">Напаміны пра інсулін</string>
     <string name="insulin_reminder_channel_desc">Калі доза доўгага дзеяння не запісана своечасова</string>
-    <string name="insulin_reminder_not_logged">%1$s: доза не запісана</string>
-    <string name="insulin_reminder_not_logged_since">Няма дозы з %1$s</string>
+    <string name="insulin_reminder_due">%1$s: час дозы %2$s</string>
+    <string name="insulin_reminder_last_dose">Апошняя доза: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Яшчэ не запісана</string>
     <string name="insulin_reminder_public_title">Напамін пра інсулін</string>
     <string name="insulin_reminder_log_dose">Запісаць %1$s</string>
     <string name="insulin_reminder_snooze">Адкласці на 30 хв</string>

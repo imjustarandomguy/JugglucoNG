@@ -1797,8 +1797,9 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="notification_quick_log_buttons_desc">Insuline invoeren en Voeding invoeren in de glucosemelding en in de details van de zwevende glucose</string>
     <string name="insulin_reminder_channel">Insulineherinneringen</string>
     <string name="insulin_reminder_channel_desc">Als een langwerkende dosis niet op tijd is ingevoerd</string>
-    <string name="insulin_reminder_not_logged">%1$s niet ingevoerd</string>
-    <string name="insulin_reminder_not_logged_since">Geen dosis sinds %1$s</string>
+    <string name="insulin_reminder_due">%1$s gepland om %2$s</string>
+    <string name="insulin_reminder_last_dose">Laatste dosis: %1$s, %2$s</string>
+    <string name="insulin_reminder_not_logged_yet">Nog niet ingevoerd</string>
     <string name="insulin_reminder_public_title">Insulineherinnering</string>
     <string name="insulin_reminder_log_dose">%1$s invoeren</string>
     <string name="insulin_reminder_snooze">30 min snoozen</string>
