@@ -3091,6 +3091,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_warning">Неафіцыйны інтэрфейс: Dexcom можа змяніць або заблакаваць яго ў любы момант. Гэта не функцыя медыцынскай прылады.</string>
     <string name="floating_tap_details">Падрабязнасці па націску</string>
     <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці</string>
+    <string name="floating_details_opacity_percent">Непразрыстасць фону падрабязнасцей: %1$d%%</string>
     <string name="floating_next_reading">Час да наступнага значэння</string>
     <string name="floating_next_reading_desc">Палоска ўнізе запаўняецца да наступнага значэння</string>
     <string name="floating_next_reading_style">Выгляд індыкатара</string>

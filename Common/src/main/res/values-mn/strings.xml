@@ -3117,6 +3117,7 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="dexcom_share_warning">Албан бус интерфейс: Dexcom үүнийг хэзээ ч өөрчлөх эсвэл хааж болно. Энэ нь эмнэлгийн хэрэгслийн функц биш.</string>
     <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
     <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна</string>
+    <string name="floating_details_opacity_percent">Дэлгэрэнгүйн арын тунгалаг байдал: %1$d%%</string>
     <string name="floating_next_reading">Дараагийн уншилт хүртэлх хугацаа</string>
     <string name="floating_next_reading_desc">Доод талын зурвас дараагийн уншилт хүртэл дүүрнэ</string>
     <string name="floating_next_reading_style">Заагчийн хэлбэр</string>
