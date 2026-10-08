@@ -92,6 +92,7 @@ object AlertStateTracker {
             return false
         }
         dismissedAlerts.remove(type)
+        heldSince.remove(type)
         lastFiringAcknowledged[type] = false
         lastTriggerTime[type] = System.currentTimeMillis()
         cooldownUntilTime[type] = lastTriggerTime.getValue(type) + effectiveRearmCooldownMs(config)
@@ -99,21 +100,26 @@ object AlertStateTracker {
         return true
     }
 
+    // Episodes held for the other device ([AlarmRouting]), with when the hold began.
+    private val heldSince = mutableMapOf<AlertType, Long>()
+
     /**
-     * A firing the other device sounds ([AlarmRouting]): spends the episode and
-     * its rearm cooldown here as [onAlertTriggered] does, so this device does
-     * not ring for it later, when the other one drops out of reach say. Arms no
-     * SMS watchdog: nothing shown here can be acknowledged here.
+     * A firing the other device sounds ([AlarmRouting]). Not a delivery: no
+     * trigger time, rearm cooldown or SMS watchdog, so the episode stays open
+     * here and is offered again at each reading and check, ringing here once the
+     * other device cannot take it. True when this starts the hold.
      */
     @Synchronized
-    fun onAlertHeld(type: AlertType, config: AlertConfig? = null) {
+    fun onAlertHeld(type: AlertType): Boolean {
         if (manualTests.isActive(type)) {
-            return
+            return false
         }
-        dismissedAlerts.remove(type)
-        lastTriggerTime[type] = System.currentTimeMillis()
-        cooldownUntilTime[type] = lastTriggerTime.getValue(type) + effectiveRearmCooldownMs(config)
+        return heldSince.putIfAbsent(type, System.currentTimeMillis()) == null
     }
+
+    /** True while the running episode is held for the other device, until it rings here or ends. */
+    @Synchronized
+    fun isHeld(type: AlertType): Boolean = type in heldSince
 
     /**
      * The rearm cooldown after a firing. The configured minimum re-arm
@@ -152,6 +158,8 @@ object AlertStateTracker {
             return false
         }
         dismissedAlerts.add(type)
+        // Answered on the other device: a held episode must not ring here later.
+        heldSince.remove(type)
         lastFiringAcknowledged.replace(type, true)
         SmsWatchdog.onAlertAcknowledged(type.id)
         // Acknowledged: a quiet window's silenced episode must not break through now.
@@ -190,9 +198,9 @@ object AlertStateTracker {
         manualTests.arm(type)
     }
 
-    /** True between the episode's first firing and [resetState]. */
+    /** True between the episode's first firing, or its hold for the other device, and [resetState]. */
     @Synchronized
-    fun isEpisodeActive(type: AlertType): Boolean = lastTriggerTime.containsKey(type)
+    fun isEpisodeActive(type: AlertType): Boolean = lastTriggerTime.containsKey(type) || type in heldSince
 
     /** True once [onAlertDismissed] took this episode, until [resetState]. */
     @Synchronized
@@ -204,7 +212,7 @@ object AlertStateTracker {
      * before it ([AlarmSilencePolicy.dismissApplies]).
      */
     @Synchronized
-    fun episodeStartedAtMs(type: AlertType): Long = lastTriggerTime[type] ?: 0L
+    fun episodeStartedAtMs(type: AlertType): Long = lastTriggerTime[type] ?: heldSince[type] ?: 0L
 
     /** Whether the last real firing was acknowledged for the cross-family quiet period. */
     @Synchronized
@@ -237,6 +245,7 @@ object AlertStateTracker {
         // is over too, so it must not break through later.
         QuietWindow.clearSilencedEpisode(type.id)
         lastTriggerTime.remove(type)
+        heldSince.remove(type)
         dismissedAlerts.remove(type)
         manualTests.clearPending(type)
         SmsWatchdog.onAlertResolved(type.id)
