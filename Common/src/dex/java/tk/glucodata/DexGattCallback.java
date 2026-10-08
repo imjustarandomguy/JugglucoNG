@@ -711,25 +711,17 @@ private boolean removedBond=false;
                   resetCerts();
                   return;
                   }
-                boolean isbonded = bond == 1;
-
-                if(auth != 1) {
-                    // Not authenticated on this channel: certificates sent now only
-                    // make the sensor hang up. A fresh pairing refused on the
-                    // smartwatch channel moves to the receiver's from the next session.
+                final var next = DexcomAuthPolicy.afterChallengeReply(auth, bond, bonded, newcertificates, requestedSlot == SLOT_WATCH);
+                if(next == DexcomAuthPolicy.Next.STOP) {
                     handshake = "auth != 1";
                     wrotepass[1] = System.currentTimeMillis();
                     if(newcertificates && requestedSlot == SLOT_WATCH)
                         useReceiverSlot();
                     resetCerts();
+                } else if(next == DexcomAuthPolicy.Next.GET_DATA) {
+                    getdatacmd();
                 } else {
-                    // A fresh pairing is a new channel: it needs its certificates
-                    // even when Android already bonded this device on another one.
-                    if(isbonded||(bonded&&bond==2&&!newcertificates)) {
-                        getdatacmd();
-                    } else {
-                        askcertificate(SendCertificate1);
-                    }
+                    askcertificate(SendCertificate1);
                 }
 
             }
