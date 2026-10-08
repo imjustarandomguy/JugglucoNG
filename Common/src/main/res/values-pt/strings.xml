@@ -3009,4 +3009,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Primeiro a seta, depois o valor</string>
     <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
     <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa</string>
+    <string name="live_notification_section">Notificação ao vivo</string>
+    <string name="live_notification_title">Glicose na Now Bar</string>
+    <string name="live_notification_desc">Mostra a glicose na Now Bar e no chip da barra de status. Alguns celulares Samsung também precisam de Opções do desenvolvedor → Notificações ao vivo para todos os apps</string>
+    <string name="live_notification_promotion_off">As atualizações ao vivo estão desativadas para este app nas configurações do Android. Toque para permiti-las</string>
+    <string name="live_notification_metric_age">Idade da leitura</string>
+    <string name="live_notification_gauge_title">Mostrar como medidor</string>
+    <string name="live_notification_gauge_desc">Mostra uma barra sobre o intervalo do gráfico nas cores dos intervalos, com a seta de tendência no valor atual</string>
 </resources>

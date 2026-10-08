@@ -2998,4 +2998,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Prima la freccia, poi il valore</string>
     <string name="status_bar_icon_colored_title">Icona della barra di stato colorata</string>
     <string name="status_bar_icon_colored_desc">Disegna il valore nella barra di stato con il colore del suo intervallo</string>
+    <string name="live_notification_section">Notifica live</string>
+    <string name="live_notification_title">Glucosio nella Now Bar</string>
+    <string name="live_notification_desc">Mostra il glucosio nella Now Bar e nel chip della barra di stato. Su alcuni telefoni Samsung serve anche Opzioni sviluppatore → Notifiche live per tutte le app</string>
+    <string name="live_notification_promotion_off">Gli aggiornamenti live sono disattivati per questa app nelle impostazioni di Android. Tocca per consentirli</string>
+    <string name="live_notification_metric_age">Età della lettura</string>
+    <string name="live_notification_gauge_title">Mostra come indicatore</string>
+    <string name="live_notification_gauge_desc">Mostra una barra sull\'intervallo del grafico nei colori degli intervalli, con la freccia di tendenza sul valore attuale</string>
 </resources>

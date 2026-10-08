@@ -3063,4 +3063,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Сначала стрелка, затем значение</string>
     <string name="status_bar_icon_colored_title">Цветной значок в строке состояния</string>
     <string name="status_bar_icon_colored_desc">Рисует значение в строке состояния цветом диапазона</string>
+    <string name="live_notification_section">Живое уведомление</string>
+    <string name="live_notification_title">Глюкоза в Now Bar</string>
+    <string name="live_notification_desc">Показывает глюкозу в Now Bar и в чипе строки состояния. На некоторых телефонах Samsung также нужно Параметры разработчика → Живые уведомления для всех приложений</string>
+    <string name="live_notification_promotion_off">Живые обновления для этого приложения отключены в настройках Android. Нажмите, чтобы разрешить</string>
+    <string name="live_notification_metric_age">Возраст показания</string>
+    <string name="live_notification_gauge_title">Показывать как шкалу</string>
+    <string name="live_notification_gauge_desc">Показывает полосу диапазона графика в цветах диапазонов со стрелкой тренда у текущего значения</string>
 </resources>

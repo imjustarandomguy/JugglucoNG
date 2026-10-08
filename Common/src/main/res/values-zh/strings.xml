@@ -3021,4 +3021,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">先显示箭头，再显示数值</string>
     <string name="status_bar_icon_colored_title">彩色状态栏图标</string>
     <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值</string>
+    <string name="live_notification_section">实时通知</string>
+    <string name="live_notification_title">在 Now Bar 中显示血糖</string>
+    <string name="live_notification_desc">在 Now Bar 和状态栏胶囊中显示血糖。部分三星手机还需开启 开发者选项 → 所有应用的实时通知</string>
+    <string name="live_notification_promotion_off">此应用的实时更新已在 Android 设置中关闭。点按以允许</string>
+    <string name="live_notification_metric_age">读数时长</string>
+    <string name="live_notification_gauge_title">以量表显示</string>
+    <string name="live_notification_gauge_desc">在图表范围上显示按范围着色的进度条，趋势箭头位于当前值处</string>
 </resources>

@@ -3014,4 +3014,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Flèche d\'abord, puis la valeur</string>
     <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
     <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage</string>
+    <string name="live_notification_section">Notification en direct</string>
+    <string name="live_notification_title">Glucose dans la Now Bar</string>
+    <string name="live_notification_desc">Affiche le glucose dans la Now Bar et dans la puce de la barre d\'état. Certains téléphones Samsung demandent aussi Options pour les développeurs → Notifications en direct pour toutes les applis</string>
+    <string name="live_notification_promotion_off">Les mises à jour en direct sont désactivées pour cette appli dans les paramètres Android. Touchez pour les autoriser</string>
+    <string name="live_notification_metric_age">Âge de la mesure</string>
+    <string name="live_notification_gauge_title">Afficher en jauge</string>
+    <string name="live_notification_gauge_desc">Affiche une barre sur la plage du graphique aux couleurs des plages, avec la flèche de tendance sur la valeur actuelle</string>
 </resources>

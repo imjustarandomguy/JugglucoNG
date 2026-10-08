@@ -3008,4 +3008,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Pilen först, sedan värdet</string>
     <string name="status_bar_icon_colored_title">Färgad statusfältsikon</string>
     <string name="status_bar_icon_colored_desc">Ritar värdet i statusfältet i intervallets färg</string>
+    <string name="live_notification_section">Live-avisering</string>
+    <string name="live_notification_title">Glukos i Now Bar</string>
+    <string name="live_notification_desc">Visar ditt glukosvärde i Now Bar och som chip i statusfältet. Vissa Samsung-telefoner behöver också Utvecklaralternativ → Live-aviseringar för alla appar</string>
+    <string name="live_notification_promotion_off">Liveuppdateringar är avstängda för appen i Android-inställningarna. Tryck för att tillåta dem</string>
+    <string name="live_notification_metric_age">Mätningens ålder</string>
+    <string name="live_notification_gauge_title">Visa som mätare</string>
+    <string name="live_notification_gauge_desc">Visar en stapel över diagramintervallet i intervallfärgerna, med trendpilen vid det aktuella värdet</string>
 </resources>

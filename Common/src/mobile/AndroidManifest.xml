@@ -58,6 +58,10 @@
          "install unknown apps" once, and Android still shows its own confirmation every time. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- The optional live notification (LiveGlucoseNotification): lets Android 16+ promote it to a
+         Live Update. Granted at install; the user can still turn it off per app. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
     <application
         android:name=".Applic"
         android:icon="@mipmap/ic_launcher"
@@ -66,6 +70,11 @@
         <meta-data
             android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
+        <!-- Samsung One UI: lets the live notification's ongoing-activity extras put it in the
+             Now Bar. Only that notification carries them. -->
+        <meta-data
+            android:name="com.samsung.android.support.ongoing_activity"
+            android:value="true" />
 
         <activity
             android:name=".UnifiedScanActivity"

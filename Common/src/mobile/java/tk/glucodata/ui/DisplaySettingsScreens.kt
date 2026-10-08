@@ -309,6 +309,85 @@ fun NotificationSettingsScreen(
             }
         }
 
+        // The live notification (tk.glucodata.LiveGlucoseNotification): Android 16+ only.
+        if (tk.glucodata.LiveGlucoseNotification.isSupported()) {
+            var liveNotification by rememberSaveable {
+                mutableStateOf(prefs.getBoolean(tk.glucodata.LiveGlucoseNotification.PREF_ENABLED, false))
+            }
+            var liveGauge by rememberSaveable {
+                mutableStateOf(prefs.getBoolean(tk.glucodata.LiveGlucoseNotification.PREF_GAUGE, false))
+            }
+            var canPromote by remember { mutableStateOf(tk.glucodata.LiveGlucoseNotification.canPromote(context)) }
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+                canPromote = tk.glucodata.LiveGlucoseNotification.canPromote(context)
+            }
+            val promotionOff = liveNotification && !canPromote
+            SectionLabel(
+                stringResource(R.string.live_notification_section),
+                topPadding = 16.dp,
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+            ) {
+                SettingsSwitchItem(
+                    title = stringResource(R.string.live_notification_title),
+                    subtitle = stringResource(R.string.live_notification_desc),
+                    checked = liveNotification,
+                    onCheckedChange = {
+                        liveNotification = it
+                        prefs.edit().putBoolean(tk.glucodata.LiveGlucoseNotification.PREF_ENABLED, it).apply()
+                        if (!it) tk.glucodata.LiveGlucoseNotification.cancel(context)
+                        viewModel.refreshNotificationSurfaces()
+                    },
+                    position = if (liveNotification) CardPosition.TOP else CardPosition.SINGLE
+                )
+                AnimatedVisibility(
+                    visible = liveNotification,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    SettingsSwitchItem(
+                        title = stringResource(R.string.live_notification_gauge_title),
+                        subtitle = stringResource(R.string.live_notification_gauge_desc),
+                        checked = liveGauge,
+                        onCheckedChange = {
+                            liveGauge = it
+                            prefs.edit().putBoolean(tk.glucodata.LiveGlucoseNotification.PREF_GAUGE, it).apply()
+                            viewModel.refreshNotificationSurfaces()
+                        },
+                        position = if (promotionOff) CardPosition.MIDDLE else CardPosition.BOTTOM
+                    )
+                }
+                // Android lets the user turn Live Updates off per app; the permission is otherwise
+                // granted at install.
+                AnimatedVisibility(
+                    visible = promotionOff,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    SettingsItem(
+                        title = stringResource(R.string.live_notification_promotion_off),
+                        icon = Icons.Default.Warning,
+                        iconTint = MaterialTheme.colorScheme.error,
+                        onClick = {
+                            try {
+                                context.startActivity(tk.glucodata.LiveGlucoseNotification.promotionSettingsIntent(context))
+                            } catch (_: android.content.ActivityNotFoundException) {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        },
+                        position = CardPosition.BOTTOM
+                    )
+                }
+            }
+        }
+
         val showRiskOptions = showIob || showCob
         SectionLabel(
             stringResource(R.string.notification_status_line_section),

@@ -16,6 +16,7 @@
 
 package tk.glucodata;
 
+import java.util.List;
 import java.util.Locale;
 
 /**
@@ -72,6 +73,35 @@ public final class GlucoseDelta {
     /** Convenience wrapper for the default 5-minute interval. */
     public static float fiveMinuteDelta(long newMillis, float newValue, long prevMillis, float prevValue) {
         return delta(newMillis, newValue, prevMillis, prevValue, DEFAULT_INTERVAL_MINUTES);
+    }
+
+    /**
+     * Delta of the newest point in {@code points} (oldest first). Walks back to the
+     * first point old enough for the window; the tail can hold near-duplicates
+     * (persisted vs live timestamp of the same reading), so never take blind
+     * indices. With {@code raw}, a point's raw value is used where it has one.
+     * NaN when no point qualifies.
+     */
+    public static float latest(List<GlucosePoint> points, boolean raw, int intervalMinutes) {
+        if (points == null || points.size() < 2)
+            return Float.NaN;
+        final GlucosePoint newest = points.get(points.size() - 1);
+        if (newest == null)
+            return Float.NaN;
+        final long minGap = minGapMillis(intervalMinutes);
+        for (int i = points.size() - 2; i >= 0; i--) {
+            final GlucosePoint p = points.get(i);
+            if (p == null)
+                continue;
+            final float value = valueOf(p, raw);
+            if (value > 0.1f && newest.timestamp - p.timestamp >= minGap)
+                return delta(newest.timestamp, valueOf(newest, raw), p.timestamp, value, intervalMinutes);
+        }
+        return Float.NaN;
+    }
+
+    private static float valueOf(GlucosePoint p, boolean raw) {
+        return (raw && p.rawValue > 0f) ? p.rawValue : p.value;
     }
 
     /**

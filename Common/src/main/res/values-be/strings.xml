@@ -3087,4 +3087,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне</string>
     <string name="status_bar_icon_colored_title">Каляровы значок у радку стану</string>
     <string name="status_bar_icon_colored_desc">Маляваць значэнне ў радку стану колерам дыяпазону</string>
+    <string name="live_notification_section">Жывое апавяшчэнне</string>
+    <string name="live_notification_title">Глюкоза ў Now Bar</string>
+    <string name="live_notification_desc">Паказвае глюкозу ў Now Bar і ў чыпе радка стану. На некаторых тэлефонах Samsung патрэбна яшчэ Параметры распрацоўшчыка → Жывыя апавяшчэнні для ўсіх праграм</string>
+    <string name="live_notification_promotion_off">Жывыя абнаўленні для гэтай праграмы выключаны ў наладах Android. Націсніце, каб дазволіць</string>
+    <string name="live_notification_metric_age">Узрост паказання</string>
+    <string name="live_notification_gauge_title">Паказваць як шкалу</string>
+    <string name="live_notification_gauge_desc">Паказвае паласу дыяпазону графіка ў колерах дыяпазонаў са стрэлкай трэнду каля бягучага значэння</string>
 </resources>
