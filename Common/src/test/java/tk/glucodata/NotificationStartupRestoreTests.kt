@@ -699,84 +699,6 @@ class NotificationStartupRestoreTests {
         assertEquals(listOf("cancel:81431"), getNested(manager, "calls"))
         assertNull(getNested(manager, "last"))
         assertEquals(0, call(h, "queuedCount"))
-        assertEquals(listOf("cancel"), get(h, "live"))
-    }
-
-    // The live notification (LiveGlucoseNotification) follows each publication of the
-    // glucose notification, under the same gate, and never one that did not happen.
-
-    @Test fun genuineReadingCarriesToTheLiveNotification() {
-        val h = harness()
-        val time = System.currentTimeMillis() - 1000L
-        val reading = nestNew("notGlucose", Long::class.javaPrimitiveType to time)
-        set(h, "cannedSnapshot", snapshotAt(time, 123f))
-        invokePrivate(h, "postForegroundGlucoseNotification", -1, 123f, "123", reading, true)
-        assertEquals(listOf("fresh:$time"), get(h, "live"))
-        assertEquals(listOf(true), get(h, "liveLocks"))
-    }
-
-    @Test fun failedGenuinePublicationLeavesTheLiveNotificationAlone() {
-        val h = harness()
-        val time = System.currentTimeMillis() - 1000L
-        val reading = nestNew("notGlucose", Long::class.javaPrimitiveType to time)
-        set(h, "cannedSnapshot", snapshotAt(time, 123f))
-        set(h, "failPublication", true)
-        try {
-            invokePrivate(h, "postForegroundGlucoseNotification", -1, 123f, "123", reading, true)
-            fail("expected publisher failure")
-        } catch (failure: java.lang.reflect.InvocationTargetException) {
-            assertTrue(failure.cause is IllegalStateException)
-        }
-        assertEquals(emptyList<String>(), get(h, "live"))
-    }
-
-    @Test fun visualRefreshShowsTheReadingThenItsStaleStateLive() {
-        val h = harness()
-        val snapshot = snapshotAt(System.currentTimeMillis() - 1000L)
-        set(h, "cannedSnapshot", snapshot)
-        invokePrivate(h, "scheduleVisualNotificationRefresh")
-        assertTrue(drainOne(h))
-        val fresh = getNested(snapshot, "time") as Long
-        assertEquals(listOf("fresh:$fresh"), get(h, "live"))
-        // The freshness deadline turns both to the stale state, without a new reading.
-        val aged = System.currentTimeMillis() - 331_000L
-        nestField(snapshot, "time").setLong(snapshot, aged)
-        assertTrue(drainOne(h))
-        assertTrue(drainOne(h))
-        assertEquals(listOf("fresh:$fresh", "stale:$aged"), get(h, "live"))
-        assertEquals(listOf(true, true), get(h, "liveLocks"))
-    }
-
-    @Test fun statusWithoutReadingTakesTheLiveNotificationDown() {
-        val h = harness()
-        set(h, "cannedSnapshot", null)
-        invokePrivate(h, "scheduleVisualNotificationRefresh")
-        assertTrue(drainOne(h))
-        assertEquals("Loading...", titleOf(getNested(get(h, "notificationManager")!!, "last")))
-        assertEquals(listOf("cancel"), get(h, "live"))
-    }
-
-    @Test fun glucoseNotificationNotKeptTakesTheLiveNotificationDown() {
-        val h = harness()
-        set(h, "showalways", false)
-        invokePrivate(h, "scheduleVisualNotificationRefresh")
-        assertEquals(0, call(h, "queuedCount"))
-        assertEquals(listOf("cancel"), get(h, "live"))
-    }
-
-    @Test fun supersededVisualRenderPostsNoLiveNotification() {
-        val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 1000L))
-        call(h, "closeGate", "render")
-        invokePrivate(h, "scheduleVisualNotificationRefresh")
-        val w = thread { drainOne(h) }
-        poll(5000) { get(h, "renderEntered") as Boolean }
-        // A genuine publication lands while the visual refresh renders.
-        fornotify(h, newNotification(h))
-        call(h, "openGate", "render")
-        w.join(5000)
-        assertFalse(w.isAlive)
-        assertEquals(emptyList<String>(), get(h, "live"))
     }
 
     companion object {
@@ -1156,17 +1078,6 @@ class NotificationStartupRestoreTests {
                         n.ongoing = true;
                         return n;
                     }
-                    public List<String> live = Collections.synchronizedList(new ArrayList<>());
-                    public List<Boolean> liveLocks = Collections.synchronizedList(new ArrayList<>());
-                    void showLiveGlucose(GlucoseNotificationContent content) {
-                        liveLocks.add(Thread.holdsLock(foregroundPublicationLock));
-                        live.add("fresh:" + content.snapshot.getTimeMillis());
-                    }
-                    void showLiveStale(CurrentDisplaySource.Snapshot stale) {
-                        liveLocks.add(Thread.holdsLock(foregroundPublicationLock));
-                        live.add("stale:" + stale.getTimeMillis());
-                    }
-                    void cancelLiveGlucose() { live.add("cancel"); }
                     Notification getforgroundnotification() {
                         startupContentCalled = true;
                         Notification n = new Notification();

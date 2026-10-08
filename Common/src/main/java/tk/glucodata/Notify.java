@@ -895,7 +895,6 @@ public class Notify {
                     onenot.novalue();
                 } else {
                     onenot.notificationManager.cancel(glucosenotificationid);
-                    onenot.cancelLiveGlucose();
                 }
             }
         } else {
@@ -1002,7 +1001,6 @@ public class Notify {
                         !alertwatch);
             } else {
                 if (hasvalue) {
-                    cancelLiveGlucose();
                     if (keeprunning.started)
                         novalue();
                     else {
@@ -1465,7 +1463,6 @@ public class Notify {
     private void scheduleVisualNotificationRefresh() {
         if (!shouldKeepForegroundGlucoseNotification()) {
             cancelOngoingNotificationRefreshes();
-            cancelLiveGlucose();
             return;
         }
         synchronized (foregroundPublicationLock) {
@@ -1512,7 +1509,6 @@ public class Notify {
                 notificationManager.cancel(glucosenotificationid);
                 lastDisplayedGlucoseSnapshot = null;
                 cancelOngoingNotificationRefreshes();
-                cancelLiveGlucose();
             }
             return;
         }
@@ -1524,22 +1520,17 @@ public class Notify {
         if (shouldPresentForegroundGlucose() && effective != null && effective.getPrimaryValue() >= 2.0f
                 && NotificationRefreshPolicy.isFresh(effective.getTimeMillis(), now, glucosetimeout)) {
             final float value = effective.getPrimaryValue();
-            final GlucoseNotificationContent content;
+            final Notification notification;
             try {
-                content = renderGlucoseNotification(
+                notification = makearrownotification(
                         FOREGROUND_GLUCOSE_NOTIFICATION_KIND, value,
                         format(usedlocale, glucoseformat, value), toLegacyGlucose(effective),
-                        GLUCOSENOTIFICATION, true, effective, true);
+                        GLUCOSENOTIFICATION, true, effective);
             } catch (Throwable th) {
                 Log.stack(LOG_ID, "reconcileRender", th);
                 return;
             }
-            // Under the publication gate, so the live notification cannot overtake a newer one.
-            synchronized (foregroundPublicationLock) {
-                if (publishVisualNotification(generation, capturedService, content.notification, effective)) {
-                    showLiveGlucose(content);
-                }
-            }
+            publishVisualNotification(generation, capturedService, notification, effective);
             return;
         }
         if (shouldPresentForegroundGlucose() && effective != null
@@ -1551,11 +1542,7 @@ public class Notify {
                 Log.stack(LOG_ID, "reconcileStaleRender", th);
                 return;
             }
-            synchronized (foregroundPublicationLock) {
-                if (publishVisualNotification(generation, capturedService, staleNotification, null)) {
-                    showLiveStale(effective);
-                }
-            }
+            publishVisualNotification(generation, capturedService, staleNotification, null);
             return;
         }
         final String status = activeSensorSerial == null || activeSensorSerial.isEmpty()
@@ -1569,11 +1556,7 @@ public class Notify {
             Log.stack(LOG_ID, "reconcileStatusRender", th);
             return;
         }
-        synchronized (foregroundPublicationLock) {
-            if (publishVisualNotification(generation, capturedService, statusNotification, null)) {
-                cancelLiveGlucose();
-            }
-        }
+        publishVisualNotification(generation, capturedService, statusNotification, null);
     }
 
     /** Retained last real snapshot when the resolver transiently returns null. Returns
@@ -1613,16 +1596,15 @@ public class Notify {
         return retained;
     }
 
-    /** Returns whether {@code notification} was published. */
-    private boolean publishVisualNotification(long generation, Service capturedService,
+    private void publishVisualNotification(long generation, Service capturedService,
             Notification notification, CurrentDisplaySource.Snapshot freshSnapshot) {
         synchronized (foregroundPublicationLock) {
             if (generation != foregroundVisualGeneration || !shouldKeepForegroundGlucoseNotification()) {
-                return false;
+                return;
             }
             if (capturedService != keeprunning.theservice) {
                 // A newer service epoch owns the surface; never overwrite it.
-                return false;
+                return;
             }
             try {
                 if (keeprunning.theservice != null) {
@@ -1636,7 +1618,7 @@ public class Notify {
                 // for this generation; it cannot spin if publication keeps failing.
                 Log.stack(LOG_ID, "publishVisual", th);
                 scheduleFailedPublicationRetryLocked(generation, capturedService);
-                return false;
+                return;
             }
             publicationRetryGeneration = 0L;
             publicationRetryService = null;
@@ -1652,7 +1634,6 @@ public class Notify {
                 glucoseRefreshHandler.removeCallbacks(freshnessDeadlineRefreshRunnable);
             }
         }
-        return true;
     }
 
     private void scheduleFailedPublicationRetryLocked(long generation, Service service) {
@@ -1786,7 +1767,6 @@ public class Notify {
                 lastDisplayedGlucoseSnapshot = displayed;
             }
             armFreshnessDeadlineLocked(foregroundVisualGeneration, displayedMillis);
-            showLiveGlucose(content);
         }
         GlucoseUpdateBroadcaster.send(Applic.app);
     }
@@ -3633,7 +3613,6 @@ public class Notify {
         cancelOngoingNotificationRefreshes();
         glucoseRefreshHandler.removeCallbacks(glucoseRefreshRunnable);
         notificationManager.cancel(glucosenotificationid);
-        cancelLiveGlucose();
         notificationChartsDeferred = false;
         notificationManager.cancel(numalarmid);
     }
@@ -4211,16 +4190,10 @@ public class Notify {
     private static final class GlucoseNotificationContent {
         final Notification notification;
         final CurrentDisplaySource.Snapshot snapshot;
-        /** The arrow's rate (mg/dL per minute) and the Δ readout, as rendered. */
-        final float arrowRate;
-        final float delta;
 
-        GlucoseNotificationContent(Notification notification, CurrentDisplaySource.Snapshot snapshot,
-                float arrowRate, float delta) {
+        GlucoseNotificationContent(Notification notification, CurrentDisplaySource.Snapshot snapshot) {
             this.notification = notification;
             this.snapshot = snapshot;
-            this.arrowRate = arrowRate;
-            this.delta = delta;
         }
     }
 
@@ -4419,13 +4392,30 @@ public class Notify {
         }
         // The "Δ" readout: measured change over the last ~5 minutes — a raw
         // number to sanity-check the estimated arrow against. Leftmost, right
-        // next to the arrow. Also carried to the live notification.
-        final float delta = GlucoseDelta.latest(nativePoints, isRawMode, deltaIntervalMinutes);
+        // next to the arrow. Walks back to the first point old enough for the
+        // window; the tail can hold near-duplicates (persisted vs live
+        // timestamp of the same reading), so never take blind indices.
         if (showDelta && nativePoints.size() >= 2) {
-            final String deltaText = GlucoseDelta.format(delta, isMmol);
+            final GlucosePoint newest = nativePoints.get(nativePoints.size() - 1);
+            final float newestValue = (isRawMode && newest.rawValue > 0f) ? newest.rawValue : newest.value;
+            GlucosePoint previous = null;
+            for (int i = nativePoints.size() - 2; i >= 0; i--) {
+                final GlucosePoint p = nativePoints.get(i);
+                final float value = (isRawMode && p.rawValue > 0f) ? p.rawValue : p.value;
+                if (value > 0.1f && newest.timestamp - p.timestamp >= GlucoseDelta.minGapMillis(deltaIntervalMinutes)) {
+                    previous = p;
+                    break;
+                }
+            }
+            final float previousValue = previous == null ? Float.NaN
+                    : (isRawMode && previous.rawValue > 0f) ? previous.rawValue : previous.value;
+            final String deltaText = previous == null ? "" : GlucoseDelta.format(
+                    GlucoseDelta.delta(newest.timestamp, newestValue, previous.timestamp, previousValue, deltaIntervalMinutes),
+                    isMmol);
             if (doLog)
                 Log.i(LOG_ID, "notification delta=" + deltaText
-                        + " points=" + nativePoints.size());
+                        + " points=" + nativePoints.size()
+                        + " gap=" + (previous == null ? -1L : (newest.timestamp - previous.timestamp)));
             if (!deltaText.isEmpty()) {
                 newStatusText = (newStatusText == null || newStatusText.length() == 0)
                         ? "Δ " + deltaText
@@ -4606,7 +4596,7 @@ public class Notify {
 
         Notification notif = GluNotBuilder.build();
 
-        return new GlucoseNotificationContent(notif, fallbackDisplay, rate, delta);
+        return new GlucoseNotificationContent(notif, fallbackDisplay);
     }
 
     // The phone-only quick entry sheet (ui.journal.JournalQuickEntryActivity), named because
@@ -5134,59 +5124,6 @@ public class Notify {
         final Notification not = builder.build();
         not.flags |= FLAG_ONGOING_EVENT;
         return not;
-    }
-
-    /**
-     * Phone: the optional live notification (LiveGlucoseNotification) follows the
-     * glucose notification. Called after each publication of a reading, under the
-     * publication gate; an aged reading gets the stale state by the same rule.
-     */
-    private void showLiveGlucose(GlucoseNotificationContent content) {
-        if (isWearable || content == null || content.snapshot == null) {
-            return;
-        }
-        final CurrentDisplaySource.Snapshot shown = content.snapshot;
-        if (!NotificationRefreshPolicy.isFresh(shown.getTimeMillis(), System.currentTimeMillis(), glucosetimeout)) {
-            showLiveStale(shown);
-            return;
-        }
-        try {
-            if (shouldPresentForegroundGlucose()) {
-                LiveGlucoseNotification.showReading(Applic.app, shown, content.arrowRate, content.delta);
-            } else {
-                LiveGlucoseNotification.cancel(Applic.app);
-            }
-        } catch (Throwable th) {
-            Log.stack(LOG_ID, "showLiveGlucose", th);
-        }
-    }
-
-    /** The glucose notification shows an aged reading: so does the live notification. */
-    private void showLiveStale(CurrentDisplaySource.Snapshot stale) {
-        if (isWearable || stale == null) {
-            return;
-        }
-        try {
-            if (shouldPresentForegroundGlucose()) {
-                LiveGlucoseNotification.showStale(Applic.app, stale, staleMessage(stale.getTimeMillis()));
-            } else {
-                LiveGlucoseNotification.cancel(Applic.app);
-            }
-        } catch (Throwable th) {
-            Log.stack(LOG_ID, "showLiveStale", th);
-        }
-    }
-
-    /** The glucose notification shows no reading, or is gone. */
-    private void cancelLiveGlucose() {
-        if (isWearable) {
-            return;
-        }
-        try {
-            LiveGlucoseNotification.cancel(Applic.app);
-        } catch (Throwable th) {
-            Log.stack(LOG_ID, "cancelLiveGlucose", th);
-        }
     }
 
     private static void startForegroundService(Service service, int id, Notification notif) {
