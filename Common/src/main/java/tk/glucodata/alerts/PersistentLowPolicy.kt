@@ -3,14 +3,17 @@ package tk.glucodata.alerts
 /**
  * Where a PERSISTENT_LOW episode stands between readings.
  *
- * [startedAtMs] is the reading time of the first reading below the threshold
- * (0 = no episode). [veryLowSeen] latches once VERY_LOW was active during the
- * episode, so the persistent low never rings on top of it.
+ * [startedAtMs] is the reading time the count runs from (0 = none). While
+ * [heldByVeryLow], VERY_LOW's episode owns the low and the count waits; it
+ * starts over at the reading where that episode ends.
  */
 internal data class PersistentLowState(
     val startedAtMs: Long = 0L,
-    val veryLowSeen: Boolean = false
-)
+    val heldByVeryLow: Boolean = false
+) {
+    /** An episode is running: counting, or held by VERY_LOW. */
+    val running: Boolean get() = startedAtMs != 0L || heldByVeryLow
+}
 
 internal enum class PersistentLowAction {
     /** No episode, or the alert cannot run: timer cleared, a running alarm resolved. */
@@ -61,10 +64,15 @@ internal data class PersistentLowDecision(
  *   hovering at the line (3.8, 4.0, 3.8) keeps its count.
  * - Disabled, no threshold or duration, or outside the time window: reset.
  *   A missing value does not reset: a lost sample is not a recovery.
- * - VERY_LOW active at any point in the episode holds it for the rest of the
- *   episode: the urgent alarm owns that low. This is seen live only: the
- *   stored readings do not say whether VERY_LOW was on, in its hours or
- *   snoozed back then, and guessing could silence a hypo alarm.
+ * - VERY_LOW holds it only while VERY_LOW's own episode is active (its
+ *   condition holds, or it fired and was not reset): the urgent alarm owns
+ *   that low. When that episode ends, the count starts over at that reading
+ *   (or at the next one below the threshold), so a value left between the two
+ *   lines after a dismissed VERY_LOW rings once it has lasted the duration.
+ *   The hold itself is live only. The stored-start walk replays the restart
+ *   with VERY_LOW's current lines (entry below its threshold, exit at
+ *   threshold + its margin), so a restart finds the same start; at worst that
+ *   delays this alarm by the duration, it never silences it.
  * - Optional "hold while rising" (the mirror of persistent high's fall rule):
  *   while the value rises at least [AlertConfig.riseRateSuppress] mg/dl per
  *   minute the alarm is held, but the timer is not reset, so a rise that stalls
@@ -134,20 +142,21 @@ internal object PersistentLowPolicy {
             return reset("persistent-low-cleared")
         }
 
+        if (veryLowActive) {
+            return PersistentLowDecision(PersistentLowAction.HOLD, state.copy(heldByVeryLow = true), "persistent-low-very-low")
+        }
         val below = value < threshold
         var next = state
+        if (next.heldByVeryLow) {
+            // VERY_LOW's episode ended at this reading: the count starts over here.
+            next = PersistentLowState(startedAtMs = if (below) readingTimeMs else 0L)
+        }
         if (below && next.startedAtMs == 0L) {
             next = next.copy(startedAtMs = historyStartMs().takeIf { it in 1 until readingTimeMs } ?: readingTimeMs)
         }
         if (next.startedAtMs == 0L) {
-            // In the band above the threshold without ever having gone below it.
+            // In the band above the threshold, with no reading below it yet.
             return PersistentLowDecision(PersistentLowAction.WAIT, next, "persistent-low-not-low")
-        }
-        if (veryLowActive && !next.veryLowSeen) {
-            next = next.copy(veryLowSeen = true)
-        }
-        if (next.veryLowSeen) {
-            return PersistentLowDecision(PersistentLowAction.HOLD, next, "persistent-low-very-low")
         }
         if (risingHolds(rate, config.riseRateSuppress)) {
             return PersistentLowDecision(PersistentLowAction.HOLD, next, "persistent-low-rising")
@@ -170,18 +179,47 @@ internal object PersistentLowPolicy {
      * first reading below the threshold after the last one at or above the
      * recovery line. A reading in the band between them neither starts the
      * episode nor ends it. Gaps and lookback are [EpisodeHistory.startOf]'s.
-     * Null without a threshold, or when the stretch has no reading below it.
+     *
+     * With [veryLow] (VERY_LOW's config, passed only while it can hold now), the
+     * stretch is replayed as [decide] lives it: a VERY_LOW episode in it (entry
+     * below its threshold, exit at threshold + its rearm margin) restarts the
+     * count at the reading where it ended, or at the next one below.
+     *
+     * Null without a threshold, when the stretch has no reading below it, or
+     * when VERY_LOW's episode still runs at the current reading.
      */
-    fun startFromHistory(readings: List<StoredReading>, config: AlertConfig, isMmol: Boolean): EpisodeStart? {
+    fun startFromHistory(
+        readings: List<StoredReading>,
+        config: AlertConfig,
+        isMmol: Boolean,
+        veryLow: AlertConfig? = null
+    ): EpisodeStart? {
         val threshold = thresholdOf(config) ?: return null
         val recoveredAt = recoveredAt(threshold, config, isMmol)
-        return EpisodeHistory.startOf(readings) { value ->
+        val start = EpisodeHistory.startOf(readings) { value ->
             when {
                 value >= recoveredAt -> EpisodeHistory.Kind.END
                 value < threshold -> EpisodeHistory.Kind.START
                 else -> EpisodeHistory.Kind.BAND
             }
+        } ?: return null
+        val veryLowConfig = veryLow ?: return start
+        val veryLowEntry = thresholdOf(veryLowConfig) ?: return start
+        val veryLowExit = veryLowEntry + (veryLowConfig.rearmMargin
+            ?: StandardGlucoseAlertEvaluator.defaultThresholdRearmMargin(isMmol)).coerceAtLeast(0f)
+        // From the first reading below: VERY_LOW cannot be entered before it.
+        var startedAtMs = 0L
+        var inVeryLow = false
+        readings.forEach { reading ->
+            if (reading.timeMs < start.startedAtMs || !reading.value.isFinite()) return@forEach
+            inVeryLow = reading.value < if (inVeryLow) veryLowExit else veryLowEntry
+            if (inVeryLow) {
+                startedAtMs = 0L
+            } else if (startedAtMs == 0L && reading.value < threshold) {
+                startedAtMs = reading.timeMs
+            }
         }
+        return if (startedAtMs > 0L) start.copy(startedAtMs = startedAtMs) else null
     }
 
     private fun thresholdOf(config: AlertConfig): Float? = config.threshold?.takeIf { it.isFinite() && it > 0f }
