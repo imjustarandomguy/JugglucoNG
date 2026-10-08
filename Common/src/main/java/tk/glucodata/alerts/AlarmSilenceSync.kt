@@ -7,6 +7,7 @@ import android.os.Looper
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.random.Random
 import tk.glucodata.Applic
 import tk.glucodata.Log
 import tk.glucodata.MessageSender
@@ -70,6 +71,13 @@ object AlarmSilenceSync {
     private const val KEY_SNOOZE_CHANGED = "snooze_changed_"
     private const val KEY_DISMISSED = "dismissed_"
     private const val KEY_QUIET_CHANGED = "quiet_changed"
+    private const val KEY_ORIGIN = "origin"
+    private const val KEY_CLOCK = "clock"
+
+    // Suffixes of an entry's key for its change id ([ChangeId]); none when the change came
+    // from an older build.
+    private const val REV = "_rev"
+    private const val ORIGIN = "_origin"
 
     /** After a failed send, hearing from the other device sends again, no more often than this. */
     private const val RESEND_MIN_INTERVAL_MS = 60_000L
@@ -106,6 +114,46 @@ object AlarmSilenceSync {
     private fun prefs(): SharedPreferences? =
         Applic.app?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    private val idLock = Any()
+
+    /** This device's origin: random, made once, and made anew after its data is cleared. */
+    private fun origin(store: SharedPreferences): Int = synchronized(idLock) {
+        store.getInt(KEY_ORIGIN, 0).takeIf { it != 0 } ?: run {
+            var made = 0
+            while (made == 0) made = Random.nextInt()
+            store.edit().putInt(KEY_ORIGIN, made).apply()
+            made
+        }
+    }
+
+    /** The id of a change made here now: one revision above all this device made or saw. */
+    private fun nextId(store: SharedPreferences): ChangeId = synchronized(idLock) {
+        val rev = store.getLong(KEY_CLOCK, 0L) + 1L
+        store.edit().putLong(KEY_CLOCK, rev).apply()
+        ChangeId(rev, origin(store))
+    }
+
+    /** Revisions seen from the other device: a change made here later goes above them. */
+    private fun seen(store: SharedPreferences, state: SilenceState) {
+        val newest = (state.snoozes.map { it.id } + state.dismissals.map { it.id } + state.quiet?.id)
+            .maxOfOrNull { it?.rev ?: 0L } ?: 0L
+        synchronized(idLock) {
+            if (newest > store.getLong(KEY_CLOCK, 0L)) store.edit().putLong(KEY_CLOCK, newest).apply()
+        }
+    }
+
+    private fun SharedPreferences.Editor.putId(key: String, id: ChangeId?): SharedPreferences.Editor =
+        if (id == null) {
+            remove(key + REV).remove(key + ORIGIN)
+        } else {
+            putLong(key + REV, id.rev).putInt(key + ORIGIN, id.origin)
+        }
+
+    private fun SharedPreferences.idOf(key: String): ChangeId? {
+        val rev = getLong(key + REV, 0L)
+        return if (rev > 0L) ChangeId(rev, getInt(key + ORIGIN, 0)) else null
+    }
+
     // ------------------------------------------------------------ local changes
 
     /**
@@ -116,7 +164,8 @@ object AlarmSilenceSync {
     fun onLocalSnoozeChanged(type: AlertType) {
         if (!synced(type)) return
         val store = prefs() ?: return
-        store.edit().putLong(KEY_SNOOZE_CHANGED + type.id, System.currentTimeMillis()).apply()
+        val key = KEY_SNOOZE_CHANGED + type.id
+        store.edit().putLong(key, System.currentTimeMillis()).putId(key, nextId(store)).apply()
         requestSend(reply = false)
     }
 
@@ -125,7 +174,8 @@ object AlarmSilenceSync {
     fun onLocalDismiss(type: AlertType) {
         if (!synced(type)) return
         val store = prefs() ?: return
-        store.edit().putLong(KEY_DISMISSED + type.id, System.currentTimeMillis()).apply()
+        val key = KEY_DISMISSED + type.id
+        store.edit().putLong(key, System.currentTimeMillis()).putId(key, nextId(store)).apply()
         requestSend(reply = false)
     }
 
@@ -133,7 +183,8 @@ object AlarmSilenceSync {
     @JvmStatic
     fun onLocalQuietWindowChanged() {
         val store = prefs() ?: return
-        store.edit().putLong(KEY_QUIET_CHANGED, System.currentTimeMillis()).apply()
+        store.edit().putLong(KEY_QUIET_CHANGED, System.currentTimeMillis())
+            .putId(KEY_QUIET_CHANGED, nextId(store)).apply()
         requestSend(reply = false)
     }
 
@@ -141,6 +192,27 @@ object AlarmSilenceSync {
     @JvmStatic
     fun onLossAlarmSounding() {
         lossAlarmStartedAtMs = System.currentTimeMillis()
+    }
+
+    /** True once the other device's dismissal took the signal loss held here, until a reading. */
+    @Volatile
+    private var lossAnswered = false
+
+    /** Notify held the signal-loss alarm for the other device: dated at its first hold. */
+    @JvmStatic
+    fun onLossAlarmHeld() {
+        if (lossAlarmStartedAtMs == 0L) lossAlarmStartedAtMs = System.currentTimeMillis()
+    }
+
+    /** Whether the signal loss running here was dismissed on the other device. */
+    @JvmStatic
+    fun lossAnsweredOnPeer(): Boolean = lossAnswered
+
+    /** A reading arrived: the signal loss is over. */
+    @JvmStatic
+    fun onLossOver() {
+        lossAnswered = false
+        lossAlarmStartedAtMs = 0L
     }
 
     // ------------------------------------------------------------ transport
@@ -242,11 +314,17 @@ object AlarmSilenceSync {
             val changedAt = store.getLong(KEY_SNOOZE_CHANGED + type.id, 0L)
             if (changedAt <= 0L) return@mapNotNull null
             val snooze = SnoozeManager.getSnoozeState(type)
-            SnoozeEntry(type.id, changedAt, snooze?.snoozeUntilMillis ?: 0L, snooze?.isPreemptive ?: false)
+            SnoozeEntry(
+                type.id,
+                changedAt,
+                snooze?.snoozeUntilMillis ?: 0L,
+                snooze?.isPreemptive ?: false,
+                store.idOf(KEY_SNOOZE_CHANGED + type.id),
+            )
         }
         val dismissals = syncedTypes().mapNotNull { type ->
             val at = store.getLong(KEY_DISMISSED + type.id, 0L)
-            if (at > 0L) DismissEntry(type.id, at) else null
+            if (at > 0L) DismissEntry(type.id, at, store.idOf(KEY_DISMISSED + type.id)) else null
         }
         val quietChangedAt = store.getLong(KEY_QUIET_CHANGED, 0L)
         val quiet = if (quietChangedAt > 0L) {
@@ -256,6 +334,7 @@ object AlarmSilenceSync {
                 mode = QuietWindow.mode(),
                 breakthroughMinutes = QuietWindow.breakthroughMinutes(),
                 breakthroughScope = QuietWindow.breakthroughScope(),
+                id = store.idOf(KEY_QUIET_CHANGED),
             )
         } else {
             null
@@ -267,6 +346,7 @@ object AlarmSilenceSync {
 
     private fun apply(message: AlarmSilenceCodec.Message) {
         val nowMs = System.currentTimeMillis()
+        prefs()?.let { seen(it, message.state) }
         val result = AlarmSilencePolicy.reconcile(localState(nowMs), message.state, message.reply, nowMs)
         for (action in result.actions) {
             try {
@@ -295,7 +375,8 @@ object AlarmSilenceSync {
                     fromPeer = true,
                     untilMs = action.untilMs,
                 )
-                store.edit().putLong(KEY_SNOOZE_CHANGED + type.id, action.changedAtMs).apply()
+                store.edit().putLong(KEY_SNOOZE_CHANGED + type.id, action.changedAtMs)
+                    .putId(KEY_SNOOZE_CHANGED + type.id, action.id).apply()
                 if (!action.preemptive && AlertStateTracker.isEpisodeActive(type)) {
                     // A snooze from a ringing alarm: the other device also started the
                     // episode afresh, so the alarm comes back on both when it ends.
@@ -307,17 +388,20 @@ object AlarmSilenceSync {
             is SilenceAction.ClearSnooze -> {
                 val type = AlertType.fromId(action.typeId)?.takeIf(::synced) ?: return
                 SnoozeManager.clearSnooze(type, fromPeer = true)
-                store.edit().putLong(KEY_SNOOZE_CHANGED + type.id, action.changedAtMs).apply()
+                store.edit().putLong(KEY_SNOOZE_CHANGED + type.id, action.changedAtMs)
+                    .putId(KEY_SNOOZE_CHANGED + type.id, action.id).apply()
                 Log.i(LOG_ID, "snooze of ${type.name} ended from the other device")
             }
             is SilenceAction.AdoptSnoozeTime -> {
-                store.edit().putLong(KEY_SNOOZE_CHANGED + action.typeId, action.changedAtMs).apply()
+                store.edit().putLong(KEY_SNOOZE_CHANGED + action.typeId, action.changedAtMs)
+                    .putId(KEY_SNOOZE_CHANGED + action.typeId, action.id).apply()
             }
             is SilenceAction.Dismiss -> {
                 val type = AlertType.fromId(action.typeId)?.takeIf(::synced) ?: return
                 // Recorded whether or not an alarm here is the one dismissed: the same
                 // dismissal is then not taken again.
-                store.edit().putLong(KEY_DISMISSED + type.id, action.dismissedAtMs).apply()
+                store.edit().putLong(KEY_DISMISSED + type.id, action.dismissedAtMs)
+                    .putId(KEY_DISMISSED + type.id, action.id).apply()
                 dismissFromPeer(type, action.dismissedAtMs, mayRecheck = true)
             }
             is SilenceAction.StartQuiet -> {
@@ -338,7 +422,7 @@ object AlarmSilenceSync {
                 } else {
                     QuietWindow.startUntil(context, entry.untilMs, entry.mode, fromPeer = true)
                 }
-                store.edit().putLong(KEY_QUIET_CHANGED, entry.changedAtMs).apply()
+                store.edit().putLong(KEY_QUIET_CHANGED, entry.changedAtMs).putId(KEY_QUIET_CHANGED, entry.id).apply()
                 Log.i(LOG_ID, "quiet window from the other device until ${entry.untilMs}")
             }
             is SilenceAction.EndQuiet -> {
@@ -346,11 +430,11 @@ object AlarmSilenceSync {
                 if (QuietWindow.untilMs(System.currentTimeMillis()) > 0L) {
                     QuietWindow.end(context, fromPeer = true)
                 }
-                store.edit().putLong(KEY_QUIET_CHANGED, action.changedAtMs).apply()
+                store.edit().putLong(KEY_QUIET_CHANGED, action.changedAtMs).putId(KEY_QUIET_CHANGED, action.id).apply()
                 Log.i(LOG_ID, "quiet window ended from the other device")
             }
             is SilenceAction.AdoptQuietTime -> {
-                store.edit().putLong(KEY_QUIET_CHANGED, action.changedAtMs).apply()
+                store.edit().putLong(KEY_QUIET_CHANGED, action.changedAtMs).putId(KEY_QUIET_CHANGED, action.id).apply()
             }
         }
     }
@@ -385,11 +469,16 @@ object AlarmSilenceSync {
             val wasSnoozed = SnoozeManager.isSnoozed(type)
             SnoozeManager.clearSnooze(type, fromPeer = true)
             if (wasSnoozed) {
-                prefs()?.edit()?.putLong(KEY_SNOOZE_CHANGED + type.id, dismissedAtMs)?.apply()
+                // Ended by that dismissal, not by a change of its own: no id.
+                prefs()?.edit()?.putLong(KEY_SNOOZE_CHANGED + type.id, dismissedAtMs)
+                    ?.putId(KEY_SNOOZE_CHANGED + type.id, null)?.apply()
             }
             Notify.cancelRetrySession(type.id, "peer-dismiss")
         }
-        if (!tracked) lossAlarmStartedAtMs = 0L
+        if (!tracked) {
+            lossAlarmStartedAtMs = 0L
+            lossAnswered = true
+        }
         stopRinging(type, kindBefore, "peer-dismiss")
         Log.i(LOG_ID, "dismissed ${type.name} from the other device")
     }

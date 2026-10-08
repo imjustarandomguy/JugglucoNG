@@ -3,7 +3,6 @@ package tk.glucodata.alerts
 import tk.glucodata.Applic
 import tk.glucodata.Log
 import tk.glucodata.MessageSender
-import tk.glucodata.SensorOwnershipRuntime
 
 /** The phone's "Where alarms ring" setting. Global, not per alert type. */
 enum class AlarmRoutingMode {
@@ -46,7 +45,10 @@ data class GlobalAlertSettings(
  *
  * There is no escalation: an unanswered watch alarm never makes the phone ring,
  * and nothing is special about Very low. Whenever the phone cannot tell whether
- * the watch is reachable or charging, it rings.
+ * the watch is reachable or charging, it rings. Reachable takes a fresh status
+ * report from the watch ([WatchAlarmReadiness]), not only discovery finding its
+ * app. A firing held for the watch stays pending ([offer]): if the watch drops out during the episode, the phone
+ * rings for it.
  *
  * Only glucose alarms follow the setting ([routes]). Sensor expiry is a notice
  * about the sensor, not about glucose, and stays as it was: both ring.
@@ -94,12 +96,30 @@ object AlarmRouting {
             if (onWatch || mode != AlarmRoutingMode.WATCH_WHEN_CONNECTED) {
                 shouldRing(onWatch, mode, watchReachable = null, watchCharging = null)
             } else {
-                shouldRing(false, mode, watchReachableFromPhone(), SensorOwnershipRuntime.peerCharging())
+                shouldRing(false, mode, watchAvailableFromPhone(), WatchAlarmReadiness.watchCharging())
             }
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "ringsHere ${type.name}", t)
             true
         }
+    }
+
+    /**
+     * Offers a firing of [type] to this device. When it [ringsHere], [deliver]
+     * sounds it and says whether it did. Otherwise it is held for the other
+     * device ([AlertStateTracker.onAlertHeld]) once [mayStart], the first-fire
+     * gate, lets the episode start: nothing is shown and the episode is not
+     * spent, so the next offer (the next reading or check) asks again, and the
+     * episode rings here as soon as the other device cannot take it. An
+     * unanswered alarm on the other device never makes it ring here: only
+     * [ringsHere] does. False while held.
+     */
+    internal fun offer(type: AlertType, ringsHere: Boolean, mayStart: () -> Boolean, deliver: () -> Boolean): Boolean {
+        if (ringsHere) return deliver()
+        if (!AlertStateTracker.isHeld(type) && mayStart() && AlertStateTracker.onAlertHeld(type)) {
+            Log.i(LOG_ID, "Held ${type.name} for the other device (${describeInputs()})")
+        }
+        return false
     }
 
     /** What [ringsHere] decided from, for the log line of a held alarm. */
@@ -109,7 +129,8 @@ object AlarmRouting {
         if (Applic.isWearable) {
             "mode=$mode on watch"
         } else {
-            "mode=$mode watchReachable=${watchReachableFromPhone()} watchCharging=${SensorOwnershipRuntime.peerCharging()}"
+            "mode=$mode watchDiscovered=${watchReachableFromPhone()} watchReachable=${watchAvailableFromPhone()} " +
+                "watchCharging=${WatchAlarmReadiness.watchCharging()} reportAgeMs=${WatchAlarmReadiness.reportAgeMs()}"
         }
     }.getOrDefault("inputs unavailable")
 
@@ -126,4 +147,12 @@ object AlarmRouting {
         val nodes = MessageSender.getMessageSender()?.nodes ?: return null
         return nodes.isNotEmpty()
     }
+
+    /**
+     * Phone: whether the watch counts as reachable for [shouldRing]: discovery finds
+     * it and its last status report is fresh ([WatchAlarmReadiness]). Null when
+     * discovery cannot tell.
+     */
+    @JvmStatic
+    fun watchAvailableFromPhone(): Boolean? = WatchAlarmReadiness.watchReachable(watchReachableFromPhone())
 }

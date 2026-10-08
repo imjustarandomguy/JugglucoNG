@@ -53,6 +53,9 @@ enum class WearMessagePath(val wire: String) {
     // A test alarm from the phone's alert settings (phone to watch), and its stop (both
     // ways): AlarmTestSync. Under /sync2 for the same reason; an older build drops it.
     SYNC2_ALARM_TEST("/sync2/alarmtest"),
+    // The watch's status for where the phone's alarms ring (WatchAlarmReadiness), watch
+    // to phone. Under /sync2 for the same reason; an older build drops it.
+    SYNC2_WATCH_STATUS("/sync2/watchstatus"),
     TOGGLES("/toggles"),
     TOGGLES_REQ("/toggles/req"),
     TOGGLES_SET("/toggles/set"),

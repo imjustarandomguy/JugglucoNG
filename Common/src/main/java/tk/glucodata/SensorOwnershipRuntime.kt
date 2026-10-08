@@ -61,22 +61,6 @@ internal fun resolvePeerGone(
     return undiscoverableForMs >= 0L && undiscoverableForMs >= graceMs
 }
 
-/**
- * Whether the peer was on its charger, from its last report: null when that
- * report did not say (an older build), or is older than [maxAgeMs], the same
- * silence after which its ownership report stops counting.
- */
-internal fun resolvePeerCharging(
-    charging: Boolean?,
-    receivedAtMs: Long,
-    nowMs: Long,
-    maxAgeMs: Long,
-): Boolean? {
-    val age = nowMs - receivedAtMs
-    if (age < 0L || age > maxAgeMs) return null
-    return charging
-}
-
 /** Whether to trust the peer's most recent "I don't own it" report yet; see [resolvePeerStandDownConfirmation]. */
 internal data class PeerStandDownConfirmation(
     /**
@@ -343,8 +327,8 @@ object SensorOwnershipRuntime {
 
     /**
      * Phone: the watch's charger state from its last report, and when that
-     * arrived. Where alarms ring ([tk.glucodata.alerts.AlarmRouting]) reads it
-     * through [peerCharging]. Null until a report has said, and again once the
+     * arrived. Where alarms ring ([tk.glucodata.alerts.WatchAlarmReadiness]) reads it
+     * through [peerChargingHeard]. Null until a report has said, and again once the
      * watch drops out of reach: it may have been put on its charger since.
      */
     private data class PeerCharging(val charging: Boolean?, val receivedAtMs: Long)
@@ -864,21 +848,14 @@ object SensorOwnershipRuntime {
     }
 
     /**
-     * Phone: whether the watch is on its charger, from its latest report, or
-     * null when that cannot be told: no report yet, a report from a build that
-     * does not say, the watch out of reach since, or a report older than the
-     * silence after which its ownership report stops counting too.
+     * Phone: the charger state the watch's last ownership report carried, and when
+     * it arrived; null with none since the watch was last in reach.
      */
-    @JvmStatic
-    fun peerCharging(): Boolean? {
-        if (Applic.isWearable) return null
-        val report = peerChargingReport ?: return null
-        val maxAgeMs = if (autoSwitchEnabled()) AUTO_SWITCH_PEER_SILENT_AFTER_MS else PEER_SILENT_AFTER_MS
-        return resolvePeerCharging(report.charging, report.receivedAtMs, System.currentTimeMillis(), maxAgeMs)
-    }
+    internal fun peerChargingHeard(): tk.glucodata.alerts.WatchAlarmReadiness.Charging? =
+        peerChargingReport?.let { tk.glucodata.alerts.WatchAlarmReadiness.Charging(it.charging, it.receivedAtMs) }
 
     /** Watch: whether it is on its charger (plugged in, charging or full), or null if unreadable. */
-    private fun localCharging(): Boolean? = runCatching {
+    internal fun localCharging(): Boolean? = runCatching {
         val status = Applic.app?.registerReceiver(
             null,
             android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),

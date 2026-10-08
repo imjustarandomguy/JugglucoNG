@@ -5534,6 +5534,23 @@ public class Notify {
         }
     }
 
+    /**
+     * The signal-loss alarm as the phone's loss check says it. False while it is held
+     * for the other device (where alarms ring): not said, so the check asks again next
+     * time, and it rings here once the other device cannot take it.
+     */
+    public boolean sayLossAlarm(long time) {
+        if (!tk.glucodata.alerts.AlarmRouting.ringsHere(AlertType.LOSS)) {
+            Log.i(LOG_ID, "lossalarm held for the other device ("
+                    + tk.glucodata.alerts.AlarmRouting.describeInputs() + ")");
+            // Dated, so a dismissal on the other device reaches it.
+            tk.glucodata.alerts.AlarmSilenceSync.onLossAlarmHeld();
+            return false;
+        }
+        lossalarm(time);
+        return true;
+    }
+
     // final private int lossalarmid=77332;
     public void lossalarm(long time) {
         {
@@ -5543,11 +5560,15 @@ public class Notify {
             ;
         }
         ;
-        // Where alarms ring: the other device sounds the signal loss. The caller
-        // counts it as said either way, so it does not come back later.
+        // Where alarms ring: the other device sounds the signal loss.
         if (!tk.glucodata.alerts.AlarmRouting.ringsHere(AlertType.LOSS)) {
             Log.i(LOG_ID, "lossalarm held for the other device ("
                     + tk.glucodata.alerts.AlarmRouting.describeInputs() + ")");
+            return;
+        }
+        if (tk.glucodata.alerts.AlarmSilenceSync.lossAnsweredOnPeer()) {
+            // Held here, then dismissed on the other device: answered.
+            Log.i(LOG_ID, "lossalarm answered on the other device");
             return;
         }
         // Dates this alarm for a dismissal made on the other device.

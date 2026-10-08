@@ -127,6 +127,10 @@ class MessageReceiver: WearableListenerService() {
                 // A test alarm from the phone, or a test stopped on the other device.
                 tk.glucodata.alerts.AlarmTestSync.onPeerMessage(data)
             }
+            WearMessagePath.SYNC2_WATCH_STATUS -> {
+                // The watch says it can ring the alarms the phone leaves to it.
+                if (!isWearable) tk.glucodata.alerts.WatchAlarmReadiness.onWatchReport(data)
+            }
             WearMessagePath.SYNC2_JOURNAL_REQ -> {
                 if (!isWearable) WearJournalSync.onRequest(
                     if (data != null && data.size >= 9) {

@@ -115,25 +115,118 @@ class AlarmRoutingTests {
         AlertType.fromId(14)?.let { persistentLow -> assertTrue(AlarmRouting.routes(persistentLow)) }
     }
 
-    // -------------------------------------------------------- the episode spent
+    // --------------------------------------------------------- the episode held
 
     private val held = AlertType.PRE_HIGH
+
+    /** Never delivered in any test: its rearm cooldown can only come from a hold. */
+    private val neverDelivered = AlertType.PERSISTENT_HIGH
 
     @After
     fun forgetHeldEpisode() {
         AlertStateTracker.consumeManualTestAction(held)
         AlertStateTracker.resetState(held)
+        AlertStateTracker.resetState(neverDelivered)
     }
 
     @Test
-    fun aHeldFiringSpendsTheEpisodeAndItsCooldownLikeADelivery() {
+    fun aHeldFiringLeavesTheEpisodeUndelivered() {
+        AlertStateTracker.resetState(neverDelivered)
+        assertFalse(AlertStateTracker.isEpisodeActive(neverDelivered))
+
+        assertTrue("starts the hold", AlertStateTracker.onAlertHeld(neverDelivered))
+        assertFalse("once per episode", AlertStateTracker.onAlertHeld(neverDelivered))
+
+        assertTrue(AlertStateTracker.isHeld(neverDelivered))
+        assertTrue("the episode runs", AlertStateTracker.isEpisodeActive(neverDelivered))
+        assertTrue("dated for a dismissal on the other device", AlertStateTracker.episodeStartedAtMs(neverDelivered) > 0L)
+        assertFalse("but is not spent: no rearm cooldown", AlertStateTracker.isWaitingForRearmCooldown(neverDelivered))
+    }
+
+    @Test
+    fun ringingHereEndsTheHold() {
         AlertStateTracker.resetState(held)
+        AlertStateTracker.onAlertHeld(held)
+        assertTrue(AlertStateTracker.onAlertTriggered(held))
+        assertFalse(AlertStateTracker.isHeld(held))
+        assertTrue(AlertStateTracker.isEpisodeActive(held))
+    }
+
+    /**
+     * The phone's offers of one episode, one per reading or check, as the runtime makes
+     * them in "Watch when connected"; [deliver] stands for Notify's first firing of the
+     * episode: once, and not after a dismissal.
+     */
+    private inner class PhoneOffers {
+        var deliveries = 0
+
+        fun offer(watchAvailable: Boolean): Boolean = AlarmRouting.offer(
+            held,
+            ringsHere = AlarmRouting.shouldRing(
+                onWatch = false,
+                AlarmRoutingMode.WATCH_WHEN_CONNECTED,
+                watchReachable = watchAvailable,
+                watchCharging = false,
+            ),
+            mayStart = { !AlertStateTracker.isDismissed(held) },
+            deliver = {
+                if (deliveries > 0 || AlertStateTracker.isDismissed(held)) {
+                    false
+                } else {
+                    deliveries++
+                    AlertStateTracker.onAlertTriggered(held)
+                }
+            },
+        )
+    }
+
+    @Test
+    fun heldThenTheWatchDropsOutThePhoneRingsForThatEpisode() {
+        AlertStateTracker.resetState(held)
+        val phone = PhoneOffers()
+        repeat(3) { assertFalse(phone.offer(watchAvailable = true)) }
+        assertTrue(AlertStateTracker.isHeld(held))
+        assertEquals(0, phone.deliveries)
+
+        // Out of reach, on its charger or silent: the next offer rings here.
+        assertTrue(phone.offer(watchAvailable = false))
+        assertEquals(1, phone.deliveries)
+        assertFalse(AlertStateTracker.isHeld(held))
+        // Delivered once: the episode is spent now.
+        assertFalse(phone.offer(watchAvailable = false))
+        assertEquals(1, phone.deliveries)
+    }
+
+    @Test
+    fun heldWhileTheWatchStaysThePhoneStaysSilent() {
+        // No escalation: an alarm left unanswered on the watch never rings the phone.
+        AlertStateTracker.resetState(held)
+        val phone = PhoneOffers()
+        repeat(40) { assertFalse(phone.offer(watchAvailable = true)) }
+        assertEquals(0, phone.deliveries)
+        assertTrue(AlertStateTracker.isHeld(held))
+    }
+
+    @Test
+    fun aDismissalOnTheWatchEndsTheHold() {
+        AlertStateTracker.resetState(held)
+        val phone = PhoneOffers()
+        phone.offer(watchAvailable = true)
+        assertTrue(AlertStateTracker.onAlertDismissed(held, fromPeer = true))
+        assertFalse(AlertStateTracker.isHeld(held))
+        // Answered there: the watch dropping out later does not ring the phone.
+        assertFalse(phone.offer(watchAvailable = false))
+        assertEquals(0, phone.deliveries)
+    }
+
+    @Test
+    fun anEpisodeThatEndsWhileHeldLeavesNothingBehind() {
+        AlertStateTracker.resetState(held)
+        PhoneOffers().offer(watchAvailable = true)
+        AlertStateTracker.resetState(held)
+        assertFalse(AlertStateTracker.isHeld(held))
         assertFalse(AlertStateTracker.isEpisodeActive(held))
-
-        AlertStateTracker.onAlertHeld(held, AlertDefaults.defaultConfig(held, isMmol = true))
-
-        assertTrue("the episode counts as fired", AlertStateTracker.isEpisodeActive(held))
-        assertTrue("and waits out the rearm cooldown", AlertStateTracker.isWaitingForRearmCooldown(held))
+        assertEquals(0L, AlertStateTracker.episodeStartedAtMs(held))
     }
 
     @Test
