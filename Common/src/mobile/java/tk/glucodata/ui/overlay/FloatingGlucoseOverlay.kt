@@ -10,6 +10,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -150,6 +151,8 @@ fun FloatingGlucoseOverlay(
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
     /** Opens or closes the details card on a tap ("Details on tap"); otherwise a tap opens the app. */
     onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
+    /** With "Details on tap" on: called, with why, for a tap that does not reach [onToggleDetails]. */
+    onTapNotOpened: (String) -> Unit = {},
     /** Opens the app (a tap with "Details on tap" off, or a long press on the island). */
     onOpenApp: () -> Unit,
 ) {
@@ -296,16 +299,33 @@ fun FloatingGlucoseOverlay(
     )
     var pendingDragX by remember { mutableFloatStateOf(0f) }
     var pendingDragY by remember { mutableFloatStateOf(0f) }
-    
+    var dragging by remember { mutableStateOf(false) }
+
+    // A press that ends in no click (the finger left the pill, or the system took the
+    // touch) showed its press and opened nothing: said, for the trace. The free pill's
+    // drags end so too, and are not taps.
+    val currentTapShowsDetails by rememberUpdatedState(tapShowsDetails)
+    val currentOnTapNotOpened by rememberUpdatedState(onTapNotOpened)
+    LaunchedEffect(overlayInteractionSource) {
+        overlayInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Cancel && !dragging && currentTapShowsDetails) {
+                currentOnTapNotOpened("press cancelled")
+            }
+        }
+    }
+
     // Drag Modifier
     val dragModifier = if (isDynamicIsland) Modifier else Modifier.pointerInput(Unit) {
         detectDragGestures(
+            onDragStart = { dragging = true },
             onDragEnd = {
+                dragging = false
                 pendingDragX = 0f
                 pendingDragY = 0f
                 onDragFinished()
             },
             onDragCancel = {
+                dragging = false
                 pendingDragX = 0f
                 pendingDragY = 0f
                 onDragFinished()
@@ -378,8 +398,13 @@ fun FloatingGlucoseOverlay(
                 )
             )
         } else {
+            if (toggle != null) onTapNotOpened("no reading, opening the app")
             onOpenApp()
         }
+    }
+    val onPillLongPress: () -> Unit = {
+        if (tapShowsDetails) onTapNotOpened("held, opening the app")
+        onOpenApp()
     }
 
     val displayValues = displayPoint?.let { point ->
@@ -592,7 +617,7 @@ fun FloatingGlucoseOverlay(
             .combinedClickable(
                 interactionSource = overlayInteractionSource,
                 indication = null,
-                onLongClick = onOpenApp,
+                onLongClick = onPillLongPress,
                 onClick = onPillTap,
             )
         CutoutOffsetLayout(

@@ -107,7 +107,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private var detailsRoot: View? = null
     // The WindowManager the card went in through: the pill's; see FloatingDetailsWindow.
     private var detailsHost: WindowManager? = null
-    private var detailsClosedByOutsideTouchAt = 0L
+    // Event times (uptime): of the touch outside the card that last closed it, and of the
+    // last touch down on the pill; see FloatingDetailsWindow.closedByThisTap.
+    private var detailsClosedByTouchAt = Long.MIN_VALUE
+    private var pillTouchDownAt = 0L
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private lateinit var settingsRepository: FloatingSettingsRepository
@@ -240,7 +243,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private fun setupOverlay() {
         if (composeView != null) return
 
-        val root = CutoutAwareContainer(this) { v, insets ->
+        val root = CutoutAwareContainer(
+            this,
+            onTouchDown = { pillTouchDownAt = it },
+        ) { v, insets ->
             if (android.os.Build.VERSION.SDK_INT >= 28) {
                 cutoutData.value = resolveCutoutData(v, insets.displayCutout)
                 if (dynamicIslandEnabled) {
@@ -273,6 +279,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                     onDragFinished = { persistViewPosition() },
                     cutoutDataFlow = cutoutData,
                     onToggleDetails = { toggleDetails(it) },
+                    onTapNotOpened = { tapNotOpened(it) },
                     onOpenApp = {
                         closeDetails()
                         openApp()
@@ -321,12 +328,19 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     private fun toggleDetails(request: FloatingDetailsRequest) {
         if (detailsRoot != null) {
             closeDetails()
+            tapNotOpened("the card was open, closed it")
             return
         }
-        // A pill tap this soon after an outside touch closed the card is that same touch.
-        val sinceClosed = android.os.SystemClock.uptimeMillis() - detailsClosedByOutsideTouchAt
-        if (sinceClosed < android.view.ViewConfiguration.getLongPressTimeout()) return
+        if (FloatingDetailsWindow.closedByThisTap(detailsClosedByTouchAt, pillTouchDownAt)) {
+            tapNotOpened("its touch closed the card")
+            return
+        }
         openDetails(request)
+    }
+
+    /** The trace line for a tap on the pill that does not open the details card: why not. */
+    private fun tapNotOpened(reason: String) {
+        tk.glucodata.Log.i(LOG_ID, "tap: $reason")
     }
 
     /**
@@ -338,10 +352,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      * bar and the lock screen too, for the pill drawn there.
      */
     private fun openDetails(request: FloatingDetailsRequest) {
-        val app = windowManager ?: return
+        val app = windowManager ?: return tapNotOpened("no window manager")
         // The pill is off screen: there is nothing to open the card beside.
-        val host = hostWindowManager ?: return
-        val anchor = overlayRoot ?: return
+        val host = hostWindowManager ?: return tapNotOpened("the pill has no window")
+        val anchor = overlayRoot ?: return tapNotOpened("the pill has no view")
         val location = IntArray(2)
         anchor.getLocationOnScreen(location)
         val pillLeft = location[0]
@@ -400,8 +414,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             }
         }
 
-        val root = OutsideTouchContainer(this) {
-            detailsClosedByOutsideTouchAt = android.os.SystemClock.uptimeMillis()
+        val root = OutsideTouchContainer(this) { touchAt ->
+            detailsClosedByTouchAt = touchAt
             closeDetails()
         }.apply {
             setViewTreeLifecycleOwner(this@FloatingGlucoseService)
@@ -426,14 +440,16 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         )
         // As the pill does: an app overlay if the accessibility host refuses it.
         // No timeout: the card stays until a tap outside it, the pill, or screen off closes it.
-        if (!addDetails(host, root, params) && host !== app) {
-            addDetails(app, root, params.apply {
+        val added = addDetails(host, root, params) || (
+            host !== app && addDetails(app, root, params.apply {
                 type = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 token = null
             })
-        }
+        )
+        if (added) tk.glucodata.Log.i(LOG_ID, "tap: card opened as ${windowTypeName(params.type)}")
     }
 
+    /** Adds the card's window; a refusal is logged, for the tap that then opens nothing. */
     private fun addDetails(host: WindowManager, root: View, params: WindowManager.LayoutParams): Boolean =
         try {
             host.addView(root, params)
@@ -441,9 +457,12 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             detailsHost = host
             true
         } catch (e: Exception) {
-            e.printStackTrace()
+            tk.glucodata.Log.i(LOG_ID, "tap: card not added as ${windowTypeName(params.type)}: $e")
             false
         }
+
+    private fun windowTypeName(type: Int): String =
+        if (type == WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) "accessibility overlay" else "app overlay"
 
     private fun closeDetails() {
         val root = detailsRoot ?: return
@@ -1027,22 +1046,29 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
      */
     private class CutoutAwareContainer(
         context: Context,
+        /** With the event time of each touch down on the pill. */
+        private val onTouchDown: (Long) -> Unit,
         private val onInsets: (View, WindowInsets) -> Unit
     ) : FrameLayout(context) {
         override fun dispatchApplyWindowInsets(insets: WindowInsets): WindowInsets {
             onInsets(this, insets)
             return super.dispatchApplyWindowInsets(insets)
         }
+
+        override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+            if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) onTouchDown(event.eventTime)
+            return super.dispatchTouchEvent(event)
+        }
     }
 
-    /** Root of the details card's window: reports touches that land outside it. */
+    /** Root of the details card's window: reports touches that land outside it, with their event time. */
     private class OutsideTouchContainer(
         context: Context,
-        private val onOutsideTouch: () -> Unit
+        private val onOutsideTouch: (Long) -> Unit
     ) : FrameLayout(context) {
         override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
             if (event.actionMasked == android.view.MotionEvent.ACTION_OUTSIDE) {
-                onOutsideTouch()
+                onOutsideTouch(event.eventTime)
                 return false
             }
             return super.dispatchTouchEvent(event)
