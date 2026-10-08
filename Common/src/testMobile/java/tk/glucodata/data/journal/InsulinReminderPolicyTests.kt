@@ -314,4 +314,45 @@ class InsulinReminderPolicyTests {
         assertTrue(InsulinReminderPolicy.firesInTime(at(21), at(22, 0)))
         assertFalse(InsulinReminderPolicy.firesInTime(at(21), at(22, 1)))
     }
+
+    // The last dose the reminder names
+
+    @Test
+    fun theLastDoseIsTheLatestOfThatInsulinUpToNow() {
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        val yesterday = dose(at(21, 4, dayOffset = -1), amount = 18f)
+        val before = dose(at(20, 55, dayOffset = -2), amount = 20f)
+        val fiasp = dose(at(18), presetId = fiaspId, title = "Fiasp", amount = 4f)
+        val ahead = dose(at(22))
+        assertEquals(
+            yesterday,
+            InsulinReminderPolicy.lastDose(listOf(before, yesterday, fiasp, ahead), tresiba, at(21))
+        )
+    }
+
+    @Test
+    fun aDoseImportedUnderAnotherInsulinCountsByItsName() {
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        val imported = dose(at(21, 2, dayOffset = -1), presetId = fiaspId, title = "tresiba")
+        assertEquals(imported, InsulinReminderPolicy.lastDose(listOf(imported), tresiba, at(21)))
+    }
+
+    @Test
+    fun noDoseWithinSixDaysNamesNone() {
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        val old = dose(at(20, 59, dayOffset = -6))
+        val empty = dose(at(21, dayOffset = -1), amount = null)
+        assertNull(InsulinReminderPolicy.lastDose(listOf(old, empty), tresiba, at(21)))
+        assertEquals(old, InsulinReminderPolicy.lastDose(listOf(old), tresiba, at(20, 59)))
+    }
+
+    @Test
+    fun daysAgoCountsDatesNotBlocksOf24Hours() {
+        assertEquals(0, InsulinReminderPolicy.daysAgo(at(0, 5), at(23, 55), utc))
+        assertEquals(1, InsulinReminderPolicy.daysAgo(at(23, 50, dayOffset = -1), at(0, 10), utc))
+        assertEquals(5, InsulinReminderPolicy.daysAgo(at(21, dayOffset = -5), at(9), utc))
+        val toronto = TimeZone.getTimeZone("America/Toronto")
+        // 22:00 in Toronto is 02:00 UTC the next day: still the same day there.
+        assertEquals(0, InsulinReminderPolicy.daysAgo(at(13), at(2, dayOffset = 1), toronto))
+    }
 }

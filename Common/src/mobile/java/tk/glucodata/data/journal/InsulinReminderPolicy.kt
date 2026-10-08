@@ -4,8 +4,8 @@ import java.util.Calendar
 import java.util.TimeZone
 
 /**
- * When a long-acting insulin's reminder speaks up: the pure rules behind the "Tresiba not logged"
- * notification. The alarms, the notification and the journal reads live in
+ * When a long-acting insulin's reminder speaks up: the pure rules behind the "Tresiba due at
+ * 21:00" notification. The alarms, the notification and the journal reads live in
  * tk.glucodata.journal.InsulinReminders; everything that decides lives here.
  *
  * A preset with reminder times (long-acting only, see [JournalInsulinDosing.reminderTimesFor])
@@ -111,6 +111,27 @@ object InsulinReminderPolicy {
 
     /** When a snooze pressed at [nowMillis] ends. */
     fun snoozeUntil(nowMillis: Long): Long = nowMillis + SNOOZE_MILLIS
+
+    /** How far back the reminder looks for the last dose it names: within 6 days a weekday is unambiguous. */
+    const val LAST_DOSE_LOOKBACK_MILLIS = 6L * 24L * 60L * 60_000L
+
+    /**
+     * The dose of [preset] the reminder names as the last one: the latest at or before
+     * [nowMillis], within [LAST_DOSE_LOOKBACK_MILLIS]; null when there is none.
+     */
+    fun lastDose(entries: List<JournalEntry>, preset: JournalInsulinPreset, nowMillis: Long): JournalEntry? =
+        entries
+            .filter { it.timestamp in (nowMillis - LAST_DOSE_LOOKBACK_MILLIS)..nowMillis && isDoseOf(it, preset) }
+            .maxByOrNull { it.timestamp }
+
+    /**
+     * Calendar days from [thenMillis] to [nowMillis] in [timeZone]: 0 the same day, 1 yesterday.
+     * Counted on dates, not 24-hour blocks, so 23:50 seen at 00:10 is yesterday.
+     */
+    fun daysAgo(thenMillis: Long, nowMillis: Long, timeZone: TimeZone = TimeZone.getDefault()): Int {
+        fun dayNumber(millis: Long): Long = Math.floorDiv(millis + timeZone.getOffset(millis), 24L * 60L * 60_000L)
+        return (dayNumber(nowMillis) - dayNumber(thenMillis)).toInt()
+    }
 
     /**
      * The first time strictly after [afterMillis] the clock in [timeZone] reads [minuteOfDay].
