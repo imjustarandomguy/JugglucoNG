@@ -306,6 +306,21 @@ Still open:
    7.1 for the same reading). Not the arrow bug (fixed). Check: calibration or smoothing
    applied on one side only, rounding, or the watch showing its own G7 stream rather than
    the phone-synced one. Not urgent (owner).
+9. **Dashboard chart scrolls about a day into the future** (seen 2026-10-08 on the build
+   installed 17:14). Review fix #30 (8947508aa, `fix/dashboard-chart-bounds`) moved the
+   right edge to 10 min past the latest journal content, which includes the nightly
+   long-acting dose's activity curve (24–42 h). Fix: leave long-acting insulin out of that
+   limit; keep rapid insulin and meal curve ends and future-dated entries; cap the whole
+   limit at a few hours ahead. With nothing active: now + 10 min (or the prediction
+   horizon), as the owner asked.
+10. **Hard to scroll down the dashboard page** (owner, 2026-10-08): a vertical swipe keeps
+    resizing the chart instead of scrolling the list. The swipe on the chart itself already
+    passes to the page (1bcd40285); what still catches it is the list's nested-scroll
+    expansion of the chart (`DashboardScreen.kt` ~1146-1243,
+    `DashboardChartExpansionGestureGate.kt`): pulling at the top grows the chart, and the
+    first scroll down shrinks it before the list moves. Options to discuss: resize only
+    with the handle (drop the pull-to-resize gesture) so a page swipe always scrolls; or
+    keep pull-to-grow but never let a downward page scroll shrink the chart.
 
 ## Done on 2026-10-06 (installed in 8920b3e04)
 
