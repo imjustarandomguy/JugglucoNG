@@ -1017,6 +1017,7 @@ object AlertRuntimeManager {
     private fun clearRuntimeAlert(type: AlertType, reason: String) {
         AlertStateTracker.resetState(type)
         Notify.cancelRetrySession(type.id, reason)
+        AlarmHistory.onCleared(type.id, reason)
     }
 
     private fun bootstrapLastReadingLocked() {

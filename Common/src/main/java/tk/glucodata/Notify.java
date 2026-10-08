@@ -2436,6 +2436,7 @@ public class Notify {
     private static int lastalarm = -1;
 
     static void stoplossalarm() {
+        tk.glucodata.alerts.AlarmHistory.onCleared(4, "new-reading-arrived");
         if (lastalarm == 4) {
             lastalarm = -1;
             stopalarm();
@@ -3552,6 +3553,7 @@ public class Notify {
                         final boolean productionTrigger = AlertStateTracker.INSTANCE.onAlertTriggered(alertType, config);
                         if (productionTrigger) {
                             syncRetrySession(kind, glvalue, message, strglucose, type, config, true);
+                            tk.glucodata.alerts.AlarmHistory.onFired(kind, glvalue);
                         }
                     }
                 }
@@ -5515,6 +5517,7 @@ public class Notify {
         final String message = "***  " + Applic.getContext().getString(R.string.nonewvalue) + tformat + " ***";
 
         // oldfloatmessage(tformat, true) ;
+        tk.glucodata.alerts.AlarmHistory.onFired(4, Float.NaN);
         lossofsignalalarm(4, R.drawable.loss, message, alertChannelForKind(4), true);
     }
 

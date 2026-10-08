@@ -154,6 +154,7 @@ object AlertStateTracker {
         dismissedAlerts.add(type)
         lastFiringAcknowledged.replace(type, true)
         SmsWatchdog.onAlertAcknowledged(type.id)
+        AlarmHistory.onDismissed(type.id)
         // Acknowledged: a quiet window's silenced episode must not break through now.
         QuietWindow.clearSilencedEpisode(type.id)
         Log.i(LOG_ID, "Dismissed ${type.name} for current episode")
