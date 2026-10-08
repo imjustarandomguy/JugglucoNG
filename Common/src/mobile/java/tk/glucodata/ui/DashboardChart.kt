@@ -42,7 +42,7 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
@@ -129,6 +129,7 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.platform.LocalConfiguration
@@ -2109,7 +2110,7 @@ fun InteractiveGlucoseChart(
                             }
 
                             // Only allow scrubbing if purely single tap start (not double tap sequence)
-                            isScrubbing = if (
+                            val startedNearLine = if (
                                 !startedOnJournalMarker && pointAtTouch != null && !isOneFingerZoom
                             ) {
                                 val timeDiff = timeAtTouch - pointAtTouch.timestamp
@@ -2129,10 +2130,42 @@ fun InteractiveGlucoseChart(
                                 false
                             }
 
-                            if (isScrubbing) {
+                            // Near the line, a touch scrubs once it shows it is a scrub: a hold, a
+                            // tap, or a mostly horizontal drag. A mostly vertical drag is the page's,
+                            // as anywhere else on the chart.
+                            var scrubPending = startedNearLine
+                            isScrubbing = false
+                            fun startScrub() {
+                                scrubPending = false
+                                isScrubbing = true
                                 dismissJournalActionIfNeeded()
+                            }
+                            fun scrubTo(x: Float) {
+                                val clampedX = x.coerceIn(0f, usefulWidth)
+                                val currentFrac = (clampedX / usefulWidth).toDouble()
+                                val currentViewportStart = centerTime - visibleDuration / 2
+                                val currentTime =
+                                    currentViewportStart + (currentFrac * visibleDuration)
+                                val updatedPoint = getPointAt(currentTime)
+                                selectedPoint = updatedPoint
+                                performScrubHaptic(updatedPoint)
+                            }
+                            fun startScrubAtTouch() {
+                                startScrub()
                                 selectedPoint = pointAtTouch
                                 performScrubHaptic(pointAtTouch)
+                            }
+                            // A finger held still scrubs after half the long-press timeout, so the
+                            // long press (the timeline menu) still comes at the full one.
+                            val scrubHoldJob = if (scrubPending) {
+                                coroutineScope.launch {
+                                    kotlinx.coroutines.delay(viewConfiguration.longPressTimeoutMillis / 2)
+                                    if (scrubPending && lockedPanAxis == 0 && !longPressTriggered) {
+                                        startScrubAtTouch()
+                                    }
+                                }
+                            } else {
+                                null
                             }
 
                             while (true) {
@@ -2144,6 +2177,7 @@ fun InteractiveGlucoseChart(
                                 if (pointerCount == 0 || newChange.changedToUp()) break
                                 if (pointerCount != lastPointerCount) {
                                     longPressJob?.cancel()
+                                    scrubHoldJob?.cancel()
                                     lockedPanAxis = 0
                                     accumulatedPanX = 0f
                                     accumulatedPanY = 0f
@@ -2213,15 +2247,7 @@ fun InteractiveGlucoseChart(
                                         if (totalDragDistance > viewConfiguration.touchSlop) {
                                             longPressJob?.cancel()
                                         }
-                                        val clampedX =
-                                            newChange.position.x.coerceIn(0f, usefulWidth)
-                                        val currentFrac = (clampedX / usefulWidth).toDouble()
-                                        val currentViewportStart = centerTime - visibleDuration / 2
-                                        val currentTime =
-                                            currentViewportStart + (currentFrac * visibleDuration)
-                                        val updatedPoint = getPointAt(currentTime)
-                                        selectedPoint = updatedPoint
-                                        performScrubHaptic(updatedPoint)
+                                        scrubTo(newChange.position.x)
                                         newChange.consume()
                                     } else {
                                         val panX = newChange.position.x - change.position.x
@@ -2247,7 +2273,12 @@ fun InteractiveGlucoseChart(
                                             // list around the chart scrolls, and the chart lets the rest go.
                                             break
                                         }
-                                        if (lockedPanAxis == 1) {
+                                        if (lockedPanAxis == 1 && scrubPending) {
+                                            // Started on the line: a mostly horizontal drag scrubs it.
+                                            startScrub()
+                                            scrubTo(newChange.position.x)
+                                            newChange.consume()
+                                        } else if (lockedPanAxis == 1) {
                                             // Horizontal pan
                                             panViewportByPixels(panX, usefulWidth)
                                             newChange.consume()
@@ -2265,6 +2296,11 @@ fun InteractiveGlucoseChart(
                             val wasTap = !startedOnJournalMarker &&
                                 totalDragDistance < viewConfiguration.touchSlop
                             longPressJob?.cancel()
+                            scrubHoldJob?.cancel()
+                            if (scrubPending && wasTap && !longPressTriggered) {
+                                // A tap on the line selects its point, as touching it did before.
+                                startScrubAtTouch()
+                            }
                             lastGestureWasTap = wasTap && !isOneFingerZoom && !isScrubbing && !longPressTriggered
 
                             if (wasTap) {
@@ -4284,7 +4320,7 @@ fun InteractiveGlucoseChart(
                         .widthIn(min = 48.dp)
                         .clip(cardShape) // Clip ripple to match rounded corners
                         .pointerInput(overlayDataWidthPx, visibleDuration) {
-                            detectDragGestures(
+                            detectHorizontalDragGestures(
                                 onDragStart = {
                                     cancelAutoScroll()
                                     isUserInteracting = true
@@ -4299,9 +4335,9 @@ fun InteractiveGlucoseChart(
                                     lastInteractionTimestamp = System.currentTimeMillis()
                                 }
                             ) { change, dragAmount ->
-                                if (abs(dragAmount.x) >= abs(dragAmount.y)) {
+                                if (abs(dragAmount) >= abs(change.positionChange().y)) {
                                     change.consume()
-                                    panViewportByPixels(dragAmount.x, overlayDataWidthPx)
+                                    panViewportByPixels(dragAmount, overlayDataWidthPx)
                                 }
                             }
                         }
@@ -4468,7 +4504,7 @@ fun InteractiveGlucoseChart(
                         }
                         .graphicsLayer { translationX = -size.width / 2f }
                         .pointerInput(overlayDataWidthPx, visibleDuration) {
-                            detectDragGestures(
+                            detectHorizontalDragGestures(
                                 onDragStart = {
                                     cancelAutoScroll()
                                     isUserInteracting = true
@@ -4483,9 +4519,9 @@ fun InteractiveGlucoseChart(
                                     lastInteractionTimestamp = System.currentTimeMillis()
                                 }
                             ) { change, dragAmount ->
-                                if (abs(dragAmount.x) >= abs(dragAmount.y)) {
+                                if (abs(dragAmount) >= abs(change.positionChange().y)) {
                                     change.consume()
-                                    panViewportByPixels(dragAmount.x, overlayDataWidthPx)
+                                    panViewportByPixels(dragAmount, overlayDataWidthPx)
                                 }
                             }
                         }
