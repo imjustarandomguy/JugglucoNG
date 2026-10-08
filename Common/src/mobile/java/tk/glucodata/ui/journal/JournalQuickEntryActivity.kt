@@ -21,9 +21,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalAccessibilityManager
@@ -32,11 +34,13 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import tk.glucodata.Log
 import tk.glucodata.QUICK_ENTRY_EXTRA_TYPE
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
+import tk.glucodata.data.journal.JournalSave
 import tk.glucodata.ui.JugglucoTheme
 
 /**
@@ -72,11 +76,15 @@ class JournalQuickEntryActivity : ComponentActivity() {
                 }
                 val current = request
                 if (unlocked && current != null) {
-                    QuickEntryContent(
-                        request = current,
-                        onFinish = ::finish,
-                        onSaved = ::releaseScreen
-                    )
+                    // A new request starts over: a save still running for the old one finishes
+                    // in QuickEntryWrites, but its result no longer reaches this screen.
+                    key(current) {
+                        QuickEntryContent(
+                            request = current,
+                            onFinish = ::finish,
+                            onSaved = ::releaseScreen
+                        )
+                    }
                 }
             }
         }
@@ -202,18 +210,32 @@ private fun QuickEntryContent(
         }
     }
     var saved by remember(request) { mutableStateOf<SavedEntries?>(null) }
+    var saving by remember(request) { mutableStateOf(false) }
+    var saveFailed by remember(request) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     val loaded = data ?: return
 
+    // The sheet stays, Save disabled, until the entries are stored: only then "Saved" and its
+    // undo. A failed save keeps the sheet and what was typed, with a line saying so.
     fun save(inputs: List<JournalEntryInput>) {
-        if (inputs.isEmpty()) return
-        saved = SavedEntries(
-            message = context.getString(
-                R.string.journal_saved_entry,
-                journalSavedSummary(context, inputs, loaded.presetsById, loaded.unit)
-            ),
-            ids = QuickEntryWrites.save(context.applicationContext, inputs)
+        if (inputs.isEmpty() || saving) return
+        val message = context.getString(
+            R.string.journal_saved_entry,
+            journalSavedSummary(context, inputs, loaded.presetsById, loaded.unit)
         )
-        onSaved()
+        saving = true
+        saveFailed = false
+        val pending = QuickEntryWrites.save(context.applicationContext, inputs)
+        scope.launch {
+            when (val outcome = pending.await()) {
+                is JournalSave.Outcome.Saved -> {
+                    saved = SavedEntries(message, outcome.ids)
+                    onSaved()
+                }
+                is JournalSave.Outcome.Failed -> saveFailed = true
+            }
+            saving = false
+        }
     }
 
     val result = saved
@@ -233,7 +255,9 @@ private fun QuickEntryContent(
             onSaveFood = QuickEntryWrites::saveFood,
             sensorSerialProvider = { loaded.sensorSerial },
             initialInsulinPresetId = request.insulinPresetId,
-            initialInsulinAmount = request.insulinAmount
+            initialInsulinAmount = request.insulinAmount,
+            saving = saving,
+            saveError = if (saveFailed) stringResource(R.string.journal_save_failed_kept) else null
         )
     } else {
         QuickEntryUndoBar(
