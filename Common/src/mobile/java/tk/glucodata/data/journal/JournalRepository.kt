@@ -334,6 +334,60 @@ class JournalRepository {
     }
 
     /**
+     * Writes the importer's [inputs] that [writes] accepts, each decided on its row (found by
+     * sourceRecordId; null when there is none) as this transaction reads it: an edit or a deletion
+     * made since the importer last read the row is seen here, not written over. One transaction
+     * for the batch; each write is [upsertEntry]'s. For rows of this device's own sources.
+     *
+     * @return how many were written
+     */
+    suspend fun upsertEntriesWhere(
+        inputs: List<JournalEntryInput>,
+        writes: (input: JournalEntryInput, row: JournalEntry?) -> Boolean,
+    ): Int {
+        if (inputs.isEmpty()) return 0
+        val written = database.withTransaction {
+            inputs.filter { input ->
+                // The row upsertEntry would land on by name.
+                val row = input.sourceRecordId?.takeIf { it.isNotBlank() }?.let { dao.getEntryBySourceRecordId(it) }
+                writes(input, row?.toModel()).also { if (it) upsertEntry(input) }
+            }
+        }
+        val own = written.filterNot { isMirroredSource(it.source) }
+        if (own.isNotEmpty()) {
+            // upsertEntry woke the uploads as its own, nested, transaction ended, before another
+            // connection could read the rows: once more now that they are committed.
+            if (own.any { affectsIob(it.type.storageValue) }) tk.glucodata.OutboundApiJournalSnapshot.journalChanged()
+            tk.glucodata.NightscoutUploadWake.afterJournalChange()
+            tk.glucodata.Natives.wakebackup()
+        }
+        return written.size
+    }
+
+    /**
+     * Deletes the rows with these ids that are still there and that [deletes] accepts, each decided
+     * on its row as this transaction reads it: a row changed since the caller read it is seen here,
+     * not deleted unseen. One transaction; each delete is [deleteEntry]'s. For rows of this
+     * device's own sources.
+     *
+     * @return how many were deleted
+     */
+    suspend fun deleteEntriesWhere(ids: List<Long>, deletes: (row: JournalEntry) -> Boolean): Int {
+        if (ids.isEmpty()) return 0
+        val deleted = database.withTransaction {
+            ids.mapNotNull { id ->
+                dao.getEntryById(id)?.takeIf { deletes(it.toModel()) }?.also { deleteEntry(id) }
+            }
+        }
+        if (deleted.any { !isMirroredSource(JournalEntrySource.fromStorage(it.source)) }) {
+            // As above: deleteEntry's wakes came before the deletions were committed.
+            tk.glucodata.OutboundApiJournalSnapshot.journalChanged()
+            tk.glucodata.NightscoutUploadWake.afterJournalChange()
+        }
+        return deleted.size
+    }
+
+    /**
      * Renames an entry an importer can now identify more stably, leaving everything else
      * alone — the point is to keep the row, including edits made to it, not to rewrite it.
      *

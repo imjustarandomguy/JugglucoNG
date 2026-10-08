@@ -66,12 +66,17 @@ object HealthActivityImportPolicy {
 
     data class Interval(val startMillis: Long, val endMillis: Long)
 
-    /** A journal row the import wrote earlier. */
+    /**
+     * A journal row the import wrote earlier: [byImport] while it is still the import's, not the
+     * user's edit; [updatedAt] changes with every write to the row.
+     */
     data class ImportedRow(
         val id: Long,
         val sourceRecordId: String?,
         val startMillis: Long,
         val durationMinutes: Int?,
+        val byImport: Boolean = true,
+        val updatedAt: Long = 0L,
     )
 
     /** At most once per [FOREGROUND_INTERVAL_MILLIS]; [lastRunMillis] is 0 before the first run. */
@@ -162,6 +167,80 @@ object HealthActivityImportPolicy {
         !existing.byImport -> ImportAction.EDITED_HERE
         existing.content == incoming -> ImportAction.UNCHANGED
         else -> ImportAction.WRITE
+    }
+
+    /** A Health Connect record as the import would write it: its row's name and what the row would say. */
+    data class Incoming<R>(val name: String, val content: ActivityContent, val record: R)
+
+    /**
+     * The journal as the import uses it. [rowsNamed] and [importedRows] are plain reads, which an
+     * edit or a deletion of the user's can overtake while the import runs. [writeWhere] and
+     * [deleteWhere] read each row again inside one transaction and decide there, on the row as
+     * it is, so nothing changed in between is overwritten, brought back or deleted.
+     */
+    interface Journal<R> {
+        /** The rows under these names, by name. */
+        suspend fun rowsNamed(names: Collection<String>): Map<String, ExistingRow>
+
+        /** Writes each of [records] that [writes] accepts on its row as the transaction reads it (null: none). */
+        suspend fun writeWhere(records: List<Incoming<R>>, writes: (Incoming<R>, ExistingRow?) -> Boolean)
+
+        /** The rows the import wrote in the stretch it reads. */
+        suspend fun importedRows(): List<ImportedRow>
+
+        /**
+         * Deletes each of [rows] that [deletes] accepts on its row as the transaction reads it
+         * (null: gone). How many were deleted.
+         */
+        suspend fun deleteWhere(rows: List<ImportedRow>, deletes: (read: ImportedRow, now: ImportedRow?) -> Boolean): Int
+    }
+
+    /**
+     * Writes what is new or changed in Health Connect ([importAction]). The rows read first only
+     * pick the records worth writing; each of those is decided again on its row in the transaction
+     * that writes it. Only a write can be overtaken: a row the user edited stays theirs and one
+     * they deleted stays deleted, so a record skipped here never needs writing later in the run.
+     * A row there at the first read and gone at the write was deleted meanwhile, so it counts as
+     * imported before even when [importedBefore] does not list it yet.
+     */
+    suspend fun <R> importRecords(
+        journal: Journal<R>,
+        records: List<Incoming<R>>,
+        importedBefore: Set<String>,
+    ): Map<ImportAction, Int> {
+        val counts = HashMap<ImportAction, Int>()
+        fun counted(action: ImportAction) = action.also { counts[it] = (counts[it] ?: 0) + 1 }
+        val seen = journal.rowsNamed(records.map { it.name })
+        val toWrite = records.filter { record ->
+            val action = importAction(seen[record.name], record.content, record.name in importedBefore)
+            // A write is counted where it is decided for good, below.
+            if (action != ImportAction.WRITE) counted(action)
+            action == ImportAction.WRITE
+        }
+        if (toWrite.isNotEmpty()) {
+            journal.writeWhere(toWrite) { record, row ->
+                val before = record.name in importedBefore || record.name in seen
+                counted(importAction(row, record.content, before)) == ImportAction.WRITE
+            }
+        }
+        return counts
+    }
+
+    /**
+     * Deletes the step rows [stepRowsToRemove] chooses, each only while it is still the import's
+     * and still the row that choice was made on: one the user edited meanwhile (theirs from then
+     * on), or that changed or went otherwise, is left alone.
+     */
+    suspend fun <R> removeStepsWithinSessions(
+        journal: Journal<R>,
+        sessions: Collection<Interval>,
+        knownStepIntervals: Map<String, Interval>,
+    ): Int {
+        val rows = journal.importedRows()
+        val chosen = stepRowsToRemove(rows, sessions, knownStepIntervals).toHashSet()
+        val doubled = rows.filter { it.id in chosen }
+        if (doubled.isEmpty()) return 0
+        return journal.deleteWhere(doubled) { read, now -> now != null && now.byImport && now == read }
     }
 
     /** What the import keeps between runs, and between process starts. */
