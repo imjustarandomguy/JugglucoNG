@@ -159,20 +159,18 @@ object JournalQuickEntryPolicy {
 
     /**
      * The latest dose of [presetId] at or before [nowMillis] while it is still active, that is
-     * while less than the insulin's [durationMinutes] have passed; null otherwise. The entry
-     * being edited ([excludeEntryId]) is not its own last dose.
+     * while less than the insulin's [durationMinutes] have passed; null otherwise.
      */
     fun lastActiveInsulin(
         entries: List<JournalEntry>,
         presetId: Long?,
         durationMinutes: Int,
-        nowMillis: Long,
-        excludeEntryId: Long? = null
+        nowMillis: Long
     ): JournalEntry? {
         presetId ?: return null
         val last = entries.asSequence()
             .filter { it.type == JournalEntryType.INSULIN && it.insulinPresetId == presetId }
-            .filter { it.id != excludeEntryId && it.isPositiveAmount() && it.timestamp <= nowMillis }
+            .filter { it.isPositiveAmount() && it.timestamp <= nowMillis }
             .maxByOrNull { it.timestamp }
             ?: return null
         return last.takeIf { nowMillis - it.timestamp < durationMinutes.coerceAtLeast(0) * 60_000L }
@@ -185,12 +183,11 @@ object JournalQuickEntryPolicy {
     fun lastActiveMeal(
         entries: List<JournalEntry>,
         foodsById: Map<Long, JournalFood>,
-        nowMillis: Long,
-        excludeEntryId: Long? = null
+        nowMillis: Long
     ): JournalEntry? {
         val last = entries.asSequence()
             .filter { it.type == JournalEntryType.CARBS }
-            .filter { it.id != excludeEntryId && it.isPositiveAmount() && it.timestamp <= nowMillis }
+            .filter { it.isPositiveAmount() && it.timestamp <= nowMillis }
             .maxByOrNull { it.timestamp }
             ?: return null
         val absorption = mealAbsorptionMinutes(last, last.foodId?.let(foodsById::get))
