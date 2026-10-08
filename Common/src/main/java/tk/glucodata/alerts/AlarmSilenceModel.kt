@@ -17,7 +17,19 @@ import tk.glucodata.AlertDeliveryPolicy
  * time of the message, which makes a received change look that much more recent and
  * a received snooze end that much later: seconds at most, which the tolerances below
  * absorb.
+ *
+ * Which change came last is decided by [ChangeId] where both devices send one, so two
+ * changes made in quick succession, a state sent twice and a late message are each
+ * ordered exactly; the times decide only between the two devices' own changes.
  */
+
+/**
+ * Which change an entry holds: [origin], a random id of the device that made it, and
+ * [rev], a revision above every one that device had made or seen when it made it (a
+ * Lamport clock). A change taken from the other device keeps its id. Null in an entry
+ * from a build that does not send ids.
+ */
+data class ChangeId(val rev: Long, val origin: Int)
 
 /**
  * One alert type's snooze as this device last changed it. [untilMs] is the end, 0 when
@@ -29,12 +41,13 @@ data class SnoozeEntry(
     val changedAtMs: Long,
     val untilMs: Long,
     val preemptive: Boolean,
+    val id: ChangeId? = null,
 ) {
     fun activeAt(nowMs: Long): Boolean = untilMs > nowMs
 }
 
 /** The last dismissal of one alert type this device made, or took from the other one. */
-data class DismissEntry(val typeId: Int, val dismissedAtMs: Long)
+data class DismissEntry(val typeId: Int, val dismissedAtMs: Long, val id: ChangeId? = null)
 
 /**
  * The quiet window as last changed: [untilMs] 0 when that change ended it. The mode and
@@ -47,6 +60,7 @@ data class QuietEntry(
     val mode: String,
     val breakthroughMinutes: Int,
     val breakthroughScope: String,
+    val id: ChangeId? = null,
 ) {
     fun activeAt(nowMs: Long): Boolean = untilMs > nowMs
 }
@@ -67,26 +81,27 @@ sealed class SilenceAction {
         val preemptive: Boolean,
         val minutes: Int,
         val changedAtMs: Long,
+        val id: ChangeId? = null,
     ) : SilenceAction()
 
     /** End [typeId]'s snooze, as a change made at [changedAtMs]. */
-    data class ClearSnooze(val typeId: Int, val changedAtMs: Long) : SilenceAction()
+    data class ClearSnooze(val typeId: Int, val changedAtMs: Long, val id: ChangeId? = null) : SilenceAction()
 
     /**
      * The peer's change is newer but leaves the same snooze (or none on both): only the
-     * change time is taken, so an expired snooze is never applied and nothing reruns.
+     * change time and id are taken, so an expired snooze is never applied and nothing reruns.
      */
-    data class AdoptSnoozeTime(val typeId: Int, val changedAtMs: Long) : SilenceAction()
+    data class AdoptSnoozeTime(val typeId: Int, val changedAtMs: Long, val id: ChangeId? = null) : SilenceAction()
 
     /**
      * The peer dismissed [typeId] at [dismissedAtMs]. Whether that reaches an alarm here
      * is [AlarmSilencePolicy.dismissApplies], against this device's own alarm.
      */
-    data class Dismiss(val typeId: Int, val dismissedAtMs: Long) : SilenceAction()
+    data class Dismiss(val typeId: Int, val dismissedAtMs: Long, val id: ChangeId? = null) : SilenceAction()
 
     data class StartQuiet(val entry: QuietEntry) : SilenceAction()
-    data class EndQuiet(val changedAtMs: Long) : SilenceAction()
-    data class AdoptQuietTime(val changedAtMs: Long) : SilenceAction()
+    data class EndQuiet(val changedAtMs: Long, val id: ChangeId? = null) : SilenceAction()
+    data class AdoptQuietTime(val changedAtMs: Long, val id: ChangeId? = null) : SilenceAction()
 }
 
 /** The actions a peer's state asks for, and whether this device should answer with its own. */
@@ -96,7 +111,7 @@ data class SilenceReconciliation(val actions: List<SilenceAction>, val reply: Bo
  * The rules.
  *
  *  - Snooze, per alert type, and the quiet window: the last change wins, on either
- *    device. A change that leaves no snooze (a cancel, or a snooze whose end has passed)
+ *    device ([order]). A change that leaves no snooze (a cancel, or a snooze whose end has passed)
  *    is still a change: it ends an older snooze on the other device, and an expired
  *    snooze is never applied as one.
  *  - Dismissal: it reaches the other device's alarm of the same type only when that
@@ -107,7 +122,11 @@ data class SilenceReconciliation(val actions: List<SilenceAction>, val reply: Bo
  *    and never answers an answer, so two devices settle in at most one round trip.
  */
 object AlarmSilencePolicy {
-    /** Two changes this close are the same change, seen once more through the transit time. */
+    /**
+     * How far the transit time may move a received time. Between changes without ids,
+     * two this close are the same change seen once more; snooze and window ends this
+     * close are the same end.
+     */
     const val SAME_CHANGE_TOLERANCE_MS = 5_000L
 
     /**
@@ -123,10 +142,51 @@ object AlarmSilencePolicy {
      */
     const val RETENTION_MS = 26L * 60L * 60L * 1000L
 
-    /** [a] was changed after [b], by more than the transit time; a missing [b] is older than anything. */
+    /** How one change stands to another: made after it, the same change, or made before it. */
+    enum class Order { NEWER, SAME, OLDER }
+
+    /**
+     * How change a ([aChangedAtMs], [aId]) stands to change b; a missing b is older than
+     * anything.
+     *
+     *  - Both with ids, from one device: its revisions decide, whatever the times say.
+     *    Equal is the same change (sent again, or sent back); lower arrived late.
+     *  - Both with ids, from the two devices: the later time, when the times are more
+     *    than [SAME_CHANGE_TOLERANCE_MS] apart. Closer, the transit time could swap them:
+     *    the higher revision (made after seeing the other) wins, then the higher origin,
+     *    so both devices keep the same one.
+     *  - Either without an id (an older build): the times, two within the tolerance
+     *    being the same change.
+     */
     @JvmStatic
-    fun isNewer(aChangedAtMs: Long, bChangedAtMs: Long?): Boolean =
-        bChangedAtMs == null || aChangedAtMs > bChangedAtMs + SAME_CHANGE_TOLERANCE_MS
+    fun order(aChangedAtMs: Long, aId: ChangeId?, bChangedAtMs: Long?, bId: ChangeId?): Order {
+        if (bChangedAtMs == null) return Order.NEWER
+        if (aId != null && bId != null) {
+            if (aId.origin == bId.origin) return compare(aId.rev, bId.rev)
+            if (Math.abs(aChangedAtMs - bChangedAtMs) > SAME_CHANGE_TOLERANCE_MS) {
+                return compare(aChangedAtMs, bChangedAtMs)
+            }
+            val byRevision = compare(aId.rev, bId.rev)
+            return if (byRevision != Order.SAME) byRevision else compare(aId.origin.toLong(), bId.origin.toLong())
+        }
+        return when {
+            aChangedAtMs > bChangedAtMs + SAME_CHANGE_TOLERANCE_MS -> Order.NEWER
+            bChangedAtMs > aChangedAtMs + SAME_CHANGE_TOLERANCE_MS -> Order.OLDER
+            else -> Order.SAME
+        }
+    }
+
+    /** Change a was made after change b ([order]); a missing b is older than anything. */
+    @JvmStatic
+    @JvmOverloads
+    fun isNewer(aChangedAtMs: Long, bChangedAtMs: Long?, aId: ChangeId? = null, bId: ChangeId? = null): Boolean =
+        order(aChangedAtMs, aId, bChangedAtMs, bId) == Order.NEWER
+
+    private fun compare(a: Long, b: Long): Order = when {
+        a > b -> Order.NEWER
+        a < b -> Order.OLDER
+        else -> Order.SAME
+    }
 
     /** Whether [a] and [b] leave the same snooze at [nowMs]; a missing one is no snooze. */
     @JvmStatic
@@ -150,15 +210,15 @@ object AlarmSilencePolicy {
     /** Whether [from] would change what [to]'s holder has: newer, and not the same snooze. */
     @JvmStatic
     fun snoozeUpdates(from: SnoozeEntry?, to: SnoozeEntry?, nowMs: Long): Boolean =
-        from != null && isNewer(from.changedAtMs, to?.changedAtMs) && !sameSnooze(from, to, nowMs)
+        from != null && isNewer(from.changedAtMs, to?.changedAtMs, from.id, to?.id) && !sameSnooze(from, to, nowMs)
 
     @JvmStatic
     fun quietUpdates(from: QuietEntry?, to: QuietEntry?, nowMs: Long): Boolean =
-        from != null && isNewer(from.changedAtMs, to?.changedAtMs) && !sameQuiet(from, to, nowMs)
+        from != null && isNewer(from.changedAtMs, to?.changedAtMs, from.id, to?.id) && !sameQuiet(from, to, nowMs)
 
     @JvmStatic
     fun dismissalUpdates(from: DismissEntry?, to: DismissEntry?): Boolean =
-        from != null && isNewer(from.dismissedAtMs, to?.dismissedAtMs)
+        from != null && isNewer(from.dismissedAtMs, to?.dismissedAtMs, from.id, to?.id)
 
     /** The minutes a snooze was set for, for the alarm history: at least one. */
     @JvmStatic
@@ -184,18 +244,19 @@ object AlarmSilencePolicy {
         val incomingSnoozes = newestSnoozes(incoming.snoozes)
         for ((typeId, theirs) in incomingSnoozes) {
             val ours = localSnoozes[typeId]
-            if (!isNewer(theirs.changedAtMs, ours?.changedAtMs)) continue
+            if (!isNewer(theirs.changedAtMs, ours?.changedAtMs, theirs.id, ours?.id)) continue
             actions += when {
-                sameSnooze(theirs, ours, nowMs) -> SilenceAction.AdoptSnoozeTime(typeId, theirs.changedAtMs)
+                sameSnooze(theirs, ours, nowMs) -> SilenceAction.AdoptSnoozeTime(typeId, theirs.changedAtMs, theirs.id)
                 theirs.activeAt(nowMs) -> SilenceAction.Snooze(
                     typeId = typeId,
                     untilMs = theirs.untilMs,
                     preemptive = theirs.preemptive,
                     minutes = snoozeMinutes(theirs.changedAtMs, theirs.untilMs),
                     changedAtMs = theirs.changedAtMs,
+                    id = theirs.id,
                 )
                 // Theirs is the later change and leaves no snooze: ours, older, ends.
-                else -> SilenceAction.ClearSnooze(typeId, theirs.changedAtMs)
+                else -> SilenceAction.ClearSnooze(typeId, theirs.changedAtMs, theirs.id)
             }
         }
         if (local.snoozes.any { snoozeUpdates(it, incomingSnoozes[it.typeId], nowMs) }) reply = true
@@ -204,18 +265,18 @@ object AlarmSilencePolicy {
         val incomingDismissals = newestDismissals(incoming.dismissals)
         for ((typeId, theirs) in incomingDismissals) {
             if (dismissalUpdates(theirs, localDismissals[typeId])) {
-                actions += SilenceAction.Dismiss(typeId, theirs.dismissedAtMs)
+                actions += SilenceAction.Dismiss(typeId, theirs.dismissedAtMs, theirs.id)
             }
         }
         if (local.dismissals.any { dismissalUpdates(it, incomingDismissals[it.typeId]) }) reply = true
 
         val theirQuiet = incoming.quiet
         val ourQuiet = local.quiet
-        if (theirQuiet != null && isNewer(theirQuiet.changedAtMs, ourQuiet?.changedAtMs)) {
+        if (theirQuiet != null && isNewer(theirQuiet.changedAtMs, ourQuiet?.changedAtMs, theirQuiet.id, ourQuiet?.id)) {
             actions += when {
-                sameQuiet(theirQuiet, ourQuiet, nowMs) -> SilenceAction.AdoptQuietTime(theirQuiet.changedAtMs)
+                sameQuiet(theirQuiet, ourQuiet, nowMs) -> SilenceAction.AdoptQuietTime(theirQuiet.changedAtMs, theirQuiet.id)
                 theirQuiet.activeAt(nowMs) -> SilenceAction.StartQuiet(theirQuiet)
-                else -> SilenceAction.EndQuiet(theirQuiet.changedAtMs)
+                else -> SilenceAction.EndQuiet(theirQuiet.changedAtMs, theirQuiet.id)
             }
         }
         if (quietUpdates(ourQuiet, theirQuiet, nowMs)) reply = true
@@ -260,7 +321,7 @@ object AlarmSilencePolicy {
         val out = LinkedHashMap<Int, SnoozeEntry>()
         for (entry in entries) {
             val known = out[entry.typeId]
-            if (known == null || entry.changedAtMs > known.changedAtMs) out[entry.typeId] = entry
+            if (known == null || isNewer(entry.changedAtMs, known.changedAtMs, entry.id, known.id)) out[entry.typeId] = entry
         }
         return out
     }
@@ -269,7 +330,7 @@ object AlarmSilencePolicy {
         val out = LinkedHashMap<Int, DismissEntry>()
         for (entry in entries) {
             val known = out[entry.typeId]
-            if (known == null || entry.dismissedAtMs > known.dismissedAtMs) out[entry.typeId] = entry
+            if (known == null || isNewer(entry.dismissedAtMs, known.dismissedAtMs, entry.id, known.id)) out[entry.typeId] = entry
         }
         return out
     }
@@ -284,11 +345,14 @@ object AlarmSilencePolicy {
  *       2 dismissals,  9 bytes each: [u8 alert type][i64 dismissal age ms]
  *       3 quiet window, one:         [i64 change age ms][i64 remaining ms][u8 breakthrough minutes]
  *                                    [u8 n][n bytes mode][u8 n][n bytes breakthrough scope]
+ *       4 change ids, 14 bytes each: [u8 section of the entry: 1, 2 or 3][u8 alert type, 0 for 3]
+ *                                    [i64 revision][i32 origin]
  *
  * An age is how long before sending the change was made; a remaining time is how long
  * the snooze or window still runs, 0 when the change left none. A reader skips the
  * sections it does not know, so a later build can add one without a new format, and
- * a payload it cannot read is dropped whole.
+ * a payload it cannot read is dropped whole. An older build reads the entries without
+ * their ids (section 4); an entry without an id record has none ([ChangeId]).
  */
 object AlarmSilenceCodec {
     const val FORMAT = 1
@@ -298,9 +362,11 @@ object AlarmSilenceCodec {
     const val SECTION_SNOOZES = 1
     const val SECTION_DISMISSALS = 2
     const val SECTION_QUIET = 3
+    const val SECTION_IDS = 4
 
     private const val SNOOZE_BYTES = 1 + 8 + 8 + 1
     private const val DISMISS_BYTES = 1 + 8
+    private const val ID_BYTES = 1 + 1 + 8 + 4
 
     /** Nothing still running ends further out than this: the quiet window's cap, and a margin. */
     const val MAX_REMAINING_MS = 25L * 60L * 60L * 1000L
@@ -316,10 +382,15 @@ object AlarmSilenceCodec {
         val snoozes = state.snoozes.filter { it.typeId in 0..255 }
         val dismissals = state.dismissals.filter { it.typeId in 0..255 }
         val quiet = state.quiet?.let { encodeQuiet(it, nowMs) }
+        val ids = ArrayList<Triple<Int, Int, ChangeId>>()
+        snoozes.forEach { entry -> entry.id?.let { ids += Triple(SECTION_SNOOZES, entry.typeId, it) } }
+        dismissals.forEach { entry -> entry.id?.let { ids += Triple(SECTION_DISMISSALS, entry.typeId, it) } }
+        state.quiet?.id?.let { ids += Triple(SECTION_QUIET, 0, it) }
         var size = 2
         if (snoozes.isNotEmpty()) size += 3 + snoozes.size * SNOOZE_BYTES
         if (dismissals.isNotEmpty()) size += 3 + dismissals.size * DISMISS_BYTES
         if (quiet != null) size += 3 + quiet.size
+        if (ids.isNotEmpty()) size += 3 + ids.size * ID_BYTES
         val out = ByteBuffer.allocate(size).order(ByteOrder.BIG_ENDIAN)
         out.put(FORMAT.toByte())
         out.put((if (reply) FLAG_REPLY else 0).toByte())
@@ -346,6 +417,16 @@ object AlarmSilenceCodec {
             out.putShort(quiet.size.toShort())
             out.put(quiet)
         }
+        if (ids.isNotEmpty()) {
+            out.put(SECTION_IDS.toByte())
+            out.putShort((ids.size * ID_BYTES).toShort())
+            for ((section, typeId, id) in ids) {
+                out.put(section.toByte())
+                out.put(typeId.toByte())
+                out.putLong(id.rev)
+                out.putInt(id.origin)
+            }
+        }
         return out.array()
     }
 
@@ -364,6 +445,7 @@ object AlarmSilenceCodec {
             val snoozes = ArrayList<SnoozeEntry>()
             val dismissals = ArrayList<DismissEntry>()
             var quiet: QuietEntry? = null
+            val ids = HashMap<Pair<Int, Int>, ChangeId>()
             while (buffer.hasRemaining()) {
                 if (buffer.remaining() < 3) return null
                 val tag = buffer.get().toInt() and 0xff
@@ -399,10 +481,25 @@ object AlarmSilenceCodec {
                         }
                     }
                     SECTION_QUIET -> quiet = decodeQuiet(body, nowMs)
+                    SECTION_IDS -> {
+                        if (length % ID_BYTES != 0) return null
+                        repeat(length / ID_BYTES) {
+                            val section = body.get().toInt() and 0xff
+                            val typeId = body.get().toInt() and 0xff
+                            val rev = body.long
+                            val origin = body.int
+                            if (rev > 0L) ids[section to typeId] = ChangeId(rev, origin)
+                        }
+                    }
                     else -> Unit // a later build's section
                 }
             }
-            Message(SilenceState(snoozes, dismissals, quiet), reply = (flags and FLAG_REPLY) != 0)
+            val state = SilenceState(
+                snoozes = snoozes.map { it.copy(id = ids[SECTION_SNOOZES to it.typeId]) },
+                dismissals = dismissals.map { it.copy(id = ids[SECTION_DISMISSALS to it.typeId]) },
+                quiet = quiet?.copy(id = ids[SECTION_QUIET to 0]),
+            )
+            Message(state, reply = (flags and FLAG_REPLY) != 0)
         } catch (_: RuntimeException) {
             null
         }
