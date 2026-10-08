@@ -755,7 +755,9 @@ internal object ComplicationRenderer {
                 dots[index * 2] = x(point.timestamp)
                 dots[index * 2 + 1] = y(point.value)
             }
-            paint.strokeWidth = tk.glucodata.ChartReadingsStyle.dotRadius(lineWidth, to - from) * 2f
+            paint.strokeWidth = tk.glucodata.ChartReadingsStyle.dotRadius(
+                lineWidth, to - from, width, tk.glucodata.ChartReadingsStyle.typicalSpacing(dots, dots.size, 2),
+            ) * 2f
             canvas.drawPoints(dots, paint)
             paint.strokeWidth = lineWidth
         }

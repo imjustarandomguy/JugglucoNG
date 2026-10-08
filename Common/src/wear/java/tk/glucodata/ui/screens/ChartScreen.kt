@@ -913,11 +913,15 @@ internal fun WearChart(
                 }
                 fun drawReadingDots(dots: List<Offset>?, brush: Brush, lineWidth: Float) {
                     if (dots.isNullOrEmpty()) return
+                    val newest = minOf(dots.size, 16)
+                    val spacing = ChartReadingsStyle.typicalSpacing(
+                        FloatArray(newest) { dots[dots.size - newest + it].x }, newest, 1
+                    )
                     drawPoints(
                         dots,
                         PointMode.Points,
                         brush,
-                        strokeWidth = ChartReadingsStyle.dotRadius(lineWidth, visibleDurationMs) * 2f,
+                        strokeWidth = ChartReadingsStyle.dotRadius(lineWidth, visibleDurationMs, size.width, spacing) * 2f,
                         cap = StrokeCap.Round,
                     )
                 }
