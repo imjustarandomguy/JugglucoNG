@@ -2239,6 +2239,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_quickadd_always_now_title">Use the current time</string>
     <string name="journal_quickadd_always_now_desc">Start new entries now, even when a chart point is selected</string>
     <string name="journal_saved_entry">Saved %1$s</string>
+    <string name="journal_save_failed">Not saved: %1$s</string>
+    <string name="journal_save_try_again">Try again</string>
+    <string name="journal_save_failed_kept">Not saved. Your entry is still here; try again.</string>
     <string name="journal_last_dose">Last %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Last food: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s ago</string>

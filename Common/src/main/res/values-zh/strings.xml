@@ -1747,6 +1747,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_quickadd_always_now_title">使用当前时间</string>
     <string name="journal_quickadd_always_now_desc">即使已选择图表点，也从现在开始记录</string>
     <string name="journal_saved_entry">已保存 %1$s</string>
+    <string name="journal_save_failed">未保存：%1$s</string>
+    <string name="journal_save_try_again">重试</string>
+    <string name="journal_save_failed_kept">未保存。条目仍保留，请重试。</string>
     <string name="journal_last_dose">上次 %1$s：%2$s · %3$s</string>
     <string name="journal_last_food">上次进食：%1$s · %2$s</string>
     <string name="journal_time_ago">%1$s前</string>

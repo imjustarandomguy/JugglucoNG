@@ -1739,6 +1739,9 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="journal_quickadd_always_now_title">Одоогийн цагийг ашиглах</string>
     <string name="journal_quickadd_always_now_desc">Графикийн цэг сонгосон ч бичлэгийг одоо эхлүүлэх</string>
     <string name="journal_saved_entry">Хадгалсан: %1$s</string>
+    <string name="journal_save_failed">Хадгалагдсангүй: %1$s</string>
+    <string name="journal_save_try_again">Дахин оролдох</string>
+    <string name="journal_save_failed_kept">Хадгалагдсангүй. Бичлэг хэвээр байна; дахин оролдоно уу.</string>
     <string name="journal_last_dose">Сүүлийн %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Сүүлийн хоол: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s өмнө</string>

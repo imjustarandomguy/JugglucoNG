@@ -1997,6 +1997,9 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="journal_quickadd_always_now_title">Isticmaal wakhtiga hadda</string>
     <string name="journal_quickadd_always_now_desc">Bilow gelinta hadda, xitaa marka dhibic jaantus la doortay</string>
     <string name="journal_saved_entry">La kaydiyay: %1$s</string>
+    <string name="journal_save_failed">Lama kaydin: %1$s</string>
+    <string name="journal_save_try_again">Isku day mar kale</string>
+    <string name="journal_save_failed_kept">Lama kaydin. Gelintaadu waa joogtaa; isku day mar kale.</string>
     <string name="journal_last_dose">Ugu dambeeyay %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Cunnadii ugu dambeysay: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s ka hor</string>

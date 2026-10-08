@@ -1766,6 +1766,9 @@
     <string name="journal_quickadd_always_now_title">Używaj bieżącego czasu</string>
     <string name="journal_quickadd_always_now_desc">Rozpocznij wpis teraz, nawet po wybraniu punktu wykresu</string>
     <string name="journal_saved_entry">Zapisano: %1$s</string>
+    <string name="journal_save_failed">Nie zapisano: %1$s</string>
+    <string name="journal_save_try_again">Spróbuj ponownie</string>
+    <string name="journal_save_failed_kept">Nie zapisano. Wpis został zachowany; spróbuj ponownie.</string>
     <string name="journal_last_dose">Ostatnia dawka %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Ostatni posiłek: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s temu</string>

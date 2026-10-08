@@ -1863,6 +1863,9 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="journal_quickadd_always_now_title">Aktuelle Zeit verwenden</string>
     <string name="journal_quickadd_always_now_desc">Einträge jetzt starten, auch wenn ein Diagrammpunkt ausgewählt ist</string>
     <string name="journal_saved_entry">Gespeichert: %1$s</string>
+    <string name="journal_save_failed">Nicht gespeichert: %1$s</string>
+    <string name="journal_save_try_again">Erneut versuchen</string>
+    <string name="journal_save_failed_kept">Nicht gespeichert. Der Eintrag bleibt erhalten; bitte erneut versuchen.</string>
     <string name="journal_last_dose">Zuletzt %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Zuletzt gegessen: %1$s · %2$s</string>
     <string name="journal_time_ago">vor %1$s</string>

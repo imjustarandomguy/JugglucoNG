@@ -2965,4 +2965,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="clone_connections_empty">Még nincs párosított eszköz.</string>
     <string name="clone_background_desc">Nagyobb akkumulátorfogyasztás</string>
     <string name="insulin_reminder_changed">Nincs rögzítve: az inzulin megváltozott az emlékeztető óta. Koppintson az adag ellenőrzéséhez és rögzítéséhez.</string>
+    <string name="journal_save_failed">Nincs mentve: %1$s</string>
+    <string name="journal_save_try_again">Újra</string>
+    <string name="journal_save_failed_kept">Nincs mentve. A bejegyzés megmaradt; próbálja újra.</string>
 </resources>

@@ -57,157 +57,172 @@ class JournalRepository {
         }
     }
 
-    suspend fun upsertEntry(input: JournalEntryInput): Long {
-        val (id, entity, existing) = database.withTransaction {
-            val sourceRecordId = input.sourceRecordId?.takeIf { it.isNotBlank() }
-            val recoveryId = CloneJournalIdentity.normalizeRecoveryId(input.recoveryId)
-            val nsRemoteId = input.nsRemoteId?.takeIf { it.isNotBlank() }
-            val idMatch = input.id?.let { dao.getEntryById(it) }
-            val recoveryMatch = recoveryId?.let { dao.getEntryByRecoveryId(it) }
-            val sourceMatch = sourceRecordId?.let { dao.getEntryBySourceRecordId(it) }
-            val remoteMatches = nsRemoteId?.let {
-                dao.getEntriesByNightscoutRemoteIdAndType(it, input.type.storageValue)
-            }.orEmpty()
-            val remoteMatch = remoteMatches.firstOrNull()
-            val overlap = if (idMatch == null && recoveryMatch == null) {
-                cloneNightscoutOverlap(
-                    sourceMatch = sourceMatch,
-                    remoteMatches = remoteMatches,
+    suspend fun upsertEntry(input: JournalEntryInput): Long = upsertEntries(listOf(input)).single()
+
+    /**
+     * Writes [inputs] in one transaction: a dose and the meal saved with it are stored together,
+     * or neither is. Their row ids, in order. The uploads are woken once all are committed.
+     */
+    suspend fun upsertEntries(inputs: List<JournalEntryInput>): List<Long> {
+        if (inputs.isEmpty()) return emptyList()
+        val written = database.withTransaction { inputs.map { writeEntry(it) } }
+        written.forEach { (_, entity, existing) -> afterEntryWritten(entity, existing) }
+        return written.map { it.first }
+    }
+
+    /** One entry's write, inside the caller's transaction: its row id, its row, the row it replaced. */
+    private suspend fun writeEntry(input: JournalEntryInput): Triple<Long, JournalEntryEntity, JournalEntryEntity?> {
+        val sourceRecordId = input.sourceRecordId?.takeIf { it.isNotBlank() }
+        val recoveryId = CloneJournalIdentity.normalizeRecoveryId(input.recoveryId)
+        val nsRemoteId = input.nsRemoteId?.takeIf { it.isNotBlank() }
+        val idMatch = input.id?.let { dao.getEntryById(it) }
+        val recoveryMatch = recoveryId?.let { dao.getEntryByRecoveryId(it) }
+        val sourceMatch = sourceRecordId?.let { dao.getEntryBySourceRecordId(it) }
+        val remoteMatches = nsRemoteId?.let {
+            dao.getEntriesByNightscoutRemoteIdAndType(it, input.type.storageValue)
+        }.orEmpty()
+        val remoteMatch = remoteMatches.firstOrNull()
+        val overlap = if (idMatch == null && recoveryMatch == null) {
+            cloneNightscoutOverlap(
+                sourceMatch = sourceMatch,
+                remoteMatches = remoteMatches,
+                incomingNsRemoteId = nsRemoteId,
+                incomingEntryType = input.type.storageValue,
+            )
+        } else {
+            null
+        }
+        val existing = existingEntry(
+            idMatch = idMatch,
+            recoveryMatch = recoveryMatch,
+            overlapKeeper = overlap?.keeper,
+            sourceMatch = sourceMatch,
+            remoteMatch = remoteMatch,
+        )
+        val writeIdentity = preserveMirroredJournalIdentity(
+            existingSource = existing?.source,
+            existingSourceRecordId = existing?.sourceRecordId,
+            incomingSource = input.source,
+            incomingSourceRecordId = sourceRecordId,
+        )
+        val redundantOverlap = overlap?.redundantRows.orEmpty()
+        val remoteIdentityMatch = existing?.takeIf {
+            it.sourceRecordId != writeIdentity.sourceRecordId &&
+                isSameNightscoutJournalKind(
+                    existingNsRemoteId = it.nsRemoteId,
                     incomingNsRemoteId = nsRemoteId,
+                    existingEntryType = it.entryType,
                     incomingEntryType = input.type.storageValue,
                 )
-            } else {
-                null
-            }
-            val existing = existingEntry(
-                idMatch = idMatch,
-                recoveryMatch = recoveryMatch,
-                overlapKeeper = overlap?.keeper,
-                sourceMatch = sourceMatch,
-                remoteMatch = remoteMatch,
-            )
-            val writeIdentity = preserveMirroredJournalIdentity(
-                existingSource = existing?.source,
-                existingSourceRecordId = existing?.sourceRecordId,
-                incomingSource = input.source,
-                incomingSourceRecordId = sourceRecordId,
-            )
-            val redundantOverlap = overlap?.redundantRows.orEmpty()
-            val remoteIdentityMatch = existing?.takeIf {
-                it.sourceRecordId != writeIdentity.sourceRecordId &&
-                    isSameNightscoutJournalKind(
-                        existingNsRemoteId = it.nsRemoteId,
-                        incomingNsRemoteId = nsRemoteId,
-                        existingEntryType = it.entryType,
-                        incomingEntryType = input.type.storageValue,
-                    )
-            }
-            val cloneIdentityMatch = existing?.takeIf {
-                isSameCloneJournalRecord(
-                    existingSource = it.source,
-                    incomingSource = writeIdentity.source,
-                    existingSourceRecordId = it.sourceRecordId,
-                    incomingSourceRecordId = writeIdentity.sourceRecordId,
-                )
-            }
-            val preservedIdentity = remoteIdentityMatch ?: cloneIdentityMatch
-            val now = System.currentTimeMillis()
-            val isInsulin = input.type == JournalEntryType.INSULIN
-            val preserveCurveSnapshot = isInsulin &&
-                existing?.entryType == JournalEntryType.INSULIN.storageValue &&
-                existing.amount == input.amount &&
-                existing.insulinPresetId == input.insulinPresetId &&
-                !existing.insulinCurveJsonSnapshot.isNullOrBlank()
-            val resolvedCurve = if (isInsulin && !preserveCurveSnapshot) {
-                val amount = input.amount?.takeIf { it.isFinite() && it > 0f }
-                val preset = input.insulinPresetId?.let { dao.getInsulinPresetById(it) }?.toModel()
-                if (amount != null && preset != null) {
-                    preset.resolveCurveForDose(amount, JournalHumanProfile.bodyWeightKg(Applic.app))
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
-            val entity = JournalEntryEntity(
-                id = existing?.id ?: (input.id ?: 0L),
-                timestamp = input.timestamp,
-                sensorSerial = input.sensorSerial?.takeIf { it.isNotBlank() },
-                entryType = input.type.storageValue,
-                title = input.title.trim(),
-                note = input.note?.trim()?.takeIf { it.isNotBlank() },
-                amount = input.amount,
-                glucoseValueMgDl = input.glucoseValueMgDl,
-                durationMinutes = input.durationMinutes,
-                intensity = input.intensity?.storageValue,
-                insulinPresetId = input.insulinPresetId,
-                // Clone and Nightscout can deliver the same treatment in either
-                // order. Preserve the first observed route and storage identity
-                // instead of changing icons or creating a duplicate later.
-                source = preservedIdentity?.source ?: writeIdentity.source.storageValue,
-                originSource = resolveJournalOriginSource(
-                    existingOriginSource = existing?.originSource,
-                    storedSource = writeIdentity.source,
-                    incomingSource = input.source,
-                    incomingOriginSource = input.originSource,
-                ),
-                sourceRecordId = preservedIdentity?.sourceRecordId ?: writeIdentity.sourceRecordId,
-                recoveryId = when {
-                    idMatch != null && recoveryMatch != null && idMatch.id != recoveryMatch.id ->
-                        idMatch.recoveryId ?: CloneJournalIdentity.newRecoveryId()
-                    recoveryId != null -> recoveryId
-                    existing?.recoveryId != null -> existing.recoveryId
-                    else -> CloneJournalIdentity.newRecoveryId()
-                },
-                createdAt = existing?.createdAt ?: now,
-                updatedAt = now,
-                foodId = input.foodId,
-                proteinGrams = input.proteinGrams?.coerceAtLeast(0f),
-                fatGrams = input.fatGrams?.coerceAtLeast(0f),
-                nsUploadedAt = existing?.nsUploadedAt,
-                nsRemoteId = nsRemoteId ?: existing?.nsRemoteId,
-                insulinCurveJsonSnapshot = when {
-                    !isInsulin -> null
-                    preserveCurveSnapshot -> existing?.insulinCurveJsonSnapshot
-                    else -> resolvedCurve?.points?.let(::serializeJournalCurve)
-                },
-                insulinCurveProfileId = when {
-                    !isInsulin -> null
-                    preserveCurveSnapshot -> existing?.insulinCurveProfileId
-                    else -> resolvedCurve?.profileId
-                },
-                insulinCurveModelVersion = when {
-                    !isInsulin -> null
-                    preserveCurveSnapshot -> existing?.insulinCurveModelVersion
-                    else -> resolvedCurve?.modelVersion
-                },
-                insulinCurveEvidence = when {
-                    !isInsulin -> null
-                    preserveCurveSnapshot -> existing?.insulinCurveEvidence
-                    else -> resolvedCurve?.evidence?.storageValue
-                },
-                insulinBodyWeightKg = when {
-                    !isInsulin -> null
-                    preserveCurveSnapshot -> existing?.insulinBodyWeightKg
-                    else -> resolvedCurve?.usedBodyWeightKg
-                },
-                insulinCurveWasApproximated = when {
-                    !isInsulin -> false
-                    preserveCurveSnapshot -> existing?.insulinCurveWasApproximated ?: true
-                    else -> resolvedCurve?.approximated ?: true
-                }
-            )
-            val rowId = dao.upsertEntry(entity)
-            if (isCloneJournalExportSource(entity.source)) {
-                dao.deleteCloneJournalTombstone(rowId)
-            }
-            // A Clone row can arrive before the sender learns its Nightscout ID while
-            // the Nightscout follower imports the same treatment independently. Once
-            // both identities meet, retain the first local row and remove only the
-            // redundant local copy. This must never create a remote delete tombstone.
-            redundantOverlap.forEach { dao.deleteEntryById(it.id) }
-            Triple(rowId, entity, existing)
         }
+        val cloneIdentityMatch = existing?.takeIf {
+            isSameCloneJournalRecord(
+                existingSource = it.source,
+                incomingSource = writeIdentity.source,
+                existingSourceRecordId = it.sourceRecordId,
+                incomingSourceRecordId = writeIdentity.sourceRecordId,
+            )
+        }
+        val preservedIdentity = remoteIdentityMatch ?: cloneIdentityMatch
+        val now = System.currentTimeMillis()
+        val isInsulin = input.type == JournalEntryType.INSULIN
+        val preserveCurveSnapshot = isInsulin &&
+            existing?.entryType == JournalEntryType.INSULIN.storageValue &&
+            existing.amount == input.amount &&
+            existing.insulinPresetId == input.insulinPresetId &&
+            !existing.insulinCurveJsonSnapshot.isNullOrBlank()
+        val resolvedCurve = if (isInsulin && !preserveCurveSnapshot) {
+            val amount = input.amount?.takeIf { it.isFinite() && it > 0f }
+            val preset = input.insulinPresetId?.let { dao.getInsulinPresetById(it) }?.toModel()
+            if (amount != null && preset != null) {
+                preset.resolveCurveForDose(amount, JournalHumanProfile.bodyWeightKg(Applic.app))
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+        val entity = JournalEntryEntity(
+            id = existing?.id ?: (input.id ?: 0L),
+            timestamp = input.timestamp,
+            sensorSerial = input.sensorSerial?.takeIf { it.isNotBlank() },
+            entryType = input.type.storageValue,
+            title = input.title.trim(),
+            note = input.note?.trim()?.takeIf { it.isNotBlank() },
+            amount = input.amount,
+            glucoseValueMgDl = input.glucoseValueMgDl,
+            durationMinutes = input.durationMinutes,
+            intensity = input.intensity?.storageValue,
+            insulinPresetId = input.insulinPresetId,
+            // Clone and Nightscout can deliver the same treatment in either
+            // order. Preserve the first observed route and storage identity
+            // instead of changing icons or creating a duplicate later.
+            source = preservedIdentity?.source ?: writeIdentity.source.storageValue,
+            originSource = resolveJournalOriginSource(
+                existingOriginSource = existing?.originSource,
+                storedSource = writeIdentity.source,
+                incomingSource = input.source,
+                incomingOriginSource = input.originSource,
+            ),
+            sourceRecordId = preservedIdentity?.sourceRecordId ?: writeIdentity.sourceRecordId,
+            recoveryId = when {
+                idMatch != null && recoveryMatch != null && idMatch.id != recoveryMatch.id ->
+                    idMatch.recoveryId ?: CloneJournalIdentity.newRecoveryId()
+                recoveryId != null -> recoveryId
+                existing?.recoveryId != null -> existing.recoveryId
+                else -> CloneJournalIdentity.newRecoveryId()
+            },
+            createdAt = existing?.createdAt ?: now,
+            updatedAt = now,
+            foodId = input.foodId,
+            proteinGrams = input.proteinGrams?.coerceAtLeast(0f),
+            fatGrams = input.fatGrams?.coerceAtLeast(0f),
+            nsUploadedAt = existing?.nsUploadedAt,
+            nsRemoteId = nsRemoteId ?: existing?.nsRemoteId,
+            insulinCurveJsonSnapshot = when {
+                !isInsulin -> null
+                preserveCurveSnapshot -> existing?.insulinCurveJsonSnapshot
+                else -> resolvedCurve?.points?.let(::serializeJournalCurve)
+            },
+            insulinCurveProfileId = when {
+                !isInsulin -> null
+                preserveCurveSnapshot -> existing?.insulinCurveProfileId
+                else -> resolvedCurve?.profileId
+            },
+            insulinCurveModelVersion = when {
+                !isInsulin -> null
+                preserveCurveSnapshot -> existing?.insulinCurveModelVersion
+                else -> resolvedCurve?.modelVersion
+            },
+            insulinCurveEvidence = when {
+                !isInsulin -> null
+                preserveCurveSnapshot -> existing?.insulinCurveEvidence
+                else -> resolvedCurve?.evidence?.storageValue
+            },
+            insulinBodyWeightKg = when {
+                !isInsulin -> null
+                preserveCurveSnapshot -> existing?.insulinBodyWeightKg
+                else -> resolvedCurve?.usedBodyWeightKg
+            },
+            insulinCurveWasApproximated = when {
+                !isInsulin -> false
+                preserveCurveSnapshot -> existing?.insulinCurveWasApproximated ?: true
+                else -> resolvedCurve?.approximated ?: true
+            }
+        )
+        val rowId = dao.upsertEntry(entity)
+        if (isCloneJournalExportSource(entity.source)) {
+            dao.deleteCloneJournalTombstone(rowId)
+        }
+        // A Clone row can arrive before the sender learns its Nightscout ID while
+        // the Nightscout follower imports the same treatment independently. Once
+        // both identities meet, retain the first local row and remove only the
+        // redundant local copy. This must never create a remote delete tombstone.
+        redundantOverlap.forEach { dao.deleteEntryById(it.id) }
+        return Triple(rowId, entity, existing)
+    }
+
+    private fun afterEntryWritten(entity: JournalEntryEntity, existing: JournalEntryEntity?) {
         val mirroredWrite = isExternalJournalMirrorSource(JournalEntrySource.fromStorage(entity.source))
         if (affectsIob(entity.entryType) || affectsIob(existing?.entryType)) {
             if (mirroredWrite) {
@@ -228,7 +243,6 @@ class JournalRepository {
                 tk.glucodata.Natives.wakebackup()
             }
         }
-        return id
     }
 
     /** Lets an importer skip a record it already wrote instead of overwriting later edits. */

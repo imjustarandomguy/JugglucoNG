@@ -1774,6 +1774,9 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_quickadd_always_now_title">Huidige tijd gebruiken</string>
     <string name="journal_quickadd_always_now_desc">Start de invoer nu, ook als een grafiekpunt is geselecteerd</string>
     <string name="journal_saved_entry">Opgeslagen: %1$s</string>
+    <string name="journal_save_failed">Niet opgeslagen: %1$s</string>
+    <string name="journal_save_try_again">Opnieuw proberen</string>
+    <string name="journal_save_failed_kept">Niet opgeslagen. Je invoer staat er nog; probeer het opnieuw.</string>
     <string name="journal_last_dose">Laatste %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Laatste maaltijd: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s geleden</string>

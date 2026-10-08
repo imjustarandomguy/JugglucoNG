@@ -2112,8 +2112,8 @@ class DashboardViewModel(
     fun saveJournalEntry(input: JournalEntryInput) {
         viewModelScope.launch {
             journalRepository.upsertEntry(input)
+            tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, listOf(input))
         }
-        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, listOf(input))
     }
 
     fun deleteJournalEntry(entryId: Long) {
@@ -2123,15 +2123,21 @@ class DashboardViewModel(
     }
 
     /**
-     * Saves [inputs] in order and hands back their row ids, which an undo needs. The writes run
-     * in the view model's scope, so leaving the screen before [onSaved] runs does not cancel them.
+     * Saves [inputs] together, all or none, and hands back how it went: the stored row ids an
+     * undo needs, or the failure. A basal dose answers its "not logged" reminder only once it is
+     * stored. The write runs in the view model's scope, so leaving the screen does not cancel it.
      */
-    fun saveJournalEntries(inputs: List<JournalEntryInput>, onSaved: (List<Long>) -> Unit) {
+    fun saveJournalEntries(
+        inputs: List<JournalEntryInput>,
+        onResult: (tk.glucodata.data.journal.JournalSave.Outcome) -> Unit
+    ) {
         viewModelScope.launch {
-            onSaved(inputs.map { journalRepository.upsertEntry(it) })
+            onResult(
+                tk.glucodata.data.journal.JournalSave.commit(inputs, journalRepository::upsertEntries) { committed ->
+                    tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, committed)
+                }
+            )
         }
-        // A basal dose logged here answers its "not logged" reminder.
-        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, inputs)
     }
 
     /**

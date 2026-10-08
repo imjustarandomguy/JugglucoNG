@@ -1737,6 +1737,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_quickadd_always_now_title">Utiliser l’heure actuelle</string>
     <string name="journal_quickadd_always_now_desc">Démarrer l’entrée maintenant, même si un point du graphique est sélectionné</string>
     <string name="journal_saved_entry">Enregistré : %1$s</string>
+    <string name="journal_save_failed">Non enregistré : %1$s</string>
+    <string name="journal_save_try_again">Réessayer</string>
+    <string name="journal_save_failed_kept">Non enregistré. Votre saisie est conservée ; réessayez.</string>
     <string name="journal_last_dose">Dernière dose de %1$s : %2$s · %3$s</string>
     <string name="journal_last_food">Dernier repas : %1$s · %2$s</string>
     <string name="journal_time_ago">il y a %1$s</string>

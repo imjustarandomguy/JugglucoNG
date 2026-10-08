@@ -1759,6 +1759,9 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="journal_quickadd_always_now_title">Geçerli saati kullan</string>
     <string name="journal_quickadd_always_now_desc">Grafik noktası seçili olsa da kaydı şimdi başlat</string>
     <string name="journal_saved_entry">Kaydedildi: %1$s</string>
+    <string name="journal_save_failed">Kaydedilmedi: %1$s</string>
+    <string name="journal_save_try_again">Tekrar dene</string>
+    <string name="journal_save_failed_kept">Kaydedilmedi. Girişiniz duruyor; tekrar deneyin.</string>
     <string name="journal_last_dose">Son %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Son yemek: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s önce</string>
