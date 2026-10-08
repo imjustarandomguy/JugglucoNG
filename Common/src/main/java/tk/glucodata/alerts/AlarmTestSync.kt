@@ -9,7 +9,6 @@ import tk.glucodata.Applic
 import tk.glucodata.Log
 import tk.glucodata.MessageSender
 import tk.glucodata.Notify
-import tk.glucodata.SensorOwnershipRuntime
 import tk.glucodata.WearMessagePath
 
 /**
@@ -52,8 +51,8 @@ object AlarmTestSync {
             AlarmTestRouting.targets(
                 type,
                 AlertRepository.loadAlarmRouting(),
-                AlarmRouting.watchReachableFromPhone(),
-                SensorOwnershipRuntime.peerCharging(),
+                AlarmRouting.watchAvailableFromPhone(),
+                WatchAlarmReadiness.watchCharging(),
             )
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "startTest ${type.name}", t)

@@ -191,6 +191,8 @@ object AlertRuntimeManager {
         }
         evaluateSensorExpiryLocked(nowMs)
         SensorHandoverRuntime.evaluate(nowMs)
+        // Watch: tells the phone it can ring the alarms "Watch when connected" leaves to it.
+        WatchAlarmReadiness.onWatchEvaluated(lastReadingTimeMs)
         return standardAlertEvaluation
     }
 

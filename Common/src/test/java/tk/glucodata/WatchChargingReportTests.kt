@@ -48,15 +48,4 @@ class WatchChargingReportTests {
         assertNull(SensorOwnershipRuntime.decodeCharging(report.copyOfRange(0, 6)))
         assertNull(SensorOwnershipRuntime.decodeCharging(report.copyOf().also { it[0] = 2 }))
     }
-
-    @Test
-    fun aChargerStateCountsOnlyWhileItsReportDoes() {
-        val maxAge = 31L * 60_000L
-        val at = 1_000_000L
-        assertEquals(false, resolvePeerCharging(false, at, at, maxAge))
-        assertEquals(true, resolvePeerCharging(true, at, at + maxAge, maxAge))
-        assertNull("stale", resolvePeerCharging(false, at, at + maxAge + 1, maxAge))
-        assertNull("from the future: the clock moved", resolvePeerCharging(false, at, at - 1, maxAge))
-        assertNull("the report did not say", resolvePeerCharging(null, at, at, maxAge))
-    }
 }
