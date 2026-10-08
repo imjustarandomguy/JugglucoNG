@@ -33,7 +33,7 @@ Current personal branches (keep this list up to date):
 | `feat/quick-treatment-entry` | Quick treatment entry: one sheet with type tabs, per-insulin step/default dose/reminder times (Room v33), recent chips, last-dose/last-food line on new entries only, undo bar, basal reminder ("Tresiba due at 22:00", last dose named), quick tiles, app shortcuts, notification and pill "+ Insulin/+ Food" (switch "Quick log buttons"). | Not submitted |
 | `fix/dashboard-chart-bounds` | Dashboard chart: right edge at most now + 10 min (or the prediction horizon while a prediction shows), left edge at the oldest reading; no y-axis drag (a vertical swipe scrolls the page, also from the line and the tooltip cards; the scrub starts sideways or after a ~200 ms hold); the y axis is the Chart range setting, widened to fit what is in view and back (animated); drawing clipped to the plot; the handle above the range picker is a drag target and the chosen height is remembered. | Not submitted |
 | `feat/readings-as-dots` | Display → "Readings shown as" line / dots / line and dots, for the app's charts, the notification/AOD/widget/pill card chart and the watch chart + chart complication (mirrored to the watch through `SettingsRegistry`). | Not submitted |
-| `feat/alarm-settings-save` | The alarm settings page edits a draft: a save bar ("N unsaved changes", Discard/Save), "Changed" markers, a leave prompt (back, tabs, notification links), the draft kept on disk until saved; nothing reaches the alarms or the watch before Save. Declares its own `GlobalAlertSettings`, which collides with `feat/alarm-routing`'s: merged into `personal` with personal's kept and the routing/watch-style settings wired through the draft (`57cd179d0`, personal-only). | Not submitted |
+| `feat/alarm-settings-save` | The alarm settings page edits a draft: a save bar ("N unsaved changes", Discard/Save), "Changed" markers, a leave prompt (back, tabs, notification links), the draft kept on disk until saved; nothing reaches the alarms or the watch before Save. Declares its own `GlobalAlertSettings`, which collides with `feat/alarm-routing`'s: merged into `personal` with personal's kept and the routing/watch-style settings wired through the draft (`496268905`, personal-only). | Not submitted |
 | `feat/samsung-now-bar` | Optional "Live notification": a second, silent promoted notification (Android 16+ Live Update, MetricStyle on 17, Samsung `ongoingActivityNoti` extras) so the value shows in the Now Bar, AOD and status bar chip. Optional "Show as gauge": ProgressStyle over the chart range in range colours with the trend arrow as tracker (Samsung draws it only in the expanded live notification). | Not submitted |
 | `feat/widget-rework` | On top of `feat/glucose-display`. Both widgets ("Glucose", "Glucose chart") as plain RemoteViews (Glance removed): one render per reading and widget, nothing while the screen is off (drawn at screen on), stale look from the loss alarm; freely resizable with small/wide/tall layouts; per-widget settings with a live preview (long-press → Settings, and Settings → Widgets). | Not submitted |
 
@@ -44,9 +44,10 @@ results): [BATTERY.md](BATTERY.md).
 
 ### Sending branches upstream
 
-Each `fix/*`/`feat/*` branch is one change against `main`, reviewed for
-production (comments, texts, translations, performance, portability) on
-2026-10-06. To send one as a pull request to `ctqvva/JugglucoNG`:
+The branches are not yet one-PR-each: [REVIEW.md](REVIEW.md) and
+[REVIEW-COPILOT.md](REVIEW-COPILOT.md) (2026-10-08) list what to split, squash,
+scrub and translate first, and the order to send them in. To send one as a pull
+request to `ctqvva/JugglucoNG`:
 
 1. Update `main` from upstream, then rebase the branch onto it (upstream moves).
 2. Squash it to one commit if it has review follow-ups, e.g. on a fresh branch:
@@ -54,24 +55,15 @@ production (comments, texts, translations, performance, portability) on
 3. Build and run the tests for that branch alone, then push it to `origin` and
    open the PR from the fork.
 
-Dependencies (send or merge the first before the second):
-- `fix/floating-keep-below-status-bar` → `feat/floating-details-popup`
-- `fix/wear-sensor-alias` → `feat/wear-dexcom-record`
-- `feat/wear-dexcom-record` → `feat/wear-dexcom-follow-sensor`
-- `fix/dexcom-stream-slots` → `feat/wear-sync-fill-gaps`
-- `feat/dexcom-session-ownership` → `feat/wear-sync-alongside`
-- `feat/dex-autoconnect` → `fix/dex-rearm-after-session`
-- The G7 on the watch needs `fix/dexcom-stream-slots`, `feat/wear-dexcom-record`,
-  `feat/dexcom-session-ownership`, `feat/wear-dexcom-watch-slot` and
-  `feat/wear-sync-fill-gaps` together; each compiles on its own.
-
-Branches that touch the same files and will conflict with each other once one
-is merged upstream: the floating ones (overlay, service, settings screen), and
-every branch that adds strings (they all append to the end of the 15
-`strings.xml` files). Rebase the later ones after each merge.
-
-`feat/dex-*` and `fix/dex-*` were rewritten (amended) on 2026-10-06: pushing
-them to `origin` needs `--force-with-lease`.
+Dependencies: `feat/dexcom-g7-watch` needs `fix/dexcom-g7-link`;
+`feat/alarm-routing` needs `fix/wear-alarm-settings-sync`; `feat/widget-rework`
+needs only the update coalescer (3b08c149b) of `feat/glucose-display`. Real
+conflicts between branches (2026-10-08): `feat/dexcom-g7-watch` × `feat/alarm-routing`
+(`SensorOwnershipRuntime.kt`, both extend the ownership report),
+`feat/alarm-routing` × `feat/alarm-settings-save` (`AlertRepository.kt` and two
+`GlobalAlertSettings` classes), `feat/quick-treatment-entry` × `feat/widget-rework`
+(`MobileVariantBootstrap.java`, mobile `styles.xml`). All branches add strings to
+the 16 `strings.xml` files (Hungarian, `values-hu`, still lacks ours).
 
 Shelved (on `origin`, **not** in `personal`): `feat/wear-colored-complication`, a
 range-coloured "Value + arrow" complication. On the owner's Google "Active"
@@ -267,23 +259,37 @@ properties were not picked up; do not install. `apksigner.bat` needs `java` on
 ## 6. Updating from upstream
 
 ```bash
-bash scripts/personal/materialize-symlinks.sh --restore   # Windows only, see section 1
+OLD=$(git rev-parse personal)                             # keep: the reference for step 5
+for b in personal main $(git branch --format='%(refname:short)' | grep -E '^(fix|feat)/'); do
+  git tag -f "backup/$(date +%F)/$b" "$b"; done            # local undo point
 git fetch upstream
-git switch main && git merge --ff-only upstream/main && git push origin main
-# For each fix/feat branch still not merged upstream:
-git switch fix/xyz && git rebase main && git push --force-with-lease origin fix/xyz
-# Rebuild personal from scratch rather than merging main into it repeatedly:
-git switch personal
-git reset --hard main
-git merge --no-ff fix/xyz   # repeat for each branch in the table above
-git checkout <previous personal commit> -- docs/personal scripts/personal CLAUDE.md
-git commit -m "Personal: build guide"
-git push --force-with-lease origin personal
+git branch -f main upstream/main && git push origin main  # main is not checked out
+# 1. Rebase each topic onto main; stacked ones with --onto <parent> <old parent tip>
+#    (dexcom-g7-watch on dexcom-g7-link, alarm-routing on wear-alarm-settings-sync,
+#    widget-rework on glucose-display). Work in a separate worktree.
+# 2. Rebuild personal on a temporary branch from main: git merge --no-ff each
+#    branch in the table order; resolve with $OLD's version of each conflicted file.
+# 3. Replay the personal-only CODE commits (find them with
+#    git log --no-merges --first-parent main..$OLD, minus "Personal:" ones):
+#    the alarm draft wiring of routing/watch style, the details card's
+#    + Insulin/+ Food and its Quick-log-buttons switch, the removal of the
+#    journal + type menu, the deletion of the leftover hidden notification channel.
+# 4. git checkout $OLD -- docs/personal scripts/personal CLAUDE.md && commit "Personal: …"
+# 5. Verify: merge main into a copy of $OLD the plain way; its tree must equal the
+#    rebuilt one (strings.xml line order aside). Any difference is lost integration.
+# 6. Tests (scripts/personal/test.sh) and both release builds, then publish:
+git push --force-with-lease=<branch>:<backup tag sha> origin <branches…>
+bash scripts/personal/materialize-symlinks.sh --restore && git reset --keep <rebuilt>
 bash scripts/personal/materialize-symlinks.sh            # Windows only
+git push --force-with-lease=personal:$OLD origin personal
 ```
 
-- Before `reset --hard`, note the current `personal` commit (`git rev-parse
-  personal`) so the guide, scripts and `CLAUDE.md` can be restored from it.
+- `.git/info/attributes` holds `Common/src/main/res/values*/strings.xml merge=union`
+  (local, not committed): the "both sides appended strings" conflicts resolve
+  themselves. After each rebase/merge, check every `values*/strings.xml` for a
+  duplicated `name=` (a union of two edits of one string keeps both).
+- Last full sync: 2026-10-08 (main b8f3e2e3b). The personal-only code commits were
+  then `496268905`, `d0ba1dedc`, `c657a0c30`, `08bf24170`, `96cd4c439`.
 - Upstream moves fast (hundreds of commits a month). Rebase often; expect
   conflicts in files upstream is actively reworking.
 - If a branch was merged upstream, delete it locally and on `origin`, and
