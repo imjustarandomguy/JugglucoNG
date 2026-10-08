@@ -92,17 +92,23 @@ import java.text.DateFormat
 import java.util.Collections
 import java.util.Date
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tk.glucodata.webserver.WebServerCertificate
 import tk.glucodata.Applic
 import tk.glucodata.AutoSensorSwitch
+import tk.glucodata.DirectReadingText
+import tk.glucodata.DirectReadingView
 import tk.glucodata.GoogleServices
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.R
+import tk.glucodata.SensorIdentity
+import tk.glucodata.SensorOwnershipRuntime
 import tk.glucodata.SuperGattCallback
 import tk.glucodata.WatchInterop
+import tk.glucodata.WearRoutingRequest
 import tk.glucodata.WearSensorClaimState
 import tk.glucodata.WearSensorClaimStatus
 import tk.glucodata.watchdrip
@@ -311,6 +317,29 @@ fun WatchSettingsScreen(navController: NavController) {
     }
 }
 
+/** How often the Wear OS page re-reads who is reading the sensor, for "last N min ago". */
+private const val DIRECT_VIEW_TICK_MS = 30_000L
+
+/** "Phone: …" and "Watch: …", the watch's in the error colour when it should be reading and is not. */
+@Composable
+private fun DirectReadingLines(view: DirectReadingView) {
+    val context = LocalContext.current
+    Text(
+        DirectReadingText.phone(context, view),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Text(
+        DirectReadingText.watch(context, view),
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (view.watchAlert) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    )
+}
+
 @Composable
 fun WearOsConfigScreen(navController: NavController) {
     val context = LocalContext.current
@@ -327,6 +356,23 @@ fun WearOsConfigScreen(navController: NavController) {
     var refreshingNodes by remember { mutableStateOf(false) }
     var syncStatus by remember { mutableStateOf(WatchInterop.getWearSyncStatus()) }
     val claimRevision by WearSensorClaimStatus.revision.collectAsState()
+    val ownershipRevision by SensorOwnershipRuntime.revision.collectAsState()
+    // Who reads the selected watch's sensor itself, from when each device last
+    // did. The claim state stood in for this and never expired while both read.
+    var directView by remember { mutableStateOf<DirectReadingView?>(null) }
+    LaunchedEffect(selectedNodeId, directOnWatch, ownershipRevision) {
+        while (true) {
+            val nodeId = selectedNodeId
+            directView = withContext(Dispatchers.Default) {
+                runCatching {
+                    val serial = nodeId.takeIf { it.isNotBlank() }?.let(WearRoutingRequest::assignedSensor)
+                        ?: SensorIdentity.resolveMainSensor()
+                    SensorOwnershipRuntime.directReadingView(serial)
+                }.getOrNull()
+            }
+            delay(DIRECT_VIEW_TICK_MS)
+        }
+    }
 
     fun applyNodes(latest: List<WatchInterop.WearNodeInfo>) {
         nodes = latest
@@ -510,16 +556,10 @@ fun WearOsConfigScreen(navController: NavController) {
                             }
                             val liveStatus = if (isSelected) {
                                 val chunks = syncStatus.lastChunkCount
-                                val claimStatus = when (node.claimState) {
-                                    WearSensorClaimState.PHONE_OWNS -> stringResource(R.string.wear_claim_state_phone_owns)
-                                    WearSensorClaimState.REQUESTING -> stringResource(R.string.wear_claim_state_requesting)
-                                    WearSensorClaimState.CONNECTED -> stringResource(R.string.wear_claim_state_connected)
-                                    null -> null
-                                }
                                 "\nHistory served: ${timeStatus(syncStatus.lastServedMs)}${if (chunks > 0) " ($chunks chunks)" else ""}" +
-                                    "\nNetwork info: ${timeStatus(syncStatus.lastNetInfoExchangeMs)}" +
-                                    (claimStatus?.let { "\n$it" } ?: "")
+                                    "\nNetwork info: ${timeStatus(syncStatus.lastNetInfoExchangeMs)}"
                             } else ""
+                            val readers = directView?.takeIf { isSelected && node.appInstalled }
                             val appSubtitle = if (node.appInstalled) {
                                 "$appStatus • ${node.id}$liveStatus"
                             } else {
@@ -536,6 +576,11 @@ fun WearOsConfigScreen(navController: NavController) {
                                 },
                                 position = position,
                                 onClick = { selectedNodeId = node.id },
+                                supportingContent = if (readers != null) {
+                                    { DirectReadingLines(readers) }
+                                } else {
+                                    null
+                                },
                                 trailingContent = {
                                     if (isSelected) {
                                         Icon(
@@ -556,12 +601,15 @@ fun WearOsConfigScreen(navController: NavController) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     // Say which phase the handoff is in, so a switch that is on
                     // while the phone still owns Bluetooth reads as "waiting",
-                    // not as "broken".
+                    // not as "broken". Whether the watch is reading comes from
+                    // its own newest reading, not its claim: the claim never
+                    // expired while both read a G7, and said "connected"
+                    // through hours of the watch not reading at all.
+                    val view = directView
                     val handoffPhase = when {
-                        selected?.claimState == WearSensorClaimState.CONNECTED ->
-                            stringResource(R.string.wear_claim_state_connected)
-                        directOnWatch && selected?.directPending == true ->
-                            stringResource(R.string.wear_claim_state_requesting)
+                        view != null && view.watch.isReading(view.nowMs) ->
+                            stringResource(R.string.status_watch_reading)
+                        directOnWatch -> stringResource(R.string.wear_claim_state_requesting)
                         else -> stringResource(R.string.wear_claim_state_phone_owns)
                     }
                     SettingsItem(

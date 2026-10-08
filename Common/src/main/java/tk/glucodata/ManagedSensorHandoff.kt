@@ -73,6 +73,7 @@ object ManagedSensorHandoff {
             }
         }
         root.put("entries", entries)
+        dexcomPairing()?.let { root.put("dexcom", it) }
         // Which namespaces actually travelled is otherwise invisible: a receiver that comes up
         // with no auth material looks exactly like one that was never sent any.
         run {
@@ -108,6 +109,7 @@ object ManagedSensorHandoff {
                         ManagedCurrentSensor.set(sensorId)
                     }
                 }
+            root.optJSONObject("dexcom")?.let(::adoptDexcom)
             run {
             val perPrefs = LinkedHashMap<String, Int>()
             for (i in 0 until entries.length()) {
@@ -137,6 +139,71 @@ object ManagedSensorHandoff {
             Log.stack(LOG_ID, "applyIncoming", th)
             false
         }
+    }
+
+    /**
+     * What the receiving device needs to pair with the selected G7 itself, or
+     * null for any other sensor. A G7 record is native, so none of the
+     * preferences above describe it. Like Juggluco's own mirror this sends the
+     * scanned code (it ends in the PIN), the sensor's Bluetooth name and its
+     * start, not the pairing key: the receiver pairs with the PIN.
+     */
+    private fun dexcomPairing(): JSONObject? {
+        val sensorId = SensorIdentity.resolveMainSensor() ?: return null
+        val fields = runCatching { Natives.dexHandoff(sensorId) }.getOrNull() ?: return null
+        if (fields.size < 4) return null
+        val start = fields[3].toLongOrNull() ?: return null
+        return JSONObject()
+            .put("name", fields[0])
+            .put("code", fields[1])
+            .put("deviceName", fields[2])
+            .put("start", start)
+    }
+
+    /** The selected G7's full record name, as a handoff would carry it; null for any other sensor. */
+    @JvmStatic
+    fun selectedDexcomName(): String? =
+        dexcomPairing()?.optString("name")?.takeIf { it.isNotEmpty() }
+
+    /** Per watch: the G7 it was last handed ("Direct sensor on watch" preferences). */
+    const val HANDED_DEXCOM_KEY_PREFIX = "dexcom."
+    private const val ROUTING_PREFS = "wear_routing_request"
+    private const val DIRECT_KEY_PREFIX = "direct."
+
+    /**
+     * "Direct sensor on watch" hands the watch the phone's selected G7 when it
+     * is switched on. A sensor started later never reached it, and the watch
+     * kept looking for the old one. Called from the phone's ownership tick:
+     * each watch is handed each new G7 once.
+     */
+    @JvmStatic
+    fun followSelectedDexcom() {
+        if (Applic.isWearable) return
+        val name = selectedDexcomName() ?: return
+        val prefs = Applic.app?.getSharedPreferences(ROUTING_PREFS, Context.MODE_PRIVATE) ?: return
+        val nodes = prefs.all
+            .filter { (key, value) -> key.startsWith(DIRECT_KEY_PREFIX) && value == true }
+            .keys
+            .map { it.removePrefix(DIRECT_KEY_PREFIX) }
+            .filter { it.isNotBlank() && prefs.getString(HANDED_DEXCOM_KEY_PREFIX + it, null) != name }
+        // The send waits for delivery: don't hold up the ownership tick for an absent watch.
+        if (nodes.isEmpty() || runCatching { MessageSender.peerUnreachable() }.getOrDefault(true)) return
+        val sender = MessageSender.getMessageSender() ?: return
+        val payload = createOutgoingPayload()
+        nodes.forEach { node ->
+            if (sender.sendSensorHandoff(node, payload)) {
+                prefs.edit().putString(HANDED_DEXCOM_KEY_PREFIX + node, name).apply()
+                Log.i(LOG_ID, "handed G7 $name to watch $node")
+            }
+        }
+    }
+
+    private fun adoptDexcom(dexcom: JSONObject) {
+        val name = dexcom.optString("name").trim().takeIf { it.isNotEmpty() } ?: return
+        val code = dexcom.optString("code").takeIf { it.isNotEmpty() } ?: return
+        val start = dexcom.optLong("start").takeIf { it > 0L } ?: return
+        val deviceName = dexcom.optString("deviceName").takeIf { it.isNotEmpty() }
+        WearSync2.adoptDexcomSensor(name, code, start, deviceName)
     }
 
     private fun collectManagedCandidates(context: Context?): Set<String> {

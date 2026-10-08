@@ -176,7 +176,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED
                 && locallyConnectedGatt == gatt) {
             locallyConnectedGatt = null;
-            WearSensorClaim.onLocalGattDisconnected(SerialNumber);
+            if (!holdsSensor(System.currentTimeMillis()))
+                WearSensorClaim.onLocalGattDisconnected(SerialNumber);
         }
     }
 
@@ -189,6 +190,50 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         return current != null && locallyConnectedGatt == current;
     }
 
+    /** When a GATT this process connected last delivered a reading, 0 for never. */
+    private volatile long lastLocalSessionReadingMs = 0L;
+
+    protected final long lastLocalSessionReadingMs() {
+        return lastLocalSessionReadingMs;
+    }
+
+    /**
+     * Whether this device holds the sensor, for handing it over to the other
+     * device: by default a live local GATT. A driver whose sensor connects only
+     * for a moment between readings overrides this, or each disconnect would
+     * read as letting the sensor go.
+     */
+    public boolean holdsSensor(long nowMs) {
+        return hasLocallyConnectedGatt();
+    }
+
+    /** Whether the watch may take this sensor over from the phone. */
+    public boolean supportsWatchClaim() {
+        return this instanceof tk.glucodata.drivers.ManagedBluetoothSensorDriver;
+    }
+
+    /**
+     * Whether the sensor serves this device and the other at once, each over
+     * its own channel. Neither then stands down for the other, and a watch
+     * dials it only when told to read it ("Direct sensor on watch").
+     */
+    public boolean readsAlongside() {
+        return false;
+    }
+
+    /** Bluetooth use stops; by default the same as dropping the sensor. */
+    public void stopTransport() {
+        free();
+    }
+
+    /**
+     * No GATT open or pending and no connect scheduled: until something dials
+     * it, this callback will not reach its sensor.
+     */
+    public final synchronized boolean transportIdle() {
+        return mBluetoothGatt == null && !connectPending;
+    }
+
     /**
      * Mark a live reading accepted by this local BLE callback.
      *
@@ -199,6 +244,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
      * left flagged as a Clone stops looking like the local sensor it is.
      */
     protected final void markLocalReadingAccepted(long sampleTimeMs) {
+        // Before the claims below, which read holdsSensor().
+        if (hasLocallyConnectedGatt())
+            lastLocalSessionReadingMs = System.currentTimeMillis();
         WearSensorClaim.onLocalReadingAccepted(SerialNumber, sampleTimeMs);
         SensorOwnershipRuntime.noteLocalReading(SerialNumber, sampleTimeMs);
         // charcha[0] is the shared "last successful glucose" slot, read by
@@ -215,6 +263,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // sensor cleared its own Clone flag on every import.
         if (hasLocallyConnectedGatt()) {
             CloneSensorRegistry.markLocalSensor(SerialNumber);
+            // The same proof is what both devices' screens show as "reading the
+            // sensor": readings synced from the other device look no different.
+            SensorOwnershipRuntime.noteDirectReading(SerialNumber, System.currentTimeMillis());
         }
     }
 
@@ -1258,7 +1309,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         if (tmpgatt != null) {
             if (locallyConnectedGatt == tmpgatt) {
                 locallyConnectedGatt = null;
-                WearSensorClaim.onLocalGattDisconnected(SerialNumber);
+                if (!holdsSensor(System.currentTimeMillis()))
+                    WearSensorClaim.onLocalGattDisconnected(SerialNumber);
             }
             try {
                 try { tmpgatt.disconnect(); }

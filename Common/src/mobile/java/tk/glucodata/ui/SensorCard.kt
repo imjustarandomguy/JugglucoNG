@@ -2002,6 +2002,23 @@ fun SensorCard(
                             }
                         }
                     }
+                    // Phone and watch both read this sensor: which of them does,
+                    // the watch's line in the error colour when it should and
+                    // has not for a while.
+                    if (sensor.directReadingDetails.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        sensor.directReadingDetails.forEach { detail ->
+                            Text(
+                                text = detail.text,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (detail.isAlert) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                            )
+                        }
+                    }
 //                } // Close Column (content)
 //                } // Close Column (content)
 //            } // Close Row (color indicator wrapper)

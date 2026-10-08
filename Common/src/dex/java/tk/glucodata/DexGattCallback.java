@@ -243,6 +243,8 @@ private int connectionTimeouts=0;
             try { bluetoothGatt.close(); } catch (Throwable th) { Log.stack(LOG_ID, "close stale gatt", th); }
             return;
         }
+        // Tracks the local GATT that ownership and the watch claim rely on.
+        super.onConnectionStateChange(bluetoothGatt, status, newState);
         if (stop) {
             releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
@@ -521,12 +523,40 @@ private void sendcertthread() {
     }
 
 
+    /*
+     * A G7 keeps a separate pairing for each display channel, named by the auth
+     * request's last byte: phone app (2), receiver or pump (1) and smartwatch
+     * (3). The sensor refused a watch the phone app's channel while it knew the
+     * phone, so a watch pairs on the smartwatch channel and reads alongside the
+     * phone; if the sensor refuses that one too, on the receiver's.
+     */
+    private static final byte SLOT_PHONE = 0x02;
+    private static final byte SLOT_RECEIVER = 0x01;
+    private static final byte SLOT_WATCH = 0x03;
+    private static final String SLOT_PREFS = "dexcom_auth_slots";
+
+    private byte authSlot() {
+        if (!isWearable)
+            return SLOT_PHONE;
+        return (byte) Applic.app.getSharedPreferences(SLOT_PREFS, Context.MODE_PRIVATE)
+                .getInt(SerialNumber, SLOT_WATCH);
+    }
+
+    private void useReceiverSlot() {
+        Applic.app.getSharedPreferences(SLOT_PREFS, Context.MODE_PRIVATE)
+                .edit().putInt(SerialNumber, SLOT_RECEIVER).apply();
+    }
+
+    private byte requestedSlot = SLOT_PHONE;
+
     private void requestAuth() {
-        {if(doLog) {Log.i(LOG_ID,"requestAuth()");};};
+        requestedSlot = authSlot();
+        {if(doLog) {Log.i(LOG_ID,"requestAuth() slot=" + requestedSlot);};};
         Random.fillbytes(random8);
         var uit = new byte[10];
         System.arraycopy(random8, 0, uit, 1, random8.length);
-        uit[0] = uit[9] = (byte) 0x02;
+        uit[0] = (byte) 0x02;
+        uit[9] = requestedSlot;
         charact[1].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         tryer(()->write(1, uit));
       }
@@ -657,12 +687,19 @@ private boolean removedBond=false;
                   }
                 boolean isbonded = bond == 1;
 
-                if(!newcertificates&&auth != 1) {
+                if(auth != 1) {
+                    // Not authenticated on this channel: certificates sent now only
+                    // make the sensor hang up. A fresh pairing refused on the
+                    // smartwatch channel moves to the receiver's from the next session.
                     handshake = "auth != 1";
                     wrotepass[1] = System.currentTimeMillis();
+                    if(newcertificates && requestedSlot == SLOT_WATCH)
+                        useReceiverSlot();
                     resetCerts();
                 } else {
-                    if(auth==1&&isbonded||(bonded&&bond==2)) {
+                    // A fresh pairing is a new channel: it needs its certificates
+                    // even when Android already bonded this device on another one.
+                    if(isbonded||(bonded&&bond==2&&!newcertificates)) {
                         getdatacmd();
                     } else {
                         askcertificate(SendCertificate1);
@@ -950,6 +987,38 @@ private    void getdata(byte[] value) {
         cancelalarm();
         unbond();
         super.free();
+    }
+
+    /** Bluetooth use stopping is not the sensor going: keep the pairing, so starting again needs no new one. */
+    @Override
+    public void stopTransport() {
+        releaselock();
+        cancelalarm();
+        super.free();
+    }
+
+    /** Two missed readings: a G7 is connected only a few seconds every 5 minutes. */
+    private static final long HOLD_BETWEEN_SESSIONS_MSEC = 11L * 60L * 1000L;
+
+    @Override
+    public boolean holdsSensor(long nowMs) {
+        if (hasLocallyConnectedGatt())
+            return true;
+        if (stop)
+            return false;
+        final long last = lastLocalSessionReadingMs();
+        return last > 0L && nowMs - last < HOLD_BETWEEN_SESSIONS_MSEC;
+    }
+
+    @Override
+    public boolean supportsWatchClaim() {
+        return true;
+    }
+
+    /** A G7 has its own channel for the phone app, a smartwatch and a receiver. */
+    @Override
+    public boolean readsAlongside() {
+        return true;
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");

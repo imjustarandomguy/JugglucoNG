@@ -755,6 +755,9 @@ public class Natives {
          */
         public static native int addGlucoseStreamBatchWithRawTemp(long[] times, float[] glucoses, float[] raws, float[] temperatures, String sensorId);
 
+        /** Per time (seconds): whether the sensor's record already has a reading in that slot. */
+        public static native boolean[] streamSlotsFilled(long[] times, String sensorId);
+
         public static native long ensureSensorShell(String sensorId, long startTimeSec);
 
         public static native long ensureSensorShellWithCapacity(String sensorId, long startTimeSec, int minimumRecords);
@@ -1377,6 +1380,12 @@ public class Natives {
         public static native int[] searchIngredient(String label);
 
         public static native boolean dexKnownSensor(long dataptr);
+
+        /** {full record name, scanned code, Bluetooth name or "", start in seconds} of a G7, else null. */
+        public static native String[] dexHandoff(String sensor);
+
+        /** Makes this device's record for a G7 one its Dexcom driver can connect with. */
+        public static native boolean dexAdoptSensor(String sensor, String code, long startSec, String deviceName);
 
         public static native long[] activeSensorPtrs();
 

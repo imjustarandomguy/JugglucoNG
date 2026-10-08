@@ -1360,6 +1360,10 @@ static int getgeneration(const char *info) {
   // ===== END RESET MODE API =====
 
   bool isDexcom() const { return getinfo()->dexcom; }
+  // Poll slot length for readings stored by time instead of by their driver.
+  // A Dexcom record keeps the driver's 5-minute slots from the sensor's start
+  // (dexcom/java.cpp DEXSECONDS); other stream records use 1-minute slots.
+  int streamSlotSeconds() const { return isDexcom() ? interval5 : 60; }
   bool isLibre3() const {
     return !isAccuChek() && !isSibionics() && !isDexcom() && !isAir() &&
            (getinfo()->interval == interval5);
@@ -1590,6 +1594,30 @@ bool libreviewable() const {
     //        settings->data()->balanced_priority=false;
     //       settings->data()->android13=true;
     return true;
+  }
+
+  // Makes a record that held a G7's synced readings, in 1-minute slots, the
+  // record its Dexcom driver writes: the header mkdatabaseDex would write and
+  // 5-minute slots from the sensor's start. The old slots mean nothing in that
+  // layout, so they are cleared; the caller syncs them again.
+  void becomeDexcom(std::string_view code, uint32_t sensorstart) {
+    rebaseDirectStreamWindow(sensorstart);
+    auto *info = getinfo();
+    info->lastscantime = sensorstart;
+    info->starthistory = 0;
+    info->endhistory = 0;
+    info->scancount = 0;
+    info->startid = 0;
+    info->interval = interval5;
+    info->dexcom = true;
+    info->days = maxdaysDex;
+    info->warmup = 30;
+    info->wearduration = 14400;
+    info->lastLifeCountReceived = 1;
+    info->lastHistoricLifeCountReceivedPos = 0;
+    info->healthconnectiter = 0;
+    info->siIdlen = std::min(code.size(), sizeof(info->siId));
+    memcpy(info->siId, code.data(), info->siIdlen);
   }
 
 #endif
