@@ -118,8 +118,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -399,7 +401,11 @@ fun JournalEntrySheet(
     // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
     initialInsulinPresetId: Long? = null,
     // The dose a new insulin entry is filled in with, instead of the insulin's default.
-    initialInsulinAmount: Float? = null
+    initialInsulinAmount: Float? = null,
+    // For a host that keeps the sheet open until the save is stored: Save waits meanwhile, and
+    // a failed save is said above it, the entry kept.
+    saving: Boolean = false,
+    saveError: String? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -518,6 +524,7 @@ fun JournalEntrySheet(
     val recentAmounts = recentAmountsLoad.second.takeIf { recentAmountsLoad.first == recentAmountsKey }.orEmpty()
     // The Save button and the keyboard's Done key both end here.
     fun saveDraft() {
+        if (saving) return
         if (!canSave) {
             focusManager.clearFocus()
             return
@@ -1023,23 +1030,39 @@ fun JournalEntrySheet(
                 )
             }
 
+            if (saveError != null) {
+                journalSheetItem(key = "save_error") {
+                    Text(
+                        text = saveError,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                    )
+                }
+            }
+
             journalSheetItem(key = "save_button") {
+                // A save the host is still storing keeps Save off until it is done.
+                val saveEnabled = canSave && !saving
                 // Switching type often flips Save between enabled and disabled; fade the fill
                 // instead of letting it blink.
                 val defaultSaveColors = ButtonDefaults.buttonColors()
                 val saveContainerColor by animateColorAsState(
-                    targetValue = if (canSave) defaultSaveColors.containerColor else defaultSaveColors.disabledContainerColor,
+                    targetValue = if (saveEnabled) defaultSaveColors.containerColor else defaultSaveColors.disabledContainerColor,
                     animationSpec = ExpressiveMotion.defaultEffects(),
                     label = "journalSaveContainer"
                 )
                 val saveContentColor by animateColorAsState(
-                    targetValue = if (canSave) defaultSaveColors.contentColor else defaultSaveColors.disabledContentColor,
+                    targetValue = if (saveEnabled) defaultSaveColors.contentColor else defaultSaveColors.disabledContentColor,
                     animationSpec = ExpressiveMotion.defaultEffects(),
                     label = "journalSaveContent"
                 )
                 Button(
                     onClick = { saveDraft() },
-                    enabled = canSave,
+                    enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp),
