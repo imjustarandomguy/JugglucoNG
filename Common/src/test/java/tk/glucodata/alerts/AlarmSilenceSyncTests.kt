@@ -377,54 +377,73 @@ class AlarmSilenceSyncTests {
 
     /**
      * A device as the runtime keeps it: its own clock, the records it holds, and the
-     * bookkeeping AlarmSilenceSync.applyAction does for each action.
+     * bookkeeping AlarmSilenceSync.applyAction does for each action. With an [origin] it
+     * numbers its changes ([ChangeId]); without one it is an older build.
      */
-    private class Device(val name: String, val clockOffsetMs: Long) {
+    private class Device(val name: String, val clockOffsetMs: Long, val origin: Int? = null) {
         val snoozes = LinkedHashMap<Int, SnoozeEntry>()
         val dismissals = LinkedHashMap<Int, DismissEntry>()
         var quiet: QuietEntry? = null
         val applied = ArrayList<SilenceAction>()
+        private var revision = 0L
 
         fun now(trueMs: Long) = trueMs + clockOffsetMs
+
+        private fun nextId(): ChangeId? = origin?.let { ChangeId(++revision, it) }
 
         fun state(trueMs: Long) =
             AlarmSilencePolicy.retained(SilenceState(snoozes.values.toList(), dismissals.values.toList(), quiet), now(trueMs))
 
         fun snooze(typeId: Int, trueMs: Long, minutes: Int, preemptive: Boolean = false) {
-            snoozes[typeId] = SnoozeEntry(typeId, now(trueMs), now(trueMs) + minutes * 60_000L, preemptive)
+            snoozes[typeId] = SnoozeEntry(typeId, now(trueMs), now(trueMs) + minutes * 60_000L, preemptive, nextId())
         }
 
         fun cancel(typeId: Int, trueMs: Long) {
-            snoozes[typeId] = SnoozeEntry(typeId, now(trueMs), 0L, false)
+            snoozes[typeId] = SnoozeEntry(typeId, now(trueMs), 0L, false, nextId())
         }
 
         fun dismiss(typeId: Int, trueMs: Long) {
-            dismissals[typeId] = DismissEntry(typeId, now(trueMs))
+            dismissals[typeId] = DismissEntry(typeId, now(trueMs), nextId())
         }
 
         fun startQuiet(trueMs: Long, minutes: Int) {
-            quiet = QuietEntry(now(trueMs), now(trueMs) + minutes * 60_000L, AlertDeliveryPolicy.QUIET_VIBRATE_ONLY, 10, AlertDeliveryPolicy.BREAKTHROUGH_ALL)
+            quiet = QuietEntry(now(trueMs), now(trueMs) + minutes * 60_000L, AlertDeliveryPolicy.QUIET_VIBRATE_ONLY, 10, AlertDeliveryPolicy.BREAKTHROUGH_ALL, nextId())
         }
+
+        fun endQuiet(trueMs: Long) {
+            quiet = quiet!!.copy(changedAtMs = now(trueMs), untilMs = 0L, id = nextId())
+        }
+
+        private fun withoutIds(state: SilenceState) = SilenceState(
+            snoozes = state.snoozes.map { it.copy(id = null) },
+            dismissals = state.dismissals.map { it.copy(id = null) },
+            quiet = state.quiet?.copy(id = null),
+        )
 
         fun send(trueMs: Long, reply: Boolean): ByteArray = AlarmSilenceCodec.encode(state(trueMs), now(trueMs), reply)
 
         /** Applies [bytes]; true when this device answers. */
         fun receive(bytes: ByteArray, trueMs: Long): Boolean {
-            val message = AlarmSilenceCodec.decode(bytes, now(trueMs))!!
+            val decoded = AlarmSilenceCodec.decode(bytes, now(trueMs))!!
+            // An older build does not read the ids.
+            val message = if (origin != null) decoded else decoded.copy(state = withoutIds(decoded.state))
+            message.state.let { s -> (s.snoozes.map { it.id } + s.dismissals.map { it.id } + s.quiet?.id) }
+                .forEach { id -> if (id != null && id.rev > revision) revision = id.rev }
             val result = AlarmSilencePolicy.reconcile(state(trueMs), message.state, message.reply, now(trueMs))
             for (action in result.actions) {
                 applied += action
                 when (action) {
                     is SilenceAction.Snooze ->
-                        snoozes[action.typeId] = SnoozeEntry(action.typeId, action.changedAtMs, action.untilMs, action.preemptive)
-                    is SilenceAction.ClearSnooze -> snoozes[action.typeId] = SnoozeEntry(action.typeId, action.changedAtMs, 0L, false)
+                        snoozes[action.typeId] = SnoozeEntry(action.typeId, action.changedAtMs, action.untilMs, action.preemptive, action.id)
+                    is SilenceAction.ClearSnooze -> snoozes[action.typeId] = SnoozeEntry(action.typeId, action.changedAtMs, 0L, false, action.id)
                     is SilenceAction.AdoptSnoozeTime -> snoozes[action.typeId] =
-                        snoozes[action.typeId]?.copy(changedAtMs = action.changedAtMs)
-                            ?: SnoozeEntry(action.typeId, action.changedAtMs, 0L, false)
-                    is SilenceAction.Dismiss -> dismissals[action.typeId] = DismissEntry(action.typeId, action.dismissedAtMs)
+                        snoozes[action.typeId]?.copy(changedAtMs = action.changedAtMs, id = action.id)
+                            ?: SnoozeEntry(action.typeId, action.changedAtMs, 0L, false, action.id)
+                    is SilenceAction.Dismiss -> dismissals[action.typeId] = DismissEntry(action.typeId, action.dismissedAtMs, action.id)
                     is SilenceAction.StartQuiet -> quiet = action.entry
-                    is SilenceAction.EndQuiet -> quiet = quiet!!.copy(changedAtMs = action.changedAtMs, untilMs = 0L)
-                    is SilenceAction.AdoptQuietTime -> quiet = quiet!!.copy(changedAtMs = action.changedAtMs)
+                    is SilenceAction.EndQuiet -> quiet = quiet!!.copy(changedAtMs = action.changedAtMs, untilMs = 0L, id = action.id)
+                    is SilenceAction.AdoptQuietTime -> quiet = quiet?.copy(changedAtMs = action.changedAtMs, id = action.id)
+                        ?: QuietEntry(action.changedAtMs, 0L, AlertDeliveryPolicy.QUIET_VIBRATE_ONLY, 10, AlertDeliveryPolicy.BREAKTHROUGH_ALL, action.id)
                 }
             }
             return result.reply
@@ -468,9 +487,9 @@ class AlarmSilenceSyncTests {
     /** No echo: a change applied from the other device is never sent back. */
     @Test
     fun aChangeAppliedFromTheOtherDeviceIsNotSentBack() {
-        for (skew in listOf(0L, 9 * second, -2 * hour)) {
-            val phone = Device("phone", 0L)
-            val watch = Device("watch", skew)
+        for (ids in listOf(false, true)) for (skew in listOf(0L, 9 * second, -2 * hour)) {
+            val phone = Device("phone", 0L, origin = if (ids) 11 else null)
+            val watch = Device("watch", skew, origin = if (ids) 22 else null)
             phone.startQuiet(t0, 60) // the quick-settings tile
             phone.snooze(low, t0, 30, preemptive = true)
             assertEquals("one message, no answer", 1, exchange(phone, watch, t0, transitMs = 800L))
@@ -497,9 +516,9 @@ class AlarmSilenceSyncTests {
     /** Out of reach: both change, then catch up on reconnect; the later change wins per type. */
     @Test
     fun devicesOutOfReachCatchUpAndTheLaterChangeWinsPerType() {
-        for (skew in listOf(0L, 5 * hour, -11 * second)) {
-            val phone = Device("phone", 0L)
-            val watch = Device("watch", skew)
+        for (ids in listOf(false, true)) for (skew in listOf(0L, 5 * hour, -11 * second)) {
+            val phone = Device("phone", 0L, origin = if (ids) 11 else null)
+            val watch = Device("watch", skew, origin = if (ids) 22 else null)
             // In reach: a two-hour preemptive snooze of high from the phone.
             phone.snooze(high, t0, 120, preemptive = true)
             exchange(phone, watch, t0, transitMs = 500L)
@@ -524,6 +543,157 @@ class AlarmSilenceSyncTests {
             assertEquals(1, exchange(phone, watch, reconnect + 2 * minute, transitMs = 1_500L))
             assertEquals(1, exchange(watch, phone, reconnect + 3 * minute, transitMs = 1_500L))
         }
+    }
+
+    // ------------------------------------------------------------ changes in quick succession
+
+    @Test
+    fun aQuietWindowStartedAndCancelledWithinSecondsEndsOnTheWatch() {
+        for (skew in listOf(0L, 3 * second, -4 * hour)) {
+            val phone = Device("phone", 0L, origin = 11)
+            val watch = Device("watch", skew, origin = 22)
+            phone.startQuiet(t0, 60)
+            exchange(phone, watch, t0, transitMs = 700L)
+            assertTrue(watch.quiet!!.activeAt(watch.now(t0 + second)))
+            phone.endQuiet(t0 + 2 * second)
+            exchange(phone, watch, t0 + 2 * second, transitMs = 700L)
+            assertFalse("skew $skew", watch.quiet!!.activeAt(watch.now(t0 + 3 * second)))
+            assertSameSilence(phone, watch, t0 + 3 * second)
+        }
+    }
+
+    @Test
+    fun aSnoozeChangedWithinSecondsReachesTheWatch() {
+        val phone = Device("phone", 0L, origin = 11)
+        val watch = Device("watch", 0L, origin = 22)
+        phone.snooze(low, t0, 30)
+        exchange(phone, watch, t0, transitMs = 0L)
+        // A longer snooze, then a cancel, each a few seconds after the last.
+        phone.snooze(low, t0 + 3 * second, 60)
+        exchange(phone, watch, t0 + 3 * second, transitMs = 0L)
+        assertEquals(t0 + 3 * second + hour, watch.snoozes.getValue(low).untilMs)
+        phone.cancel(low, t0 + 5 * second)
+        exchange(phone, watch, t0 + 5 * second, transitMs = 0L)
+        assertFalse(watch.snoozes.getValue(low).activeAt(t0 + 6 * second))
+    }
+
+    @Test
+    fun twoDismissalsSecondsApartBothReachTheOtherDevice() {
+        val phone = Device("phone", 0L, origin = 11)
+        val watch = Device("watch", 0L, origin = 22)
+        watch.dismiss(high, t0)
+        exchange(watch, phone, t0, transitMs = 500L)
+        watch.dismiss(high, t0 + 4 * second) // the next episode, answered at once
+        exchange(watch, phone, t0 + 4 * second, transitMs = 500L)
+        assertEquals(2, phone.applied.filterIsInstance<SilenceAction.Dismiss>().size)
+    }
+
+    @Test
+    fun aStateReceivedTwiceChangesNothingTheSecondTime() {
+        val phone = Device("phone", 0L, origin = 11)
+        val watch = Device("watch", 7 * second, origin = 22)
+        phone.snooze(low, t0, 30)
+        phone.startQuiet(t0, 60)
+        val bytes = phone.send(t0, reply = false)
+        watch.receive(bytes, t0 + second)
+        val applied = watch.applied.size
+        // Sent again much later (a retry after a failed send): the same changes.
+        assertFalse(watch.receive(bytes, t0 + 2 * minute))
+        assertEquals(applied, watch.applied.size)
+    }
+
+    @Test
+    fun aLateMessageDoesNotUndoANewerChange() {
+        val phone = Device("phone", 0L, origin = 11)
+        val watch = Device("watch", 0L, origin = 22)
+        phone.startQuiet(t0, 60)
+        phone.snooze(low, t0, 30)
+        val earlier = phone.send(t0, reply = false)
+        phone.endQuiet(t0 + 2 * second)
+        phone.cancel(low, t0 + 2 * second)
+        val later = phone.send(t0 + 2 * second, reply = false)
+        // The later state arrives first; the earlier one comes half a minute late.
+        watch.receive(later, t0 + 3 * second)
+        watch.receive(earlier, t0 + 30 * second)
+        assertFalse(watch.quiet!!.activeAt(t0 + 31 * second))
+        assertFalse(watch.snoozes.getValue(low).activeAt(t0 + 31 * second))
+        assertTrue(watch.applied.none { it is SilenceAction.StartQuiet || it is SilenceAction.Snooze })
+    }
+
+    /** An older build sends no ids: between it and this one, the times decide as before. */
+    @Test
+    fun withAnOlderBuildChangesSecondsApartAreStillTheSameChange() {
+        val phone = Device("phone", 0L, origin = 11)
+        val olderWatch = Device("watch", 0L)
+        phone.startQuiet(t0, 60)
+        exchange(phone, olderWatch, t0, transitMs = 700L)
+        phone.endQuiet(t0 + 2 * second)
+        exchange(phone, olderWatch, t0 + 2 * second, transitMs = 700L)
+        assertTrue(olderWatch.quiet!!.activeAt(t0 + 3 * second))
+        // Further apart, the cancel gets through.
+        phone.startQuiet(t0 + minute, 60)
+        exchange(phone, olderWatch, t0 + minute, transitMs = 700L)
+        phone.endQuiet(t0 + 2 * minute)
+        exchange(phone, olderWatch, t0 + 2 * minute, transitMs = 700L)
+        assertFalse(olderWatch.quiet!!.activeAt(t0 + 2 * minute + second))
+    }
+
+    @Test
+    fun theOrderOfTwoChanges() {
+        val phone1 = ChangeId(1, 11)
+        val phone2 = ChangeId(2, 11)
+        val watch3 = ChangeId(3, 22)
+        val newer = AlarmSilencePolicy.Order.NEWER
+        val same = AlarmSilencePolicy.Order.SAME
+        val older = AlarmSilencePolicy.Order.OLDER
+        // One device: its revisions, whatever the times.
+        assertEquals(newer, AlarmSilencePolicy.order(t0, phone2, t0 + hour, phone1))
+        assertEquals(older, AlarmSilencePolicy.order(t0 + hour, phone1, t0, phone2))
+        assertEquals(same, AlarmSilencePolicy.order(t0 + 3 * second, phone2, t0, phone2))
+        // Two devices: the times, when far enough apart.
+        assertEquals(newer, AlarmSilencePolicy.order(t0 + minute, phone1, t0, watch3))
+        assertEquals(older, AlarmSilencePolicy.order(t0, watch3, t0 + minute, phone1))
+        // Closer: the revision, then the origin, the same answer from either side.
+        assertEquals(newer, AlarmSilencePolicy.order(t0, watch3, t0 + 2 * second, phone2))
+        assertEquals(older, AlarmSilencePolicy.order(t0 + 2 * second, phone2, t0, watch3))
+        assertEquals(newer, AlarmSilencePolicy.order(t0, ChangeId(2, 22), t0, phone2))
+        assertEquals(older, AlarmSilencePolicy.order(t0, phone2, t0, ChangeId(2, 22)))
+        // Without ids: the times, within the tolerance the same change.
+        assertEquals(same, AlarmSilencePolicy.order(t0 + 4 * second, phone2, t0, null))
+        assertEquals(newer, AlarmSilencePolicy.order(t0 + 6 * second, null, t0, phone1))
+        assertEquals(newer, AlarmSilencePolicy.order(t0, phone1, null, null))
+    }
+
+    @Test
+    fun idsTravelInTheirOwnSectionAfterWhatOlderBuildsRead() {
+        val plain = SilenceState(
+            snoozes = listOf(SnoozeEntry(low, t0 - minute, t0 + hour, false)),
+            dismissals = listOf(DismissEntry(high, t0 - second)),
+            quiet = QuietEntry(t0 - 2 * second, t0 + hour, AlertDeliveryPolicy.QUIET_VIBRATE_ONLY, 10, AlertDeliveryPolicy.BREAKTHROUGH_ALL),
+        )
+        val withIds = SilenceState(
+            snoozes = plain.snoozes.map { it.copy(id = ChangeId(5, 11)) },
+            dismissals = plain.dismissals.map { it.copy(id = ChangeId(Long.MAX_VALUE, -7)) },
+            quiet = plain.quiet!!.copy(id = ChangeId(6, 11)),
+        )
+        val older = AlarmSilenceCodec.encode(plain, t0, reply = false)
+        val newer = AlarmSilenceCodec.encode(withIds, t0, reply = false)
+        // The same bytes an older build sends, then section 4, which it skips.
+        assertArrayEquals(older, newer.copyOf(older.size))
+        assertEquals(AlarmSilenceCodec.SECTION_IDS, newer[older.size].toInt())
+        assertEquals(3 + 3 * 14, newer.size - older.size)
+        assertEquals(withIds, AlarmSilenceCodec.decode(newer, t0)!!.state)
+        assertEquals(plain, AlarmSilenceCodec.decode(older, t0)!!.state)
+    }
+
+    @Test
+    fun anIdsSectionThatIsNotWholeRecordsDropsThePayload() {
+        val bytes = ByteBuffer.allocate(2 + 3 + 13).put(1).put(0).put(4).putShort(13).array()
+        assertNull(AlarmSilenceCodec.decode(bytes, t0))
+        // An id for an entry the payload does not hold is ignored.
+        val stray = ByteBuffer.allocate(2 + 3 + 14).put(1).put(0).put(4).putShort(14)
+            .put(1).put(low.toByte()).putLong(3L).putInt(11).array()
+        assertEquals(SilenceState(), AlarmSilenceCodec.decode(stray, t0)!!.state)
     }
 
     // ------------------------------------------------------------ wiring
