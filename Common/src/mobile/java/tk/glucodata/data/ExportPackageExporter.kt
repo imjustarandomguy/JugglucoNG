@@ -16,6 +16,7 @@ import tk.glucodata.data.calibration.CalibrationManager
 import tk.glucodata.data.journal.JournalEntryEntity
 import tk.glucodata.data.journal.CloneJournalIdentity
 import tk.glucodata.data.journal.JournalFoodEntity
+import tk.glucodata.data.journal.JournalInsulinDosing
 import tk.glucodata.data.journal.JournalInsulinPresetEntity
 import tk.glucodata.data.journal.JournalPendingDeleteEntity
 import tk.glucodata.drivers.sibionics.SibionicsSourceJournalBackup
@@ -860,6 +861,9 @@ object ExportPackageExporter {
             .put("curveProfileId", curveProfileId ?: JSONObject.NULL)
             .put("curveModelVersion", curveModelVersion)
             .put("curveEvidence", curveEvidence)
+            .put("doseStep", doseStep.toDouble())
+            .put("defaultDose", defaultDose?.toDouble() ?: JSONObject.NULL)
+            .put("reminderTimes", reminderTimes)
     }
 
     private fun JournalFoodEntity.toJson(): JSONObject {
@@ -1019,7 +1023,12 @@ object ExportPackageExporter {
                         ),
                         curveProfileId = item.optNullableString("curveProfileId"),
                         curveModelVersion = item.optInt("curveModelVersion", 0),
-                        curveEvidence = item.optString("curveEvidence", "unverified")
+                        curveEvidence = item.optString("curveEvidence", "unverified"),
+                        doseStep = JournalInsulinDosing.sanitizeStep(item.optNullableFloat("doseStep")),
+                        defaultDose = JournalInsulinDosing.sanitizeDefaultDose(item.optNullableFloat("defaultDose")),
+                        reminderTimes = JournalInsulinDosing.encodeReminderTimes(
+                            JournalInsulinDosing.decodeReminderTimes(item.optNullableString("reminderTimes"))
+                        )
                     )
                 )
             }

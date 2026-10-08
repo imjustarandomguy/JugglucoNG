@@ -111,6 +111,70 @@
             </intent-filter>
         </receiver>
 
+        <!-- The journal's entry sheet on its own, over whatever is on screen: opened by the
+             floating glucose, the "Log insulin" and "Log food" tiles, the glucose notification, the app icon's
+             shortcuts and the basal reminder. Its own task, kept out of Recents. Never shown
+             over the keyguard: it asks for the keyguard to be dismissed first. -->
+        <activity
+            android:name=".ui.journal.JournalQuickEntryActivity"
+            android:autoRemoveFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@style/Theme.JournalQuickEntry"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Quick-settings tile "Log insulin": opens the entry sheet on insulin. -->
+        <service
+            android:name=".ui.journal.JournalQuickEntryTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_journal_quick_insulin"
+            android:label="@string/journal_quick_log_insulin"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
+        </service>
+
+        <!-- Quick-settings tile "Log food": opens the entry sheet on food. -->
+        <service
+            android:name=".ui.journal.JournalQuickEntryFoodTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_journal_quick_food"
+            android:label="@string/journal_quick_log_food"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
+        </service>
+
+        <!-- Basal reminders: their alarms and notification actions, and what sets the alarms
+             again (reboot, app update, new time or time zone). System broadcasts reach a
+             receiver that is not exported. -->
+        <receiver
+            android:name=".journal.InsulinReminderReceiver"
+            android:enabled="true"
+            android:exported="false" />
+        <receiver
+            android:name=".journal.InsulinReminderRescheduleReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <activity
             android:name=".MainActivity"
             android:allowEmbedded="true"

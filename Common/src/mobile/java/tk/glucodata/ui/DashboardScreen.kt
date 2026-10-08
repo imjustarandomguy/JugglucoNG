@@ -165,7 +165,9 @@ import tk.glucodata.data.prediction.PredictiveSimulationSettings
 import tk.glucodata.data.prediction.buildGlucosePrediction
 import tk.glucodata.ui.journal.JournalDoseProfile
 import tk.glucodata.ui.journal.JournalEntrySheet
-import tk.glucodata.ui.journal.JournalExpandableFab
+import tk.glucodata.ui.journal.JournalQuickEntryFab
+import tk.glucodata.ui.journal.JournalQuickEntryPrefs
+import tk.glucodata.ui.journal.rememberJournalSaveWithUndo
 import tk.glucodata.ui.journal.rememberJournalCob
 import tk.glucodata.ui.journal.JournalFloatingActionMenu
 import tk.glucodata.ui.journal.JournalInlineChip
@@ -440,7 +442,6 @@ fun DashboardScreen(
     var lastJournalType by rememberSaveable { mutableStateOf(JournalEntryType.INSULIN) }
     var journalNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dashboardChartViewport by remember { mutableStateOf<ChartViewportSnapshot?>(null) }
-    var dashboardFabExpanded by rememberSaveable { mutableStateOf(false) }
 
     val coroutineScope = rememberCoroutineScope()
     val journalPresetsById = remember(journalInsulinPresets) { journalInsulinPresets.associateBy { it.id } }
@@ -901,6 +902,13 @@ fun DashboardScreen(
         return
     }
 
+    // Snackbar state for undo actions
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+
+    // A save from the entry sheet below, with a few seconds to take it back: undo deletes what
+    // was added, or puts an edited entry back as it was.
+    val saveJournalEntriesWithUndo = rememberJournalSaveWithUndo(viewModel, snackbarHostState, journalPresetsById, unit)
+
     journalEditorRequest?.let { request ->
         JournalEntrySheet(
             unit = unit,
@@ -924,13 +932,13 @@ fun DashboardScreen(
             existingEntry = request.existingEntry,
             onDismiss = { journalEditorRequest = null },
             onSave = { input ->
-                viewModel.saveJournalEntry(input)
+                saveJournalEntriesWithUndo(listOf(input), request.existingEntry)
                 lastJournalType = input.type
                 journalEditorRequest = null
                 clearJournalAction()
             },
             onSaveEntries = { inputs ->
-                inputs.forEach(viewModel::saveJournalEntry)
+                saveJournalEntriesWithUndo(inputs, request.existingEntry)
                 inputs.firstOrNull()?.let { lastJournalType = it.type }
                 journalEditorRequest = null
                 clearJournalAction()
@@ -944,9 +952,6 @@ fun DashboardScreen(
             sensorSerialProvider = { sensorName.ifBlank { null } }
         )
     }
-
-    // Snackbar state for undo actions
-    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
 
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
@@ -2110,15 +2115,11 @@ fun DashboardScreen(
             }
 
             if (journalEnabled && journalDashboardQuickAdd) {
-                JournalExpandableFab(
-                    expanded = dashboardFabExpanded,
-                    onExpandedChange = {
-                        dashboardFabExpanded = it
-                        if (it) clearJournalAction()
-                    },
-                    onTypeSelected = { type ->
-                        dashboardFabExpanded = false
+                // Straight to the entry sheet, on the type last added; its tabs switch type.
+                JournalQuickEntryFab(
+                    onClick = {
                         clearJournalAction()
+                        val type = JournalQuickEntryPrefs.lastType(context)
                         lastJournalType = type
                         val selection = dashboardChartViewport?.selectedPoint
                         val suggestedGlucoseMgDl = selection?.value

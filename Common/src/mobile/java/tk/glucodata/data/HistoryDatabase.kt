@@ -61,6 +61,8 @@ import tk.glucodata.data.journal.JournalPendingDeleteEntity
  *         (main v19, a Clone build at v20–v23, a test build at v24–v31) arrives
  *         here through the steps above, so this is the one place the tables
  *         are guaranteed rather than assumed.
+ *   v33 — per-insulin dose step, default dose and reminder times (quick
+ *         treatment entry). Additive and guarded, like every step since v15.
  */
 /**
  * The current schema version (plan task H5). The migration tests migrate from the
@@ -68,7 +70,7 @@ import tk.glucodata.data.journal.JournalPendingDeleteEntity
  * A version bump also needs its exported schema JSON committed — the CI schema
  * check in H1 catches that.
  */
-internal const val HISTORY_DATABASE_VERSION = 32
+internal const val HISTORY_DATABASE_VERSION = 33
 
 @Database(
     entities = [
@@ -777,6 +779,33 @@ abstract class HistoryDatabase : RoomDatabase() {
         }
 
         /**
+         * v32 → v33: what the entry sheet needs to know about each insulin: the pen's dial
+         * step, a default dose, and the times of day a long-acting dose is due.
+         *
+         * Existing presets, built-in or not, get a step of 1 U (whole-unit pens; the half-unit
+         * step the sheet used to apply to every insulin is one choice away in the library), no
+         * default dose and no reminders. Each column is added only where absent, so a database
+         * that met these columns under another version number passes through unchanged.
+         */
+        private val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                if (!hasColumn(db, "journal_insulin_presets", "doseStep")) {
+                    db.execSQL(
+                        "ALTER TABLE journal_insulin_presets ADD COLUMN doseStep REAL NOT NULL DEFAULT 1"
+                    )
+                }
+                if (!hasColumn(db, "journal_insulin_presets", "defaultDose")) {
+                    db.execSQL("ALTER TABLE journal_insulin_presets ADD COLUMN defaultDose REAL")
+                }
+                if (!hasColumn(db, "journal_insulin_presets", "reminderTimes")) {
+                    db.execSQL(
+                        "ALTER TABLE journal_insulin_presets ADD COLUMN reminderTimes TEXT NOT NULL DEFAULT ''"
+                    )
+                }
+            }
+        }
+
+        /**
          * The real migration chain, in order. The migration tests (plan task H3)
          * run these exact objects; the builder below uses the same list.
          */
@@ -810,7 +839,8 @@ abstract class HistoryDatabase : RoomDatabase() {
             bridgeCloneToV30(28),
             bridgeCloneToV30(29),
             MIGRATION_30_31,
-            MIGRATION_31_32
+            MIGRATION_31_32,
+            MIGRATION_32_33
         )
 
         fun getInstance(context: Context): HistoryDatabase =

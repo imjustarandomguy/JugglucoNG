@@ -39,6 +39,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.Text
@@ -426,7 +428,9 @@ fun HistoryBrowseScreen(
     /** Reports the chart's viewport so the owner of [glucoseHistory] can load around it. */
     onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null,
     /** What a range of the timeline holds, live; null falls back to the loaded list. */
-    rangeSummaryFlow: ((startMs: Long, endMs: Long) -> kotlinx.coroutines.flow.Flow<TimelineRangeSummary?>)? = null
+    rangeSummaryFlow: ((startMs: Long, endMs: Long) -> kotlinx.coroutines.flow.Flow<TimelineRangeSummary?>)? = null,
+    /** Where a journal save's "Saved 6 U Fiasp" and Undo show. */
+    snackbarHostState: SnackbarHostState? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -606,6 +610,7 @@ fun HistoryBrowseScreen(
     }
 
     Scaffold(
+        snackbarHost = { snackbarHostState?.let { SnackbarHost(it) } },
         topBar = {
             TopAppBar(
                 title = {

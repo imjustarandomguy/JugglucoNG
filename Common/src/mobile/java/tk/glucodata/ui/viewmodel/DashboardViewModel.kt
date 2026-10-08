@@ -2119,11 +2119,41 @@ class DashboardViewModel(
         viewModelScope.launch {
             journalRepository.upsertEntry(input)
         }
+        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, listOf(input))
     }
 
     fun deleteJournalEntry(entryId: Long) {
         viewModelScope.launch {
             journalRepository.deleteEntry(entryId)
+        }
+    }
+
+    /**
+     * Saves [inputs] in order and hands back their row ids, which an undo needs. The writes run
+     * in the view model's scope, so leaving the screen before [onSaved] runs does not cancel them.
+     */
+    fun saveJournalEntries(inputs: List<JournalEntryInput>, onSaved: (List<Long>) -> Unit) {
+        viewModelScope.launch {
+            onSaved(inputs.map { journalRepository.upsertEntry(it) })
+        }
+        // A basal dose logged here answers its "not logged" reminder.
+        tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, inputs)
+    }
+
+    /**
+     * Takes back a save: the rows it created are deleted, or, when it was an edit, the entry is
+     * written back as it was ([previous]). Both go through the repository, so Nightscout and the
+     * other uploads treat it as they would the user deleting or editing the entry.
+     */
+    fun undoJournalSave(savedIds: List<Long>, previous: tk.glucodata.data.journal.JournalEntry?) {
+        viewModelScope.launch {
+            if (previous != null) {
+                journalRepository.upsertEntry(
+                    tk.glucodata.data.journal.JournalQuickEntryPolicy.restoreInput(previous)
+                )
+            } else {
+                savedIds.forEach { journalRepository.deleteEntry(it) }
+            }
         }
     }
 

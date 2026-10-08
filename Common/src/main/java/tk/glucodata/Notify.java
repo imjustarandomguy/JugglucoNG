@@ -4555,6 +4555,7 @@ public class Notify {
         setIcon(GluNotBuilder, displayGlucoseValue, glucose.sensorgen2, peerValueItems);
 
         GluNotBuilder.setVisibility(VISIBILITY_PUBLIC);
+        if (customPhone) addJournalLogActions(GluNotBuilder);
 
         if (customPhone) {
             CustomGlucoseNotification.apply(GluNotBuilder, valueText, peerValueItems, newStatusText,
@@ -4596,6 +4597,44 @@ public class Notify {
         Notification notif = GluNotBuilder.build();
 
         return new GlucoseNotificationContent(notif, fallbackDisplay);
+    }
+
+    // The phone-only quick entry sheet (ui.journal.JournalQuickEntryActivity), named because
+    // src/main cannot see the class; Applic starts FloatingGlucoseService the same way.
+    private static final String JOURNAL_QUICK_ENTRY_ACTIVITY = "tk.glucodata.ui.journal.JournalQuickEntryActivity";
+    // One request code per action: PendingIntents that differ only in their extras are one.
+    private static final int JOURNAL_LOG_INSULIN_REQUEST = 0x4A4C;
+    private static final int JOURNAL_LOG_FOOD_REQUEST = 0x4A4D;
+
+    /**
+     * "Log insulin" and "Log food" on the ongoing glucose notification: the journal's entry sheet
+     * on that type, over whatever is on screen. Two actions under the custom views, which stay as
+     * they are (Android shows up to three); only while the quick log buttons are on, which needs
+     * the journal on (QuickLogButtons). From the lock screen Android asks to unlock first.
+     */
+    private static void addJournalLogActions(Notification.Builder builder) {
+        if (isWearable) return;
+        try {
+            if (!QuickLogButtons.quickLogButtonsEnabled(Applic.app)) return;
+            builder.addAction(journalLogAction(QuickLogButtons.QUICK_LOG_TYPE_INSULIN,
+                    R.string.journal_quick_log_insulin, JOURNAL_LOG_INSULIN_REQUEST));
+            builder.addAction(journalLogAction(QuickLogButtons.QUICK_LOG_TYPE_FOOD,
+                    R.string.journal_quick_log_food, JOURNAL_LOG_FOOD_REQUEST));
+        } catch (Throwable th) {
+            Log.stack(LOG_ID, "addJournalLogActions", th);
+        }
+    }
+
+    private static Notification.Action journalLogAction(String type, int labelRes, int requestCode) {
+        final Intent intent = new Intent(Intent.ACTION_VIEW)
+                .setClassName(Applic.app, JOURNAL_QUICK_ENTRY_ACTIVITY)
+                .putExtra(QuickLogButtons.QUICK_ENTRY_EXTRA_TYPE, type)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        final PendingIntent pending = PendingIntent.getActivity(Applic.app, requestCode, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT | penmutable);
+        return new Notification.Action.Builder(
+                android.graphics.drawable.Icon.createWithResource(Applic.app, R.drawable.novalue),
+                Applic.app.getString(labelRes), pending).build();
     }
 
     Notification getforgroundnotification() {

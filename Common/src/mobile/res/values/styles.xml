@@ -42,6 +42,16 @@
     <item name="android:backgroundDimEnabled">false</item>
 </style>
 
+<!-- The quick entry sheet over another app: the window itself is clear, the sheet brings its
+     own scrim. No animation of its own, so the sheet's slide is all that is seen. -->
+<style name="Theme.JournalQuickEntry" parent="android:Theme.Translucent.NoTitleBar">
+    <item name="android:windowBackground">@android:color/transparent</item>
+    <item name="android:windowIsTranslucent">true</item>
+    <item name="android:windowAnimationStyle">@null</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:backgroundDimEnabled">false</item>
+</style>
+
 
 
 </resources>
