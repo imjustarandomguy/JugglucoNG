@@ -3149,4 +3149,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="widget_chart_range">Diagrammzeitraum</string>
     <string name="widget_hours">%1$d h</string>
     <string name="widget_background_none">Keiner</string>
+    <string name="floating_restricted_settings_hint">Meldet Android „Eingeschränkte Einstellung“: in der App-Info auf ⋮ → Eingeschränkte Einstellungen zulassen tippen, dann den Dienst aktivieren.</string>
+    <string name="floating_open_app_info">App-Info</string>
 </resources>

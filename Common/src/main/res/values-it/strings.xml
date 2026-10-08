@@ -3023,4 +3023,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Durata del grafico</string>
     <string name="widget_hours">%1$d h</string>
     <string name="widget_background_none">Nessuno</string>
+    <string name="floating_restricted_settings_hint">Se Android indica «Impostazione con limitazioni»: in Informazioni app tocca ⋮ → Consenti impostazioni con limitazioni, poi attiva il servizio.</string>
+    <string name="floating_open_app_info">Informazioni app</string>
 </resources>

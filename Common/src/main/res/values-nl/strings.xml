@@ -3076,4 +3076,6 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="widget_chart_range">Grafiekperiode</string>
     <string name="widget_hours">%1$d u</string>
     <string name="widget_background_none">Geen</string>
+    <string name="floating_restricted_settings_hint">Meldt Android ‘Beperkte instelling’: tik in App-info op ⋮ → Beperkte instellingen toestaan en zet daarna de service aan.</string>
+    <string name="floating_open_app_info">App-info</string>
 </resources>

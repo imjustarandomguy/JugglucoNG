@@ -3088,4 +3088,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Период графика</string>
     <string name="widget_hours">%1$d ч</string>
     <string name="widget_background_none">Нет</string>
+    <string name="floating_restricted_settings_hint">Если Android пишет «Ограниченная настройка»: в сведениях о приложении нажмите ⋮ → Разрешить ограниченные настройки, затем включите службу.</string>
+    <string name="floating_open_app_info">О приложении</string>
 </resources>

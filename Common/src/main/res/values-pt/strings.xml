@@ -3034,4 +3034,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Período do gráfico</string>
     <string name="widget_hours">%1$d h</string>
     <string name="widget_background_none">Nenhum</string>
+    <string name="floating_restricted_settings_hint">Se o Android indicar «Definição restrita»: em Informações da app, toque em ⋮ → Permitir definições restritas e depois ative o serviço.</string>
+    <string name="floating_open_app_info">Informações da app</string>
 </resources>

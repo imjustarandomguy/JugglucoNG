@@ -3039,4 +3039,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Durée du graphique</string>
     <string name="widget_hours">%1$d h</string>
     <string name="widget_background_none">Aucun</string>
+    <string name="floating_restricted_settings_hint">Si Android indique « Paramètre restreint » : dans Infos sur l\'appli, touchez ⋮ → Autoriser les paramètres restreints, puis activez le service.</string>
+    <string name="floating_open_app_info">Infos sur l\'appli</string>
 </resources>

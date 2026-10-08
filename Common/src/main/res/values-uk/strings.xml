@@ -3117,4 +3117,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Період графіка</string>
     <string name="widget_hours">%1$d год</string>
     <string name="widget_background_none">Немає</string>
+    <string name="floating_restricted_settings_hint">Якщо Android пише «Обмежене налаштування»: у відомостях про додаток натисніть ⋮ → Дозволити обмежені налаштування, потім увімкніть службу.</string>
+    <string name="floating_open_app_info">Про додаток</string>
 </resources>

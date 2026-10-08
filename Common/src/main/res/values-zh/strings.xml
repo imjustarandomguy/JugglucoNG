@@ -3046,4 +3046,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">图表时长</string>
     <string name="widget_hours">%1$d 小时</string>
     <string name="widget_background_none">无</string>
+    <string name="floating_restricted_settings_hint">如果 Android 提示“受限设置”：在应用信息中点按 ⋮ → 允许受限制的设置，然后开启该服务。</string>
+    <string name="floating_open_app_info">应用信息</string>
 </resources>

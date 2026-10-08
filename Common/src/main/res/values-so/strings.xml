@@ -3218,4 +3218,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="widget_chart_range">Muddada shaxda</string>
     <string name="widget_hours">%1$d saac</string>
     <string name="widget_background_none">Midna</string>
+    <string name="floating_restricted_settings_hint">Haddii Android uu yiraahdo “Dejin xaddidan”: Macluumaadka app-ka, taabo ⋮ → U oggolow dejimaha xaddidan, kadibna shid adeegga.</string>
+    <string name="floating_open_app_info">Macluumaadka app-ka</string>
 </resources>

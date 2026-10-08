@@ -3061,4 +3061,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="widget_chart_range">Grafik süresi</string>
     <string name="widget_hours">%1$d sa</string>
     <string name="widget_background_none">Yok</string>
+    <string name="floating_restricted_settings_hint">Android “Kısıtlanmış ayar” diyorsa: Uygulama bilgilerinde ⋮ → Kısıtlanmış ayarlara izin ver seçeneğine dokunun, ardından hizmeti açın.</string>
+    <string name="floating_open_app_info">Uygulama bilgileri</string>
 </resources>

@@ -3112,4 +3112,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_range">Перыяд графіка</string>
     <string name="widget_hours">%1$d гадз</string>
     <string name="widget_background_none">Няма</string>
+    <string name="floating_restricted_settings_hint">Калі Android паведамляе «Абмежаваная налада»: у звестках пра праграму націсніце ⋮ → Дазволіць абмежаваныя налады, потым уключыце службу.</string>
+    <string name="floating_open_app_info">Пра праграму</string>
 </resources>

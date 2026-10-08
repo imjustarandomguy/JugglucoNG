@@ -52,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -710,7 +711,7 @@ fun FloatingGlucoseSettingsScreen(
             checked = tapShowsDetails,
             onCheckedChange = {
                 repository.setTapShowsDetails(it)
-                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && aboveStatusBar)
+                tk.glucodata.service.FloatingAccessibilityService.syncAvailability(context)
             },
             position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.TOP,
             modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
@@ -736,12 +737,13 @@ fun FloatingGlucoseSettingsScreen(
             enabled = tapShowsDetails,
             onCheckedChange = {
                 repository.setAboveStatusBar(it)
-                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && tapShowsDetails)
+                tk.glucodata.service.FloatingAccessibilityService.syncAvailability(context)
             },
             position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.BOTTOM,
             modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
         )
-        if (tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
+        // The service is offered only while floating glucose is on.
+        if (isEnabled && tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
             Spacer(modifier = Modifier.height(8.dp))
             WarningPanel(
                 text = stringResource(
@@ -758,6 +760,38 @@ fun FloatingGlucoseSettingsScreen(
                         )
                     }
             )
+            val mayBeRestricted = remember {
+                tk.glucodata.service.FloatingAccessibilityService.mayBeRestricted(context)
+            }
+            if (mayBeRestricted) {
+                // Android 13+ greys a sideloaded app's accessibility service out until this is allowed.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = legacySettingsHorizontalPadding)
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.floating_restricted_settings_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    ) {
+                        Text(stringResource(R.string.floating_open_app_info))
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))

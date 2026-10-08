@@ -30,6 +30,13 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         tk.glucodata.ui.journal.JournalQuickEntryShortcuts.publish(application);
         // Home-screen widgets: hear readings and screen-on, and catch up after a restart.
         tk.glucodata.widget.GlucoseWidgets.start(application);
+        // Offered only while floating glucose and its options want it, whatever an
+        // earlier version left.
+        try {
+            tk.glucodata.service.FloatingAccessibilityService.syncAvailability(application);
+        } catch (Throwable th) {
+            Log.stack("MobileVariantBootstrap", "floating accessibility", th);
+        }
     }
 
     @Override
