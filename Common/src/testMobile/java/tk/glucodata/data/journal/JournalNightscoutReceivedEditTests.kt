@@ -469,15 +469,12 @@ class JournalNightscoutReceivedEditTests {
         val meal = JSONObject()
             .put("identifier", uuid).put("date", doseTime).put("eventType", "Carb Correction")
             .put("carbs", 20).put("duration", 0).put("app", "AAPS")
-        val changes = sent(
-            receivedEditPlan(
-                edited(meal, JournalEntryType.CARBS) { it.copy(durationMinutes = 90) },
-                meal,
-                useV3 = true
-            )
-        )
+        val row = edited(meal, JournalEntryType.CARBS) { it.copy(durationMinutes = 90) }
+        val changes = JournalTreatmentTransfer.receivedEditChanges(row, meal)!!
         assertEquals(90L, changes.fields.getLong("absorptionTime"))
         assertFalse(changes.fields.has("duration"))
+        // A loop's document is not written to at all.
+        assertTrue(receivedEditPlan(row, meal, useV3 = true) is ReceivedEditPlan.KeepLocal)
     }
 
     @Test
