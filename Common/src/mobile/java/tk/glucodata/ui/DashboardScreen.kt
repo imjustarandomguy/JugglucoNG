@@ -1141,9 +1141,10 @@ fun DashboardScreen(
 
             val chartBoostState = rememberSaveable { mutableFloatStateOf(0f) }
             val chartExpansionGestureGate = remember { DashboardChartExpansionGestureGate() }
+            val chartHeightChoice = remember { DashboardChartHeightChoice() }
             // The height chosen last (collapsed, middle or full) opens again at the next
             // launch. It is applied, and applied again while the layout is still being
-            // measured, until the first touch; from then on where the chart settles is stored.
+            // measured, until the first touch; from then on a height the user chooses is stored.
             var pendingChartHeightAnchor by rememberSaveable {
                 mutableStateOf<Int?>(
                     DashboardChartHeightAnchors.fromPreference(
@@ -1172,6 +1173,12 @@ fun DashboardScreen(
                         // Once boost hits 0, remainders pass to the list for uninterrupted scrolling.
                         val currentBoostPx = chartBoostState.floatValue * maxChartBoostPx
                         if (available.y < 0 && currentBoostPx > 0f && maxChartBoostPx > 0f) {
+                            if (source == NestedScrollSource.UserInput &&
+                                listState.firstVisibleItemIndex == 0 &&
+                                listState.firstVisibleItemScrollOffset == 0
+                            ) {
+                                chartHeightChoice.onUserResize()
+                            }
                             val newBoost = (currentBoostPx + available.y).coerceAtLeast(0f)
                             val consumed = newBoost - currentBoostPx
                             chartBoostState.floatValue = (newBoost / maxChartBoostPx).coerceIn(0f, 1f)
@@ -1197,6 +1204,7 @@ fun DashboardScreen(
                             listState.firstVisibleItemIndex == 0 &&
                             listState.firstVisibleItemScrollOffset == 0
                         ) {
+                            chartHeightChoice.onUserResize()
                             val newBoost = (currentBoostPx + available.y).coerceAtMost(maxChartBoostPx)
                             val consumedY = newBoost - currentBoostPx
                             chartBoostState.floatValue = (newBoost / maxChartBoostPx).coerceIn(0f, 1f)
@@ -1302,7 +1310,8 @@ fun DashboardScreen(
                 }
             }
 
-            // Stores the anchor the chart comes to rest on, once the user has touched it.
+            // Stores the anchor a height the user chose comes to rest on; see
+            // DashboardChartHeightChoice.
             LaunchedEffect(listState, chartBoostState, maxChartBoostPx, middleChartBoostPx) {
                 snapshotFlow {
                     if (pendingChartHeightAnchor != null || listState.isScrollInProgress || chartHandleActive) {
@@ -1312,10 +1321,13 @@ fun DashboardScreen(
                             boostPx = chartBoostState.floatValue * maxChartBoostPx,
                             middlePx = middleChartBoostPx,
                             maxPx = maxChartBoostPx
-                        )
+                        ) to (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0)
                     }
                 }
-                    .collect { anchor ->
+                    .collect { rest ->
+                        val anchor = rest?.let { (restingAnchor, listAtTop) ->
+                            chartHeightChoice.anchorToRemember(restingAnchor, listAtTop)
+                        }
                         if (anchor != null) {
                             dashboardPrefs.edit()
                                 .putInt(DashboardChartHeightAnchors.PREFERENCE_KEY, anchor)
@@ -1334,6 +1346,7 @@ fun DashboardScreen(
                 chartHandleSnapJob = null
                 chartHandleActive = true
                 pendingChartHeightAnchor = null
+                chartHeightChoice.onUserResize()
                 val boostPx = (chartBoostState.floatValue * maxChartBoostPx + deltaPx)
                     .coerceIn(0f, maxChartBoostPx)
                 chartBoostState.floatValue = boostPx / maxChartBoostPx

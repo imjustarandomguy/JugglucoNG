@@ -1,6 +1,7 @@
 package tk.glucodata.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DashboardChartRangeTests {
@@ -30,16 +31,71 @@ class DashboardChartRangeTests {
 
     @Test
     fun autoRangeKeepsBaselineWhileVisibleValuesAreInsideIt() {
+        // 0.52 mmol/L of padding over 0..13: 12.4 stays clear of the top.
         val range = autoExpandedChartYRange(
+            baselineMin = 0f,
+            baselineMax = 13f,
+            visibleMin = 3.8f,
+            visibleMax = 12.4f,
+            isMmol = true
+        )
+
+        assertEquals(0f, range.min, 0.001f)
+        assertEquals(13f, range.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeWidensForAValueInsideTheRangeButWithinThePadding() {
+        val top = autoExpandedChartYRange(
             baselineMin = 0f,
             baselineMax = 13f,
             visibleMin = 3.8f,
             visibleMax = 12.9f,
             isMmol = true
         )
+        val atTheMax = autoExpandedChartYRange(
+            baselineMin = 3f,
+            baselineMax = 13f,
+            visibleMin = 5f,
+            visibleMax = 13f,
+            isMmol = true
+        )
+        val bottom = autoExpandedChartYRange(
+            baselineMin = 3f,
+            baselineMax = 13f,
+            visibleMin = 3.2f,
+            visibleMax = 8f,
+            isMmol = true
+        )
+        val mgdl = autoExpandedChartYRange(
+            baselineMin = 54f,
+            baselineMax = 234f,
+            visibleMin = 58f,
+            visibleMax = 230f,
+            isMmol = false
+        )
 
-        assertEquals(0f, range.min, 0.001f)
-        assertEquals(13f, range.max, 0.001f)
+        assertEquals(14f, top.max, 0.001f)
+        assertEquals(14f, atTheMax.max, 0.001f)
+        assertEquals(2f, bottom.min, 0.001f)
+        assertEquals(13f, bottom.max, 0.001f)
+        assertEquals(36f, mgdl.min, 0.001f)
+        assertEquals(252f, mgdl.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeLeavesEveryVisibleValueItsPadding() {
+        for ((baseMin, baseMax) in listOf(0f to 13f, 3f to 13f, 2f to 22f, 4f to 10f)) {
+            val padding = maxOf((baseMax - baseMin) * 0.04f, 0.4f)
+            var value = baseMin + 0.05f
+            while (value < baseMax + 3f) {
+                val range = autoExpandedChartYRange(baseMin, baseMax, value, value, isMmol = true)
+                val label = "$value over $baseMin..$baseMax: $range"
+                assertTrue("top, $label", range.max - value >= padding - 0.001f)
+                assertTrue("bottom, $label", range.min == 0f || value - range.min >= padding - 0.001f)
+                value += 0.05f
+            }
+        }
     }
 
     @Test

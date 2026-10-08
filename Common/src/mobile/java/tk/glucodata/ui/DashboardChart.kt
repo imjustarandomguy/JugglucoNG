@@ -1315,6 +1315,7 @@ fun InteractiveGlucoseChart(
         tk.glucodata.settings.SettingsRegistry.PREDICTION_HORIZON.readIntClamped(context)
     }
     val resolvedPredictionHorizonMinutes = predictionHorizonMinutes ?: settingsPredictionHorizonMinutes
+    val journalContentEnd = remember(journalMarkers) { latestJournalContentEndMs(journalMarkers) }
     // Held as state so the long-lived gesture coroutine below clamps against the
     // current data and prediction, not those of the composition that started it.
     val viewportLimits by rememberUpdatedState(
@@ -1325,7 +1326,8 @@ fun InteractiveGlucoseChart(
                 resolvedPredictionHorizonMinutes * 60_000L
             } else {
                 null
-            }
+            },
+            journalContentEndMs = journalContentEnd
         )
     )
 
