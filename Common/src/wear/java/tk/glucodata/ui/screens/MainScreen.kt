@@ -98,8 +98,7 @@ internal fun primaryLaneValue(point: GlucosePoint, viewMode: Int): Float =
 
 /**
  * Trend velocity for each of [rows], measured over the ~35 minutes of [history]
- * leading up to that reading — the same window the hero uses, so a row's arrow
- * and the hero's agree on the newest reading.
+ * leading up to that reading.
  *
  * The sweep itself is in tk.glucodata.TrendWindows, where it can be tested;
  * the wear source set is not on the unit-test classpath.
@@ -110,6 +109,23 @@ internal fun rowVelocities(
     useRaw: Boolean,
     isMmol: Boolean,
 ): Map<Long, Float> = tk.glucodata.TrendWindows.velocities(history, rows, useRaw, isMmol)
+
+/**
+ * [rowVelocities] for [rows] of the store's primary series, except the newest reading,
+ * which takes [WearGlucoseStore.Snapshot.trendRate]: the arrow the hero, the
+ * complications and the phone show for it. The sweep reads the drawn series, smoothed
+ * and without the live reading, and near the flat band it tilted differently.
+ */
+internal fun readingVelocities(
+    snapshot: WearGlucoseStore.Snapshot,
+    rows: List<GlucosePoint>,
+    isMmol: Boolean,
+): Map<Long, Float> {
+    val swept = rowVelocities(snapshot.points, rows, snapshot.isRawMode, isMmol)
+    val newest = snapshot.points.lastOrNull()?.timestamp ?: return swept
+    if (!snapshot.trendRate.isFinite() || newest !in swept) return swept
+    return swept + (newest to snapshot.trendRate)
+}
 
 internal fun trendArrow(rate: Float): String = runCatching {
     when (Natives.getxDripTrendName(rate)) {
@@ -170,9 +186,10 @@ fun MainScreen(
     val recent = remember(storeSnapshot) { WearGlucoseStore.recent(count = 6) }
     val newestReading = recent.firstOrNull()
     // One pass over the shared history gives every row its own arrow, instead of
-    // each row walking the snapshot again on the main thread.
+    // each row walking the snapshot again on the main thread. The hero shares the
+    // newest row's.
     val velocities = remember(storeSnapshot, recent, isMmol) {
-        rowVelocities(storeSnapshot.points, recent, storeSnapshot.isRawMode, isMmol)
+        readingVelocities(storeSnapshot, recent, isMmol)
     }
     val rowPeers = remember(storeSnapshot, recent, isMmol) {
         readingPeers(recent, storeSnapshot.peers, isMmol)
