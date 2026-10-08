@@ -352,6 +352,23 @@ Still open:
     first scroll down shrinks it before the list moves. Options to discuss: resize only
     with the handle (drop the pull-to-resize gesture) so a page swipe always scrolls; or
     keep pull-to-grow but never let a downward page scroll shrink the chart.
+11. **Shared snooze/dismiss/quiet window: two ordering holes left** (Copilot, round 3 on
+    3343abb12; `feat/alarm-routing`; details in REVIEW-FIXES.md "Round 3"). Health Connect
+    and Nightscout round-2 fixes passed; the hybrid clock is correct when both entries carry
+    ids, but: (a) P1 a dismissal from the other device clears the local snooze with
+    `id = null` (`AlarmSilenceSync.kt` ~479-485), so that cancellation falls back to
+    arrival-time ordering (`AlarmSilenceModel.kt` ~195-201) even between matching builds;
+    snooze on one device and dismiss on the other a second apart, with delayed replies,
+    leaves one device snoozed and the other not. Fix: the cleared snooze keeps the
+    ORIGINAL dismissal's id (also through delayed rechecks); the test simulator must clear
+    the snooze too, as production does (`AlarmSilenceSyncTests.kt` ~453). (b) P2 state kept
+    from before the upgrade (`_rev` entries, id-less entries) stays id-less
+    (`AlarmSilenceSync.kt` ~163-165 reads only `_hlc_ms`), so a delayed startup snapshot of
+    an old quiet window can override a newer cancellation. Fix: migrate retained entries to
+    ids (or treat them deterministically), plus a regression test: active quiet window kept
+    through the upgrade, delayed startup snapshot, new cancellation. Until fixed: a quiet
+    window or snooze set before this build may not sync a quick cancel; re-check both
+    devices after cancelling.
 
 ## Done on 2026-10-06 (installed in 8920b3e04)
 

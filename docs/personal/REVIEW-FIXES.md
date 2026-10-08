@@ -144,3 +144,29 @@ summary line below.
 
 Tests on `personal` e98dfdf4d (all round-2 fixes merged): 7827 tests, 92 failed = 70 baseline + 22
 machine-only signatures, NEW 0. Release builds (phone arm64, watch) pass R8.
+
+## Round 3 (Copilot on 3343abb12) — open, not started
+
+Confirmed in source by Copilot: the Health Connect transactional guards (edits, deletes,
+step clean-up), the Nightscout classification (unrecognised answers wait uncounted; genuine
+server failures keep their retry policy), and the test script's exact-test check. Open:
+
+1. **P1** — a dismissal from the other device clears the local snooze with `id = null`
+   (`AlarmSilenceSync.kt` ~479-485), so that cancellation falls back to arrival-rebased
+   timestamps (`AlarmSilenceModel.kt` ~195-201) even between matching builds.
+   Counterexample: phone snoozes at 0 s, watch dismisses at 1 s before hearing it; the watch
+   gets the snooze at 2 s and replies; the phone gets the dismissal at 4 s, clears its
+   snooze without an id and replies; both replies arrive at 14 s: the phone reinstates the
+   snooze, the watch clears it; the dismissal ids match recorded dismissals so nothing
+   else happens and neither answers a reply. Fix: the cleared snooze keeps the original
+   dismissal's id, including through delayed rechecks; the simulator's dismissal handler
+   (`AlarmSilenceSyncTests.kt` ~453) must also clear the snooze, as production does.
+2. **P2** — retained state isn't upgraded: `AlarmSilenceSync.kt` ~163-165 reads only the
+   new `_hlc_ms` fields, so stored `_rev` entries and entries from the id-less build stay
+   id-less; a delayed startup snapshot of an existing quiet window can override a newer
+   cancellation through the timestamp fallback. Needs a retained-state migration/protocol
+   treatment and a regression case: an active quiet window kept through the upgrade, a
+   delayed startup snapshot, and a new cancellation.
+
+Still open as before: real Room integration tests (not runnable on this machine), device
+validation, and the four declared native/ownership gaps.
