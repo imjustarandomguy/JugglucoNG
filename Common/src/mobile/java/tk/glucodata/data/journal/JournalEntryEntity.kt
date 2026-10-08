@@ -53,6 +53,9 @@ data class JournalEntryEntity(
      * When this row last went out to LibreView, so an unchanged entry is not resent on
      * every upload pass. Tracked separately from [nsUploadedAt] because the two
      * destinations succeed and fail independently.
+     *
+     * A row received from Nightscout never goes to LibreView; it keeps the revision of its
+     * document here instead ([receivedRevisionOf]).
      */
     val lvUploadedAt: Long? = null
 )

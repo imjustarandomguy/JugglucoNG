@@ -94,6 +94,7 @@ class JournalNightscoutReceivedEditTests {
             updatedAt = receivedAt,
             nsUploadedAt = null,
             nsRemoteId = input.nsRemoteId,
+            lvUploadedAt = JournalTreatmentTransfer.serverModifiedMillis(document),
         )
         val pendingMark = nightscoutUploadedAtAfterWrite(
             storedSource = nightscout,
@@ -204,23 +205,79 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun theReceiveDoesNotWriteOverAPendingEdit() {
         val mark = receivedAt
-        // The field case: the server still says 5 U, written before the edit.
-        assertFalse(receivedCopyMayReplace(nightscout, editedAt, mark, serverModifiedAt = serverWrote))
-        // A document that says nothing of when it changed leaves the edit to be sent.
-        assertFalse(receivedCopyMayReplace(nightscout, editedAt, mark, serverModifiedAt = null))
+        // The field case: the server still says 5 U, the document unchanged since it was received.
+        assertFalse(receivedCopyMayReplace(nightscout, editedAt, mark, receivedRevision = serverWrote, serverRevision = serverWrote))
+        // A document that says nothing of its revision leaves the edit to be sent.
+        assertFalse(receivedCopyMayReplace(nightscout, editedAt, mark, receivedRevision = serverWrote, serverRevision = null))
+        assertFalse(receivedCopyMayReplace(nightscout, editedAt, mark, receivedRevision = null, serverRevision = serverWrote))
     }
 
     @Test
-    fun aDocumentChangedAfterTheEditStillWins() {
-        assertTrue(receivedCopyMayReplace(nightscout, editedAt, receivedAt, serverModifiedAt = editedAt + 1))
+    fun aDocumentChangedSinceItWasReceivedStillWins() {
+        assertTrue(receivedCopyMayReplace(nightscout, editedAt, receivedAt, receivedRevision = serverWrote, serverRevision = serverWrote + 1))
     }
 
     @Test
     fun onceConfirmedOrNeverEditedTheReceiveIsTheServersAgain() {
-        assertTrue(receivedCopyMayReplace(nightscout, receivedAt, null, serverModifiedAt = null))
-        assertTrue(receivedCopyMayReplace(nightscout, editedAt, editedAt + 5_000L, serverModifiedAt = serverWrote))
+        assertTrue(receivedCopyMayReplace(nightscout, receivedAt, null, receivedRevision = null, serverRevision = null))
+        assertTrue(receivedCopyMayReplace(nightscout, editedAt, editedAt + 5_000L, receivedRevision = serverWrote, serverRevision = serverWrote))
         // Other sources are not looked at here.
-        assertTrue(receivedCopyMayReplace(JournalEntrySource.AAPS.storageValue, editedAt, receivedAt, null))
+        assertTrue(receivedCopyMayReplace(JournalEntrySource.AAPS.storageValue, editedAt, receivedAt, null, null))
+    }
+
+    // -- a server clock that is not the phone's -----------------------------------------
+
+    private val hour = 60 * 60_000L
+
+    @Test
+    fun aServerClockAheadOfThePhoneDoesNotUndoTheEdit() {
+        // The server wrote the document before the receive, by its clock an hour ahead: later
+        // than the edit by the phone's. Compared with the edit time, the server won every time.
+        val aheadWrote = editedAt + hour
+        val row = edited(v3Dose().put("srvModified", aheadWrote)) { it.copy(amount = 6f) }
+
+        assertFalse(receivedCopyMayReplace(nightscout, row.updatedAt, row.nsUploadedAt, row.lvUploadedAt, aheadWrote))
+        assertTrue(receivedEditPlan(row, v3Dose().put("srvModified", aheadWrote), useV3 = true) is ReceivedEditPlan.Send)
+    }
+
+    @Test
+    fun aServerClockBehindThePhoneStillShowsAChangeMadeThere() {
+        // Changed on the server after the edit, by a clock an hour behind: earlier than the edit by
+        // the phone's, which kept the edit over the newer document.
+        val behindWrote = receivedAt - hour
+        val behindChanged = behindWrote + 5 * 60_000L
+        val row = edited(v3Dose().put("srvModified", behindWrote)) { it.copy(amount = 6f) }
+        val changed = v3Dose(units = 7.0).put("srvModified", behindChanged)
+
+        assertTrue(behindChanged < row.updatedAt)
+        assertTrue(receivedCopyMayReplace(nightscout, row.updatedAt, row.nsUploadedAt, row.lvUploadedAt, behindChanged))
+        assertTrue(receivedEditPlan(row, changed, useV3 = true) is ReceivedEditPlan.ServerWins)
+    }
+
+    @Test
+    fun theReceivedRevisionIsKeptForTheEditAndRenewedByEachReceive() {
+        val manual = JournalEntrySource.MANUAL
+        // A receive keeps the revision it brought, known or not.
+        assertEquals(serverWrote, receivedRevisionAfterWrite(nightscout, nightscout, 1L, JournalEntrySource.NIGHTSCOUT, serverWrote))
+        assertNull(receivedRevisionAfterWrite(nightscout, null, null, JournalEntrySource.NIGHTSCOUT, null))
+        // The user's edit keeps the one it was made on.
+        assertEquals(serverWrote, receivedRevisionAfterWrite(nightscout, nightscout, serverWrote, manual, null))
+        // Another system's copy written over the row says nothing of it.
+        assertNull(receivedRevisionAfterWrite(nightscout, nightscout, serverWrote, JournalEntrySource.CLONE, null))
+        // Rows of every other source are written without one, as before.
+        assertNull(receivedRevisionAfterWrite(manual.storageValue, manual.storageValue, null, manual, null))
+        assertNull(receivedRevisionOf(manual.storageValue, serverWrote))
+        assertEquals(serverWrote, receivedRevisionOf(nightscout, serverWrote))
+    }
+
+    @Test
+    fun aRevisionIsOnlyComparedWithAnotherOfItsServer() {
+        assertFalse(serverChangedSinceReceived(serverWrote, serverWrote))
+        assertTrue(serverChangedSinceReceived(serverWrote, serverWrote + 1))
+        // Earlier is a change too: a document restored on the server, say.
+        assertTrue(serverChangedSinceReceived(serverWrote, serverWrote - 1))
+        assertFalse(serverChangedSinceReceived(null, serverWrote))
+        assertFalse(serverChangedSinceReceived(serverWrote, null))
     }
 
     @Test
@@ -408,7 +465,7 @@ class JournalNightscoutReceivedEditTests {
     }
 
     @Test
-    fun theServerWinsWhereItChangedTheDocumentAfterTheEdit() {
+    fun theServerWinsWhereItChangedTheDocumentSinceItWasReceived() {
         val row = edited(v3Dose()) { it.copy(amount = 6f) }
         val changedSince = v3Dose(units = 7.0).put("srvModified", editedAt + 1)
 
