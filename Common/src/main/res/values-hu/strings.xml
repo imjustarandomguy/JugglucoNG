@@ -3089,4 +3089,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="dexcom_share_auth_blocked">Bejelentkezés letiltva — ellenőrizze a fiókot és a jelszót</string>
     <string name="dexcom_share_credentials_required">Először adja meg a fiókot és a jelszót</string>
     <string name="dexcom_share_warning">Nem hivatalos felület: a Dexcom bármikor megváltoztathatja vagy letilthatja. Ez nem orvostechnikai eszköz funkciója.</string>
+    <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
+    <string name="floating_open_app_info">Alkalmazásinformáció</string>
 </resources>
