@@ -50,6 +50,11 @@ class AlertSettingsDraftTests {
         var batches = 0
         var openBatch = false
 
+        /** What is stored now, as Save reads it before writing; null reads nothing. */
+        var current: AlertSettingsValues? = null
+
+        override fun load(): AlertSettingsValues? = current
+
         override fun saveConfig(config: AlertConfig) {
             assertTrue("saved outside together", openBatch)
             configs += config
@@ -240,6 +245,167 @@ class AlertSettingsDraftTests {
         AlertSettingsDraft(stored()).saveTo(store)
         assertEquals(0, store.batches)
         assertTrue(store.configs.isEmpty())
+    }
+
+    // ---- changes made elsewhere meanwhile -------------------------------------------
+
+    /** [stored] with [type]'s configuration through [change]. */
+    private fun AlertSettingsValues.withConfig(type: AlertType, change: (AlertConfig) -> AlertConfig) =
+        copy(configs = configs + (type to change(configs.getValue(type))))
+
+    @Test
+    fun saveKeepsWhatChangedElsewhereInTheSameAlert() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withConfig(start.config(AlertType.LOW).copy(soundEnabled = false), isMmol)
+        // Meanwhile LOW was switched on the watch, and HIGH's threshold changed.
+        val store = RecordingStore()
+        store.current = stored()
+            .withConfig(AlertType.LOW) { it.copy(enabled = !it.enabled) }
+            .withConfig(AlertType.HIGH) { it.copy(threshold = 12f) }
+
+        val saved = edited.saveTo(store)
+
+        val low = store.configs.single()
+        assertEquals(AlertType.LOW, low.type)
+        assertFalse(low.soundEnabled)
+        assertEquals("the switch made elsewhere is kept", !start.config(AlertType.LOW).enabled, low.enabled)
+        assertEquals(store.current!!.configs.getValue(AlertType.HIGH), saved.saved.configs.getValue(AlertType.HIGH))
+        assertFalse(saved.isDirty)
+    }
+
+    @Test
+    fun aSettingChangedBothHereAndElsewhereKeepsTheDraft() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withConfig(start.config(AlertType.LOW).copy(threshold = 4.2f), isMmol)
+        val store = RecordingStore()
+        store.current = stored().withConfig(AlertType.LOW) { it.copy(threshold = 3.5f, vibrationEnabled = false) }
+
+        edited.saveTo(store)
+
+        val low = store.configs.single()
+        assertEquals(4.2f, low.threshold)
+        assertFalse(low.vibrationEnabled)
+    }
+
+    @Test
+    fun theSettingsForAllAlertsMergeFieldByField() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withGlobal(start.draft.global.copy(sameDirectionSuppressionMinutes = 0))
+        val store = RecordingStore()
+        store.current = stored(global = GlobalAlertSettings(acknowledgedHighCoverage = false))
+
+        edited.saveTo(store)
+
+        assertEquals(listOf(GlobalAlertSettings(sameDirectionSuppressionMinutes = 0, acknowledgedHighCoverage = false)), store.globals)
+    }
+
+    @Test
+    fun theQuietWindowSettingsMergeFieldByField() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withQuietWindow(quiet.copy(breakthroughMinutes = 20))
+        val now = stored(quietWindow = quiet.copy(mode = AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY))
+
+        val rebased = edited.rebase(now, isMmol)
+
+        assertEquals(quiet.copy(mode = AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY, breakthroughMinutes = 20), rebased.draft.quietWindow)
+    }
+
+    @Test
+    fun anEditMadeElsewhereTooLeavesNothingToSave() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withConfig(start.config(AlertType.LOW).copy(soundEnabled = false), isMmol)
+        val store = RecordingStore()
+        store.current = stored().withConfig(AlertType.LOW) { it.copy(soundEnabled = false) }
+
+        val saved = edited.saveTo(store)
+
+        assertEquals(0, store.batches)
+        assertFalse(saved.isDirty)
+    }
+
+    @Test
+    fun aDraftKeptOnDiskMergesFieldByFieldAfterTheProcessStopped() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start
+            .withConfig(start.config(AlertType.LOW).copy(soundEnabled = false), isMmol)
+            .withGlobal(start.draft.global.copy(sameDirectionSuppressionMinutes = 0))
+        val kept = PendingAlertEditsCodec.decode(PendingAlertEditsCodec.encode(edited.pendingEdits()))
+        val now = stored(global = GlobalAlertSettings(acknowledgedHighCoverage = false))
+            .withConfig(AlertType.LOW) { it.copy(enabled = !it.enabled) }
+
+        val restored = AlertSettingsDraft.restore(now, kept, isMmol)
+
+        val low = restored.config(AlertType.LOW)
+        assertFalse(low.soundEnabled)
+        assertEquals(now.configs.getValue(AlertType.LOW).enabled, low.enabled)
+        assertEquals(GlobalAlertSettings(sameDirectionSuppressionMinutes = 0, acknowledgedHighCoverage = false), restored.draft.global)
+    }
+
+    @Test
+    fun aDraftKeptWithoutBasesCountsWhole() {
+        // As an earlier build kept it: the edited parts only.
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withConfig(start.config(AlertType.LOW).copy(soundEnabled = false), isMmol)
+        val pending = edited.pendingEdits().copy(baseConfigs = emptyMap())
+        val now = stored().withConfig(AlertType.LOW) { it.copy(enabled = !it.enabled) }
+
+        assertEquals(edited.config(AlertType.LOW), AlertSettingsDraft.restore(now, pending, isMmol).config(AlertType.LOW))
+    }
+
+    /** Each change to one setting of an alert, away from [mergeBase]'s value. */
+    private val mergeBase = AlertConfig(type = AlertType.LOW)
+    private val settingChanges: List<Pair<String, (AlertConfig) -> AlertConfig>> = listOf(
+        "enabled" to { c -> c.copy(enabled = true) },
+        "threshold" to { c -> c.copy(threshold = 3.3f) },
+        "durationMinutes" to { c -> c.copy(durationMinutes = 20) },
+        "forecastMinutes" to { c -> c.copy(forecastMinutes = 25) },
+        "rearmMargin" to { c -> c.copy(rearmMargin = 0.4f) },
+        "rearmMinIntervalMinutes" to { c -> c.copy(rearmMinIntervalMinutes = 30) },
+        "iobCoverageFactor" to { c -> c.copy(iobCoverageFactor = 0.5f) },
+        "fallRateSuppress" to { c -> c.copy(fallRateSuppress = 2f) },
+        "deltaThreshold" to { c -> c.copy(deltaThreshold = 0.3f) },
+        "deltaCount" to { c -> c.copy(deltaCount = 2) },
+        "deltaBorder" to { c -> c.copy(deltaBorder = 5f) },
+        "deltaIntervalMinutes" to { c -> c.copy(deltaIntervalMinutes = 5) },
+        "earlyTriggerEnabled" to { c -> c.copy(earlyTriggerEnabled = true) },
+        "deliveryMode" to { c -> c.copy(deliveryMode = AlertDeliveryMode.NOTIFICATION_ONLY) },
+        "overrideDND" to { c -> c.copy(overrideDND = true) },
+        "soundEnabled" to { c -> c.copy(soundEnabled = false) },
+        "customSoundUri" to { c -> c.copy(customSoundUri = "content://sound/2") },
+        "vibrationEnabled" to { c -> c.copy(vibrationEnabled = false) },
+        "hapticProfile" to { c -> c.copy(hapticProfile = HapticProfile.SOFT) },
+        "flashEnabled" to { c -> c.copy(flashEnabled = true) },
+        "soundDelayEnabled" to { c -> c.copy(soundDelayEnabled = true) },
+        "soundDelaySeconds" to { c -> c.copy(soundDelaySeconds = 30) },
+        "defaultSnoozeMinutes" to { c -> c.copy(defaultSnoozeMinutes = 45) },
+        "alarmDurationSeconds" to { c -> c.copy(alarmDurationSeconds = 120) },
+        "active start" to { c -> c.copy(activeStartHour = 6, activeStartMinute = 30) },
+        "active end" to { c -> c.copy(activeEndHour = 20, activeEndMinute = 15) },
+        "timeRangeEnabled" to { c -> c.copy(timeRangeEnabled = true) },
+        "retryEnabled" to { c -> c.copy(retryEnabled = true) },
+        "retryIntervalMinutes" to { c -> c.copy(retryIntervalMinutes = 10) },
+        "retryCount" to { c -> c.copy(retryCount = 7) },
+        "expiryWarningMinutes" to { c -> c.copy(expiryWarningMinutes = setOf(60)) },
+    )
+
+    @Test
+    fun everySettingOfAnAlertMergesOnItsOwn() {
+        settingChanges.forEach { (name, change) -> assertTrue(name, change(mergeBase) != mergeBase) }
+        for ((here, changeHere) in settingChanges) for ((there, changeThere) in settingChanges) {
+            if (here == there) continue
+            assertEquals(
+                "$here changed here, $there elsewhere",
+                changeThere(changeHere(mergeBase)),
+                mergeFields(mergeBase, changeHere(mergeBase), changeThere(mergeBase)),
+            )
+        }
+    }
+
+    @Test
+    fun theStartAndEndOfTheActiveHoursMergeWhole() {
+        val draft = mergeBase.copy(activeStartHour = 23)
+        val current = mergeBase.copy(activeStartHour = 21, activeStartMinute = 30)
+        assertEquals(draft, mergeFields(mergeBase, draft, current))
     }
 
     // ---- surviving the screen -----------------------------------------------------

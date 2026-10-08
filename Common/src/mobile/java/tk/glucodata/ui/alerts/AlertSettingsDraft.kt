@@ -46,14 +46,25 @@ interface AlertSettingsStore {
 
     /** Runs the saves in [block] as one, so the watch hears of them once. */
     fun together(block: () -> Unit) = block()
+
+    /** What is stored now, for Save to merge over; null when it cannot be read. */
+    fun load(): AlertSettingsValues? = null
 }
 
-/** The parts of a draft that were edited, each whole. */
+/**
+ * The parts of a draft that were edited, each whole, and each part as it was
+ * stored when the draft began (the base of [mergeFields]). A draft kept by a
+ * build without bases has none, and its parts then count whole.
+ */
 data class PendingAlertEdits(
     val configs: Map<AlertType, AlertConfig> = emptyMap(),
     val global: GlobalAlertSettings? = null,
     val quietWindow: QuietWindowSettings? = null,
     val customAlerts: List<CustomAlertConfig>? = null,
+    val baseConfigs: Map<AlertType, AlertConfig> = emptyMap(),
+    val baseGlobal: GlobalAlertSettings? = null,
+    val baseQuietWindow: QuietWindowSettings? = null,
+    val baseCustomAlerts: List<CustomAlertConfig>? = null,
 ) {
     val isEmpty: Boolean
         get() = configs.isEmpty() && global == null && quietWindow == null && customAlerts == null
@@ -68,6 +79,13 @@ data class PendingAlertEdits(
  * setting added to any of them is a change without being listed here. Only the
  * change summary ([changes]) names settings, and it falls back to "Other
  * settings" for one it does not know.
+ *
+ * What is stored can change under the draft (the watch switches an alert, a
+ * notification action, another screen). The draft is laid over it again field
+ * by field ([rebase], [mergeFields]) when the page comes back and at Save, so
+ * Save never undoes such a change to a setting the draft left alone. A setting
+ * changed both here and elsewhere keeps the draft's value: it is the one on
+ * screen, and the one Save is asked to store.
  */
 data class AlertSettingsDraft(
     val saved: AlertSettingsValues,
@@ -104,27 +122,43 @@ data class AlertSettingsDraft(
 
     fun discard(): AlertSettingsDraft = copy(draft = saved)
 
-    fun pendingEdits(): PendingAlertEdits = PendingAlertEdits(
-        configs = draft.configs.filter { (type, config) -> saved.configs[type] != config },
-        global = draft.global.takeIf { it != saved.global },
-        quietWindow = draft.quietWindow.takeIf { it != saved.quietWindow },
-        customAlerts = draft.customAlerts.takeIf { it != saved.customAlerts },
-    )
+    fun pendingEdits(): PendingAlertEdits {
+        val configs = draft.configs.filter { (type, config) -> saved.configs[type] != config }
+        val global = draft.global.takeIf { it != saved.global }
+        val quietWindow = draft.quietWindow.takeIf { it != saved.quietWindow }
+        val customAlerts = draft.customAlerts.takeIf { it != saved.customAlerts }
+        return PendingAlertEdits(
+            configs = configs,
+            global = global,
+            quietWindow = quietWindow,
+            customAlerts = customAlerts,
+            baseConfigs = saved.configs.filterKeys { it in configs },
+            baseGlobal = saved.global.takeIf { global != null },
+            baseQuietWindow = saved.quietWindow.takeIf { quietWindow != null },
+            baseCustomAlerts = saved.customAlerts.takeIf { customAlerts != null },
+        )
+    }
 
     /**
-     * The same edits over [stored], read again: a part left alone follows what is
-     * stored now (the watch switched an alert, a quiet window started), an edited
-     * part keeps the edit.
+     * The same edits over [stored], read again, field by field ([mergeFields]): a
+     * setting the draft left alone follows what is stored now (the watch switched
+     * an alert, a quiet window started), a setting it changed keeps the edit.
      */
     fun rebase(stored: AlertSettingsValues, isMmol: Boolean): AlertSettingsDraft =
         restore(stored, pendingEdits(), isMmol)
 
     /**
      * Writes each edited part once, all inside one [AlertSettingsStore.together],
-     * and returns the draft with nothing left to save.
+     * and returns the draft with nothing left to save. The draft is first laid
+     * over what [AlertSettingsStore.load] reads now, field by field, so a setting
+     * changed elsewhere since the last look is not written back over.
      */
     fun saveTo(store: AlertSettingsStore): AlertSettingsDraft {
         if (!isDirty) return this
+        val merged = store.load()?.let { layOver(it, pendingEdits(), isMmol = null) } ?: this
+        if (!merged.isDirty) return merged
+        val saved = merged.saved
+        val draft = merged.draft
         store.together {
             draft.configs.values.forEach { config ->
                 if (saved.configs[config.type] != config) store.saveConfig(config)
@@ -152,17 +186,37 @@ data class AlertSettingsDraft(
     }
 
     companion object {
-        /** [edits] laid over [stored]: a draft whose edits survived the screen, or the process. */
+        /**
+         * [edits] laid over [stored], field by field from their bases ([mergeFields]):
+         * a draft whose edits survived the screen, or the process.
+         */
         fun restore(stored: AlertSettingsValues, edits: PendingAlertEdits, isMmol: Boolean): AlertSettingsDraft =
+            layOver(stored, edits, isMmol)
+
+        /**
+         * [restore], and Save's merge with [isMmol] null: a value the draft sets is
+         * then written as it is, without matching it to the stored one ([matchedTo]).
+         */
+        private fun layOver(stored: AlertSettingsValues, edits: PendingAlertEdits, isMmol: Boolean?): AlertSettingsDraft =
             AlertSettingsDraft(
                 saved = stored,
                 draft = AlertSettingsValues(
                     configs = stored.configs.mapValues { (type, storedConfig) ->
-                        edits.configs[type]?.takeIf { it.type == type }?.matchedTo(storedConfig, isMmol) ?: storedConfig
+                        val edit = edits.configs[type]?.takeIf { it.type == type } ?: return@mapValues storedConfig
+                        val base = edits.baseConfigs[type]?.takeIf { it.type == type }
+                        val merged = if (base != null) mergeFields(base, edit, storedConfig) else edit
+                        if (isMmol != null) merged.matchedTo(storedConfig, isMmol) else merged
                     },
-                    global = edits.global ?: stored.global,
-                    quietWindow = edits.quietWindow ?: stored.quietWindow,
-                    customAlerts = edits.customAlerts?.matchedTo(stored.customAlerts) ?: stored.customAlerts,
+                    global = edits.global?.let { edit ->
+                        edits.baseGlobal?.let { mergeFields(it, edit, stored.global) } ?: edit
+                    } ?: stored.global,
+                    quietWindow = edits.quietWindow?.let { edit ->
+                        edits.baseQuietWindow?.let { mergeFields(it, edit, stored.quietWindow) } ?: edit
+                    } ?: stored.quietWindow,
+                    customAlerts = edits.customAlerts?.let { edit ->
+                        (edits.baseCustomAlerts?.let { mergeCustomAlerts(it, edit, stored.customAlerts) } ?: edit)
+                            .matchedTo(stored.customAlerts)
+                    } ?: stored.customAlerts,
                 ),
             )
     }
@@ -221,6 +275,94 @@ internal fun mergeCustomAlerts(
         if (alert.id !in savedById && alert.id !in draftIds) result += alert
     }
     return result
+}
+
+// ---- merging a part field by field -----------------------------------------------
+
+/**
+ * One alert's configuration merged three ways: [base] as stored when the draft
+ * began, [draft] as on screen, [current] as stored now. A setting the draft
+ * left as in [base] takes [current]; a setting the draft changed keeps the
+ * draft, also when [current] changed it too. The active hours' start and end
+ * each merge whole (hour and minute together).
+ */
+internal fun mergeFields(base: AlertConfig, draft: AlertConfig, current: AlertConfig): AlertConfig =
+    mergeNamed(base, draft, current) { start, pick ->
+        val activeStart = pick { it.activeStartHour to it.activeStartMinute }
+        val activeEnd = pick { it.activeEndHour to it.activeEndMinute }
+        start.copy(
+            enabled = pick { it.enabled },
+            threshold = pick { it.threshold },
+            durationMinutes = pick { it.durationMinutes },
+            forecastMinutes = pick { it.forecastMinutes },
+            rearmMargin = pick { it.rearmMargin },
+            rearmMinIntervalMinutes = pick { it.rearmMinIntervalMinutes },
+            iobCoverageFactor = pick { it.iobCoverageFactor },
+            fallRateSuppress = pick { it.fallRateSuppress },
+            deltaThreshold = pick { it.deltaThreshold },
+            deltaCount = pick { it.deltaCount },
+            deltaBorder = pick { it.deltaBorder },
+            deltaIntervalMinutes = pick { it.deltaIntervalMinutes },
+            earlyTriggerEnabled = pick { it.earlyTriggerEnabled },
+            deliveryMode = pick { it.deliveryMode },
+            overrideDND = pick { it.overrideDND },
+            soundEnabled = pick { it.soundEnabled },
+            customSoundUri = pick { it.customSoundUri },
+            vibrationEnabled = pick { it.vibrationEnabled },
+            hapticProfile = pick { it.hapticProfile },
+            flashEnabled = pick { it.flashEnabled },
+            soundDelayEnabled = pick { it.soundDelayEnabled },
+            soundDelaySeconds = pick { it.soundDelaySeconds },
+            defaultSnoozeMinutes = pick { it.defaultSnoozeMinutes },
+            alarmDurationSeconds = pick { it.alarmDurationSeconds },
+            activeStartHour = activeStart.first,
+            activeStartMinute = activeStart.second,
+            activeEndHour = activeEnd.first,
+            activeEndMinute = activeEnd.second,
+            timeRangeEnabled = pick { it.timeRangeEnabled },
+            retryEnabled = pick { it.retryEnabled },
+            retryIntervalMinutes = pick { it.retryIntervalMinutes },
+            retryCount = pick { it.retryCount },
+            expiryWarningMinutes = pick { it.expiryWarningMinutes },
+        )
+    }
+
+/** The settings for all alerts, merged as [mergeFields] merges an alert's. */
+internal fun mergeFields(base: GlobalAlertSettings, draft: GlobalAlertSettings, current: GlobalAlertSettings) =
+    mergeNamed(base, draft, current) { start, pick ->
+        start.copy(
+            sameDirectionSuppressionMinutes = pick { it.sameDirectionSuppressionMinutes },
+            acknowledgedHighCoverage = pick { it.acknowledgedHighCoverage },
+        )
+    }
+
+/** The quiet window's settings, merged as [mergeFields] merges an alert's. */
+internal fun mergeFields(base: QuietWindowSettings, draft: QuietWindowSettings, current: QuietWindowSettings) =
+    mergeNamed(base, draft, current) { start, pick ->
+        start.copy(
+            mode = pick { it.mode },
+            breakthroughMinutes = pick { it.breakthroughMinutes },
+            breakthroughScope = pick { it.breakthroughScope },
+            defaultMinutes = pick { it.defaultMinutes },
+        )
+    }
+
+/** Takes a setting from the draft when the draft changed it, else from what is stored now. */
+internal class FieldPicker<T>(private val base: T, private val draft: T, private val current: T) {
+    operator fun <V> invoke(read: (T) -> V): V = read(draft).let { if (it != read(base)) it else read(current) }
+}
+
+/**
+ * Runs [merge], which copies [start] with each setting it names taken through
+ * the picker. A setting it does not name (one added to the class later) cannot
+ * be merged on its own: once the draft changed one, the merge starts from the
+ * draft rather than [current], so the edit is kept whole instead of lost.
+ */
+private fun <T> mergeNamed(base: T, draft: T, current: T, merge: (start: T, pick: FieldPicker<T>) -> T): T {
+    if (draft == base) return current
+    if (current == base) return draft
+    val unnamedEdited = merge(base, FieldPicker(base, draft, base)) != draft
+    return merge(if (unnamedEdited) draft else current, FieldPicker(base, draft, current))
 }
 
 /**
@@ -465,20 +607,38 @@ private fun customAlertChanges(
  * [PendingAlertEdits] as strings for a preferences file, and back. The alert
  * parts go through Java serialization, which covers every field without a list
  * of them; a part this build cannot read back (written by another version of
- * the app) is dropped, and [decode] reports it.
+ * the app) is dropped, and [decode] reports it. The bases go under the same
+ * keys with [BASE_PREFIX]; without its base, a part counts whole.
  */
 internal object PendingAlertEditsCodec {
     private const val CONFIG_PREFIX = "config_"
     private const val GLOBAL = "global"
     private const val QUIET_WINDOW = "quiet_window"
     private const val CUSTOM_ALERTS = "custom_alerts"
+    private const val BASE_PREFIX = "base_"
+
+    /** One set of parts: the edits, or their bases. */
+    private class Parts(
+        val configs: MutableMap<AlertType, AlertConfig> = LinkedHashMap(),
+        var global: GlobalAlertSettings? = null,
+        var quietWindow: QuietWindowSettings? = null,
+        var customAlerts: List<CustomAlertConfig>? = null,
+    )
 
     fun encode(edits: PendingAlertEdits): Map<String, String> = buildMap {
-        edits.configs.forEach { (type, config) -> put(CONFIG_PREFIX + type.id, serialize(config)) }
-        edits.global?.let { put(GLOBAL, serialize(it)) }
-        edits.quietWindow?.let { put(QUIET_WINDOW, serialize(it)) }
-        edits.customAlerts?.let { alerts ->
-            put(CUSTOM_ALERTS, JSONArray().apply { alerts.forEach { put(it.toJson()) } }.toString())
+        putParts("", Parts(edits.configs.toMutableMap(), edits.global, edits.quietWindow, edits.customAlerts))
+        putParts(
+            BASE_PREFIX,
+            Parts(edits.baseConfigs.toMutableMap(), edits.baseGlobal, edits.baseQuietWindow, edits.baseCustomAlerts),
+        )
+    }
+
+    private fun MutableMap<String, String>.putParts(prefix: String, parts: Parts) {
+        parts.configs.forEach { (type, config) -> put(prefix + CONFIG_PREFIX + type.id, serialize(config)) }
+        parts.global?.let { put(prefix + GLOBAL, serialize(it)) }
+        parts.quietWindow?.let { put(prefix + QUIET_WINDOW, serialize(it)) }
+        parts.customAlerts?.let { alerts ->
+            put(prefix + CUSTOM_ALERTS, JSONArray().apply { alerts.forEach { put(it.toJson()) } }.toString())
         }
     }
 
@@ -486,31 +646,40 @@ internal object PendingAlertEditsCodec {
         entries: Map<String, *>,
         onUnreadable: (key: String, error: Throwable) -> Unit = { _, _ -> },
     ): PendingAlertEdits {
-        val configs = LinkedHashMap<AlertType, AlertConfig>()
-        var global: GlobalAlertSettings? = null
-        var quietWindow: QuietWindowSettings? = null
-        var customAlerts: List<CustomAlertConfig>? = null
+        val edits = Parts()
+        val bases = Parts()
         entries.forEach { (key, value) ->
             val text = value as? String ?: return@forEach
+            val parts = if (key.startsWith(BASE_PREFIX)) bases else edits
+            val name = key.removePrefix(BASE_PREFIX)
             try {
                 when {
-                    key.startsWith(CONFIG_PREFIX) -> {
-                        val type = AlertType.fromId(key.removePrefix(CONFIG_PREFIX).toInt())
+                    name.startsWith(CONFIG_PREFIX) -> {
+                        val type = AlertType.fromId(name.removePrefix(CONFIG_PREFIX).toInt())
                         val config = deserialize(text) as AlertConfig
-                        if (type != null && config.type == type) configs[type] = config
+                        if (type != null && config.type == type) parts.configs[type] = config
                     }
-                    key == GLOBAL -> global = deserialize(text) as GlobalAlertSettings
-                    key == QUIET_WINDOW -> quietWindow = deserialize(text) as QuietWindowSettings
-                    key == CUSTOM_ALERTS -> {
+                    name == GLOBAL -> parts.global = deserialize(text) as GlobalAlertSettings
+                    name == QUIET_WINDOW -> parts.quietWindow = deserialize(text) as QuietWindowSettings
+                    name == CUSTOM_ALERTS -> {
                         val array = JSONArray(text)
-                        customAlerts = (0 until array.length()).map { CustomAlertConfig.fromJson(array.getJSONObject(it)) }
+                        parts.customAlerts = (0 until array.length()).map { CustomAlertConfig.fromJson(array.getJSONObject(it)) }
                     }
                 }
             } catch (t: Throwable) {
                 onUnreadable(key, t)
             }
         }
-        return PendingAlertEdits(configs, global, quietWindow, customAlerts)
+        return PendingAlertEdits(
+            configs = edits.configs,
+            global = edits.global,
+            quietWindow = edits.quietWindow,
+            customAlerts = edits.customAlerts,
+            baseConfigs = bases.configs,
+            baseGlobal = bases.global,
+            baseQuietWindow = bases.quietWindow,
+            baseCustomAlerts = bases.customAlerts,
+        )
     }
 
     private fun serialize(value: Serializable): String {

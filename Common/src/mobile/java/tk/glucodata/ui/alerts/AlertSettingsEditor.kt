@@ -137,5 +137,7 @@ internal object AlertSettingsEditor {
         }
 
         override fun together(block: () -> Unit) = AlertRepository.saveTogether(block)
+
+        override fun load(): AlertSettingsValues = AlertSettingsEditor.loadStored()
     }
 }
