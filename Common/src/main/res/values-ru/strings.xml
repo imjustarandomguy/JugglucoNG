@@ -611,6 +611,11 @@
     <string name="preview_window_expanded_only">Только в расширенном виде (по умолчанию)</string>
     <string name="preview_window_always">Всегда</string>
     <string name="preview_window_never">Никогда</string>
+    <string name="chart_readings_style_title">Показывать показания как</string>
+    <string name="chart_readings_style_desc">Как показания рисуются на графиках: в приложении, в уведомлении, в виджете и на часах</string>
+    <string name="chart_readings_style_line">Линия</string>
+    <string name="chart_readings_style_dots">Точки</string>
+    <string name="chart_readings_style_line_and_dots">Линия и точки</string>
     <string name="debug_logs_desc">Просмотр trace.log и logcat</string>
     <string name="data_management">Управление данными</string>
     <string name="export_data">Экспорт истории</string>

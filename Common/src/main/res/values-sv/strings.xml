@@ -515,6 +515,11 @@
     <string name="preview_window_expanded_only">Endast i expanderat läge (standard)</string>
     <string name="preview_window_always">Alltid</string>
     <string name="preview_window_never">Aldrig</string>
+    <string name="chart_readings_style_title">Visa mätvärden som</string>
+    <string name="chart_readings_style_desc">Hur mätvärden ritas i diagrammen: i appen, i aviseringen, i widgeten och på klockan</string>
+    <string name="chart_readings_style_line">Linje</string>
+    <string name="chart_readings_style_dots">Punkter</string>
+    <string name="chart_readings_style_line_and_dots">Linje och punkter</string>
     <string name="debug_logs_desc">Se trace.log och logcat</string>
     <string name="data_management">Datahantering</string>
     <string name="export_data">Exportera Historik</string>

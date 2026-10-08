@@ -431,6 +431,9 @@ class DashboardViewModel(
     private val _previewWindowMode = MutableStateFlow(0)
     val previewWindowMode = _previewWindowMode.asStateFlow()
 
+    private val _chartReadingsStyle = MutableStateFlow(tk.glucodata.ChartReadingsStyle.LINE)
+    val chartReadingsStyle = _chartReadingsStyle.asStateFlow()
+
     private val _journalEnabled = MutableStateFlow(true)
     val journalEnabled = _journalEnabled.asStateFlow()
 
@@ -845,6 +848,7 @@ class DashboardViewModel(
         _dataSmoothingCollapseChunks.value = DataSmoothing.collapseChunks(context)
         _dataSmoothingExchangeOnly.value = DataSmoothing.smoothOnlyExchangeOutputs(context)
         _previewWindowMode.value = prefs.getInt("dashboard_chart_preview_window_mode", 0)
+        _chartReadingsStyle.value = tk.glucodata.ChartReadingsStyle.read(context)
         val journalEnabled = prefs.getBoolean("dashboard_journal_enabled", true)
         _journalEnabled.value = journalEnabled
         _journalNavigationTabEnabled.value = prefs.getBoolean(JOURNAL_NAVIGATION_TAB_KEY, false)
@@ -1781,6 +1785,19 @@ class DashboardViewModel(
         val prefs = context.getSharedPreferences("tk.glucodata_preferences", android.content.Context.MODE_PRIVATE)
         prefs.edit().putInt("dashboard_chart_preview_window_mode", sanitized).apply()
         _previewWindowMode.value = sanitized
+    }
+
+    fun setChartReadingsStyle(style: Int) {
+        val sanitized = tk.glucodata.ChartReadingsStyle.fromPreference(style)
+        val context = tk.glucodata.Applic.app
+        val prefs = context.getSharedPreferences("tk.glucodata_preferences", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putInt(tk.glucodata.settings.KEY_CHART_READINGS_STYLE, sanitized).apply()
+        _chartReadingsStyle.value = sanitized
+        // The notification and AOD overlay redraw their chart now, the widget with the
+        // next reading; the watch draws its own and is sent the setting with the other
+        // mirrored display settings.
+        refreshNotificationPredictionSurfaces(context)
+        tk.glucodata.WearPrefsSync.push()
     }
 
     fun setJournalEnabled(enabled: Boolean) {
