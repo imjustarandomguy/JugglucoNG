@@ -150,7 +150,7 @@ Owner's reports and what was done (all unit-tested with `scripts/personal/test.s
 - **Dashboard chart:** bounded panning (future: 10 min, or the prediction horizon); no y drag (vertical swipes scroll the page), y axis = Chart range widened to what is in view; clipping, handle drag + remembered height. "Readings shown as" dots option
   everywhere (default line).
 - **Lock screen:** Samsung offers no lock-screen widgets to other apps (One UI 9).
-  Built instead: the Now Bar live notification (option, off by default) and the widget
+  Built instead: the Now Bar live notification (option, off by default) (dropped 2026-10-08, not wanted) and the widget
   rework (Glance gone: this was item 5's battery cost), so a 1-row widget can go on the
   lock screen with Good Lock LockStar.
 - **Quick entry:** no last-dose/last-food line on an existing entry; reminder now reads
@@ -160,7 +160,7 @@ To test after the next install:
 1. Widgets: existing widgets after the upgrade (may show "can't load" until the first
    render), resize both, Settings screen (long-press and Settings → Widgets), screen
    off → on, stale look, LockStar 1-row size. Battery: a run to compare with run 3.
-2. Now Bar: Notification settings → Live notification. If nothing shows, Developer
+2. Now Bar: Notification settings → Live notification. (Dropped 2026-10-08.) If nothing shows, Developer
    options → "Live notifications for all apps".
 3. Pill styles, landscape island.
 4. Alarm page: change, leave (prompt), save; watch gets the change once.
