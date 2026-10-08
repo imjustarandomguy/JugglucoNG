@@ -46,7 +46,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.emptyFlow
@@ -81,17 +80,8 @@ internal object FloatingStaleValue {
     fun alpha(hasValue: Boolean, stale: Boolean): Float = if (hasValue && stale) DIMMED_ALPHA else 1f
 }
 
-/** The reading a details card is opened for. */
 /** Width of the details card; the service places its window by it. */
 internal val FloatingDetailsCardWidth = 260.dp
-
-data class FloatingDetailsRequest(
-    val point: GlucosePoint,
-    val sensorId: String?,
-    val isMmol: Boolean,
-    val viewMode: Int,
-    val displayGlucose: Float,
-)
 
 /**
  * The reading the pill shows, resolved by FloatingGlucoseService: the newest of the
@@ -133,6 +123,8 @@ fun FloatingGlucoseOverlay(
     historyFlow: StateFlow<List<GlucosePoint>>,
     /** The reading to show, resolved by the service. */
     readingFlow: StateFlow<FloatingPillReading>,
+    /** The service's freshness clock, shared with the details card; see nextOverlayFreshnessCheckDelay. */
+    freshnessNowFlow: StateFlow<Long>,
     /** Each item asks for a frame of the pill's recomposer, as a tap does; see FloatingPillWatchdog. */
     frameRequests: Flow<Unit> = emptyFlow(),
     /** Called with the [FloatingPillReading.revision] the pill draws, each time it draws. */
@@ -147,7 +139,7 @@ fun FloatingGlucoseOverlay(
     onDragFinished: () -> Unit,
     cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
     /** Opens or closes the details card on a tap ("Details on tap"); otherwise a tap opens the app. */
-    onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
+    onToggleDetails: (() -> Unit)? = null,
     /** With "Details on tap" on: called, with why, for a tap that does not reach [onToggleDetails]. */
     onTapNotOpened: (String) -> Unit = {},
     /** Opens the app (a tap with "Details on tap" off, or a long press on the island). */
@@ -203,33 +195,17 @@ fun FloatingGlucoseOverlay(
     SideEffect { onReadingComposed(drawnRevision) }
 
     // The overlay only recomposes on new data, so once readings stop nothing would
-    // ever notice the last one aging out. Re-read the clock until it crosses the
-    // same timeout the widget and dashboard use; the reading then stays, dimmed.
-    // This is the pill's only freshness clock.
-    val latestReadingMillis = reading.readingTime
-    val freshnessNow by produceState(System.currentTimeMillis(), latestReadingMillis) {
-        while (true) {
-            value = System.currentTimeMillis()
-            val wait = nextOverlayFreshnessCheckDelay(latestReadingMillis, value) ?: break
-            delay(wait)
-        }
-    }
+    // ever notice the last one aging out. The service's clock re-reads the wall clock
+    // until it crosses the same timeout the widget and dashboard use; the reading then
+    // stays, dimmed. The details card reads the same clock.
+    val freshnessNow by freshnessNowFlow.collectAsState()
     // Every layout (pill, side and top island) dims value and arrow by this; the range
     // colours and the time to the next reading follow it too.
     val isStale = !overlayReadingIsFresh(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
 
     // View Mode & Calibration
     val viewData = remember(currentSnapshot, glucosePoint, currentSensorId) {
-        val resolvedViewMode = currentSnapshot?.viewMode
-        val viewMode = if (resolvedViewMode != null) {
-            resolvedViewMode
-        } else if (!currentSensorId.isNullOrEmpty()) {
-            runCatching {
-                val snapshot = Natives.getSensorUiSnapshot(currentSensorId)
-                if (snapshot != null && snapshot.size >= 2) snapshot[1].toInt() else 0
-            }.getOrDefault(0)
-        } else 0
-        Pair(viewMode, Natives.getunit())
+        Pair(floatingViewMode(currentSnapshot, currentSensorId), Natives.getunit())
     }
     val viewMode = viewData.first
     val unitInt = viewData.second
@@ -387,15 +363,7 @@ fun FloatingGlucoseOverlay(
     val onPillTap: () -> Unit = {
         val toggle = onToggleDetails?.takeIf { tapShowsDetails }
         if (toggle != null && glucosePoint != null) {
-            toggle(
-                FloatingDetailsRequest(
-                    point = glucosePoint,
-                    sensorId = currentSensorId,
-                    isMmol = unitInt == 1,
-                    viewMode = viewMode,
-                    displayGlucose = currentSnapshot?.displayValues?.primaryValue ?: glucosePoint.value,
-                )
-            )
+            toggle()
         } else {
             if (toggle != null) onTapNotOpened("no reading, opening the app")
             onOpenApp()
@@ -722,43 +690,50 @@ fun FloatingGlucoseOverlay(
  * What the glucose notification shows, for the reading on the pill: its time
  * and age, the Δ, the chart and the IOB/COB line (when the notification shows
  * one). Tapping it opens the app. Its background is [backgroundOpacity] opaque.
+ * While open it follows the pill's reading, its age on the pill's freshness clock,
+ * and a stale reading is dimmed as on the pill; see FloatingDetailsCardState.
  */
 @Composable
 fun FloatingDetailsCard(
-    request: FloatingDetailsRequest,
+    readingFlow: StateFlow<FloatingPillReading>,
+    freshnessNowFlow: StateFlow<Long>,
     isDark: Boolean,
     onOpenApp: () -> Unit,
     backgroundOpacity: Float = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY,
 ) {
-    val point = request.point
-    val sensorId = request.sensorId
-    val isMmol = request.isMmol
-    val viewMode = request.viewMode
-    val displayGlucose = request.displayGlucose
+    val reading by readingFlow.collectAsState()
+    val freshnessNow by freshnessNowFlow.collectAsState()
+    val viewData = remember(reading.snapshot, reading.point, reading.sensorId) {
+        Pair(floatingViewMode(reading.snapshot, reading.sensorId), Natives.getunit())
+    }
+    val state = FloatingDetailsCardState.of(reading, viewData.second == 1, viewData.first, freshnessNow) ?: return
+    val request = state.request
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val cardWidth = FloatingDetailsCardWidth
     val chartHeight = 110.dp
     val chartWidthPx = with(density) { (cardWidth - 24.dp).roundToPx() }
     val chartHeightPx = with(density) { chartHeight.roundToPx() }
-    val details by produceState<tk.glucodata.FloatingDetailsSource.Details?>(null, point.timestamp, sensorId, viewMode, isDark) {
+    // Reloaded for each new reading; the last one stays shown until the next is drawn.
+    val details by produceState<tk.glucodata.FloatingDetailsSource.Details?>(null, request, isDark) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             tk.glucodata.FloatingDetailsSource.load(
-                context, sensorId, isMmol, viewMode, chartWidthPx, chartHeightPx, isDark, displayGlucose,
+                context, request.sensorId, request.isMmol, request.viewMode,
+                chartWidthPx, chartHeightPx, isDark, request.displayGlucose,
             )
         }
     }
     val background = (if (isDark) Color(0xFF202124) else Color(0xFFF6F4F1)).copy(alpha = backgroundOpacity)
     val textColor = if (isDark) Color.White else Color(0xFF27231F)
-    val minutes = ((System.currentTimeMillis() - point.timestamp) / 60_000L).coerceAtLeast(0L)
-    val time = remember(point.timestamp) {
-        android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(point.timestamp))
+    val time = remember(state.readingTime) {
+        android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(state.readingTime))
     }
     val header = buildList {
         add(time)
-        add(context.getString(tk.glucodata.R.string.minutes_short_format, minutes.toInt()))
+        add(context.getString(tk.glucodata.R.string.minutes_short_format, state.ageMinutes.toInt()))
         details?.delta?.takeIf { it.isNotEmpty() }?.let { add("Δ $it") }
     }.joinToString(" · ")
+    val headerAlpha = FloatingStaleValue.alpha(hasValue = true, stale = state.stale)
 
     Surface(
         color = background,
@@ -772,7 +747,7 @@ fun FloatingDetailsCard(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(header, color = textColor, fontSize = 14.sp)
+            Text(header, color = textColor.copy(alpha = headerAlpha), fontSize = 14.sp)
             val chart = details?.chart
             if (chart != null) {
                 androidx.compose.foundation.Image(
@@ -1009,16 +984,29 @@ private const val OVERLAY_FRESHNESS_POLL_MS = 15_000L
  * has gone stale, or null once it has (or there is none) and nothing is left to
  * watch. Capped at [OVERLAY_FRESHNESS_POLL_MS] because coroutine delays run on
  * uptime, which stops during deep sleep: one long wait would wake far too late.
+ * While [ageShown] (the details card is open) a stale reading is still watched, at
+ * that cap, so the age the card shows goes on.
  */
 internal fun nextOverlayFreshnessCheckDelay(
     latestReadingMillis: Long,
     nowMillis: Long,
-    freshnessWindowMillis: Long = Notify.glucosetimeout
+    freshnessWindowMillis: Long = Notify.glucosetimeout,
+    ageShown: Boolean = false,
 ): Long? {
     if (latestReadingMillis <= 0L) return null
     val untilStale = latestReadingMillis + freshnessWindowMillis - nowMillis
-    if (untilStale < 0L) return null
+    if (untilStale < 0L) return if (ageShown) OVERLAY_FRESHNESS_POLL_MS else null
     return (untilStale + 1L).coerceAtMost(OVERLAY_FRESHNESS_POLL_MS)
+}
+
+/** The view mode of [snapshot]'s reading, else [sensorId]'s, else 0. */
+internal fun floatingViewMode(snapshot: CurrentDisplaySource.Snapshot?, sensorId: String?): Int {
+    snapshot?.viewMode?.let { return it }
+    if (sensorId.isNullOrEmpty()) return 0
+    return runCatching {
+        val sensor = Natives.getSensorUiSnapshot(sensorId)
+        if (sensor != null && sensor.size >= 2) sensor[1].toInt() else 0
+    }.getOrDefault(0)
 }
 
 /**
