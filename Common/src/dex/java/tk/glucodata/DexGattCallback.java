@@ -292,7 +292,7 @@ private boolean connected=false;
     @Override
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+                || SensorOwnershipRuntime.blocksLocalConnection(this)) return false;
         if (delayMillis > 0L && delayMillis <= DEXCOM_SHORT_RECONNECT_MAX_MS) {
             waitShortReconnect(delayMillis);
             return true;
