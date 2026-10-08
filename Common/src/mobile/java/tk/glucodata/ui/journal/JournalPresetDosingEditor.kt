@@ -37,10 +37,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import java.util.Calendar
 import kotlin.math.abs
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalInsulinDosing
+import tk.glucodata.journal.InsulinReminders
 
 /**
  * The insulin library's dosing settings for one preset: the step the entry sheet's -/+ use, the
@@ -104,6 +107,15 @@ internal fun JournalPresetDosingSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (reminderTimes.isNotEmpty()) {
+                reminderDeliveryWarning()?.let { warning ->
+                    Text(
+                        text = warning,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -174,6 +186,24 @@ internal fun JournalPresetDosingSection(
                 }
             }
         )
+    }
+}
+
+/**
+ * Why the reminders set here would not arrive as set, read again whenever the screen comes back
+ * (from the system settings, say); null when nothing is in the way.
+ */
+@Composable
+private fun reminderDeliveryWarning(): String? {
+    val context = LocalContext.current
+    var problem by remember { mutableStateOf(InsulinReminders.deliveryProblem(context)) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        problem = InsulinReminders.deliveryProblem(context)
+    }
+    return when (problem) {
+        InsulinReminders.DeliveryProblem.NOT_SHOWN -> stringResource(R.string.journal_reminders_not_shown)
+        InsulinReminders.DeliveryProblem.LATE -> stringResource(R.string.journal_reminders_late)
+        null -> null
     }
 }
 

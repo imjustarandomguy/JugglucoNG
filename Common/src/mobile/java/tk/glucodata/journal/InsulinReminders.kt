@@ -154,6 +154,30 @@ object InsulinReminders {
             .forEach { manager.cancel(NOTIFICATION_TAG, notificationId(it)) }
     }
 
+    /** What keeps reminders from arriving as set, for the insulin library to say. */
+    enum class DeliveryProblem {
+        /** Notifications are off for the app or for the reminder channel: nothing shows. */
+        NOT_SHOWN,
+        /** Exact alarms are not allowed: the alarm may ring a few minutes late. */
+        LATE
+    }
+
+    /** The first [DeliveryProblem] of reminders on this phone now, or null when they arrive as set. */
+    fun deliveryProblem(context: Context): DeliveryProblem? {
+        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        val permitted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        // The channel is created with the first reminder; until then it cannot be off.
+        val channelOff = manager?.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        if (!permitted || manager?.areNotificationsEnabled() == false || channelOff) return DeliveryProblem.NOT_SHOWN
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager?.canScheduleExactAlarms() == false) {
+            return DeliveryProblem.LATE
+        }
+        return null
+    }
+
     private suspend fun reschedule(context: Context, afterMillis: Long) {
         val presets = JournalRepository().getInsulinPresetsSnapshot()
         schedule(context, InsulinReminderPolicy.slots(presets), afterMillis)
