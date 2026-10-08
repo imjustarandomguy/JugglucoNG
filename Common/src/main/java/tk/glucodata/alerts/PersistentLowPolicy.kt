@@ -39,7 +39,18 @@ internal data class PersistentLowDecision(
  * rings after the configured duration.
  *
  * - The timer starts at the first reading below the threshold, at that
- *   reading's time.
+ *   reading's time. When an episode starts, that reading is looked up in the
+ *   stored readings ([startFromHistory]): walking back from the current
+ *   reading while the value stayed below threshold + margin, it is the first
+ *   reading below the threshold after the last one at or above that line.
+ *   Phone and watch store the same readings, so both count from the same
+ *   start, whenever each began to look: a setting received while asleep, a
+ *   missed live reading or a restart in the middle of a low no longer moves
+ *   it. In consequence, switching the alarm on, changing it, or its time
+ *   window opening during a low that has already lasted the duration rings at
+ *   the next check instead of waiting out a fresh duration. A hole of more
+ *   than [EpisodeHistory.MAX_GAP_MS] between stored readings ends the stretch,
+ *   and the walk looks back [EpisodeHistory.MAX_LOOKBACK_MS] at most.
  * - It fires once the time between that reading and the current one reaches
  *   the duration and the current reading is still below the threshold. Time is
  *   measured between readings, not on the wall clock, so at the 5-minute G7
@@ -51,7 +62,9 @@ internal data class PersistentLowDecision(
  * - Disabled, no threshold or duration, or outside the time window: reset.
  *   A missing value does not reset: a lost sample is not a recovery.
  * - VERY_LOW active at any point in the episode holds it for the rest of the
- *   episode: the urgent alarm owns that low.
+ *   episode: the urgent alarm owns that low. This is seen live only: the
+ *   stored readings do not say whether VERY_LOW was on, in its hours or
+ *   snoozed back then, and guessing could silence a hypo alarm.
  * - Optional "hold while rising" (the mirror of persistent high's fall rule):
  *   while the value rises at least [AlertConfig.riseRateSuppress] mg/dl per
  *   minute the alarm is held, but the timer is not reset, so a rise that stalls
@@ -88,6 +101,10 @@ internal object PersistentLowPolicy {
      * @param readingTimeMs time of that reading.
      * @param rate mg/dl per minute, positive = rising.
      * @param veryLowActive VERY_LOW's episode is active (its condition holds, or it fired and was not yet reset).
+     * @param historyStartMs the start [startFromHistory] finds for the low at this
+     *   reading, 0 for none. Called only when an episode starts at this reading,
+     *   so a running episode never reads the history; a start that is not
+     *   earlier than this reading is ignored.
      */
     fun decide(
         state: PersistentLowState,
@@ -98,9 +115,10 @@ internal object PersistentLowPolicy {
         readingTimeMs: Long,
         rate: Float,
         veryLowActive: Boolean,
-        snoozed: Boolean
+        snoozed: Boolean,
+        historyStartMs: () -> Long = { 0L }
     ): PersistentLowDecision {
-        val threshold = config.threshold?.takeIf { it.isFinite() && it > 0f }
+        val threshold = thresholdOf(config)
         val durationMs = (config.durationMinutes ?: 0).coerceAtLeast(0) * 60_000L
         if (!config.enabled || threshold == null || durationMs <= 0L) {
             return reset("persistent-low-disabled")
@@ -112,17 +130,14 @@ internal object PersistentLowPolicy {
             return PersistentLowDecision(PersistentLowAction.WAIT, state, "persistent-low-no-value")
         }
 
-        val margin = (config.rearmMargin ?: defaultRearmMargin(isMmol)).takeIf { it.isFinite() }
-            ?.coerceAtLeast(0f) ?: defaultRearmMargin(isMmol)
-        val recoveredAt = if (margin > 0f) threshold + margin - RECOVERY_EPSILON else threshold
-        if (value >= recoveredAt) {
+        if (value >= recoveredAt(threshold, config, isMmol)) {
             return reset("persistent-low-cleared")
         }
 
         val below = value < threshold
         var next = state
         if (below && next.startedAtMs == 0L) {
-            next = next.copy(startedAtMs = readingTimeMs)
+            next = next.copy(startedAtMs = historyStartMs().takeIf { it in 1 until readingTimeMs } ?: readingTimeMs)
         }
         if (next.startedAtMs == 0L) {
             // In the band above the threshold without ever having gone below it.
@@ -147,6 +162,35 @@ internal object PersistentLowPolicy {
             return PersistentLowDecision(PersistentLowAction.WAIT, next, "persistent-low-timing")
         }
         return PersistentLowDecision(PersistentLowAction.FIRE, next, "persistent-low-due")
+    }
+
+    /**
+     * The start of the low running at the current reading, the last of
+     * [readings] (oldest first, display units), by the lines [decide] uses: the
+     * first reading below the threshold after the last one at or above the
+     * recovery line. A reading in the band between them neither starts the
+     * episode nor ends it. Gaps and lookback are [EpisodeHistory.startOf]'s.
+     * Null without a threshold, or when the stretch has no reading below it.
+     */
+    fun startFromHistory(readings: List<StoredReading>, config: AlertConfig, isMmol: Boolean): EpisodeStart? {
+        val threshold = thresholdOf(config) ?: return null
+        val recoveredAt = recoveredAt(threshold, config, isMmol)
+        return EpisodeHistory.startOf(readings) { value ->
+            when {
+                value >= recoveredAt -> EpisodeHistory.Kind.END
+                value < threshold -> EpisodeHistory.Kind.START
+                else -> EpisodeHistory.Kind.BAND
+            }
+        }
+    }
+
+    private fun thresholdOf(config: AlertConfig): Float? = config.threshold?.takeIf { it.isFinite() && it > 0f }
+
+    /** At or above this the low is over and the timer resets: threshold + margin. */
+    private fun recoveredAt(threshold: Float, config: AlertConfig, isMmol: Boolean): Float {
+        val margin = (config.rearmMargin ?: defaultRearmMargin(isMmol)).takeIf { it.isFinite() }
+            ?.coerceAtLeast(0f) ?: defaultRearmMargin(isMmol)
+        return if (margin > 0f) threshold + margin - RECOVERY_EPSILON else threshold
     }
 
     private fun reset(reason: String) =

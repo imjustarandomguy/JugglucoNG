@@ -425,6 +425,39 @@ class CurrentDisplaySourceTests {
         assertEquals(134f, resolve(live, emptyList(), viewMode = 1).primaryValue, 0.001f)
     }
 
+    /**
+     * The persistent alarms find an episode's start in the stored readings and
+     * compare them with the same threshold as the live value: a stored reading
+     * has to come out as the value the live path shows for it, in every view
+     * mode, calibrated once.
+     */
+    @Test
+    fun storedReadings_resolveToTheValueTheLiveReadingShows() = withOffsetCalibration(42f) {
+        val timestamp = 1_790_331_424_000L
+        val stored = listOf(GlucosePoint(timestamp - 300_000L, 96f, 90f), GlucosePoint(timestamp, 100f, 92f))
+        val live = incoming(LiveReadingLanes.stock(100f, 92f), timestamp)
+
+        for (viewMode in 0..3) {
+            val history = CurrentDisplaySource.resolveStoredValues(
+                points = stored,
+                historyStart = timestamp - 600_000L,
+                viewMode = viewMode,
+                isMmol = false,
+                smoothingMode = CurrentDisplaySource.SmoothingMode(
+                    smoothAllData = false,
+                    smoothingMinutes = 0,
+                    collapseChunks = false
+                ),
+                sensorId = SENSOR
+            )
+            assertEquals(stored.map { it.timestamp }, history.map { it.first })
+            // Before and after the live reading reached history.
+            for (recentPoints in listOf(emptyList(), stored)) {
+                assertEquals(resolve(live, recentPoints, viewMode).primaryValue, history.last().second, 0.001f)
+            }
+        }
+    }
+
     private fun incoming(reading: LiveReadingLanes, timestamp: Long) = CurrentGlucoseSource.Snapshot.of(
         reading = reading,
         timeMillis = timestamp,
