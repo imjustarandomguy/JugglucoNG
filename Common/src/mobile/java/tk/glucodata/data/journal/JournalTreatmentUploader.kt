@@ -157,7 +157,24 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private val editRetries = EditRetries()
 
     /** What a pass does with a tombstone once it knows whether the server still serves it. */
-    internal enum class Settlement { DROP, KEEP, NOT_TAKEN }
+    internal enum class Settlement {
+        DROP,
+        KEEP,
+        NOT_TAKEN,
+        /** Not in the newest treatments read: whether the server still has it takes a read of it. */
+        LOOK_UP
+    }
+
+    private const val TOMBSTONE_LOOKUP_INTERVAL_MILLIS = 24L * 60 * 60_000L
+
+    /** Tombstones looked up in one pass at most, so a long list is spread over passes. */
+    private const val TOMBSTONE_LOOKUPS_PER_PASS = 20
+
+    /**
+     * Documents read at most to resolve an undated identifier; that many and more names none,
+     * as there may be others the read left out.
+     */
+    private const val IDENTIFIER_LOOKUP_LIMIT = 10
 
     private data class UploadResult(
         val code: Int,
@@ -361,8 +378,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      *
      * A tombstone outlives the delete: until a read made after it no longer serves the document,
      * a read already under way, or a server that said "deleted" without deleting, would bring
-     * the treatment straight back. A tombstone that was never sent (sending is off) only stops
-     * the treatment from being received again, so it goes once reads no longer serve it.
+     * the treatment straight back. A tombstone whose delete was not sent (sending is off, or it
+     * is no longer sent: see [JournalPendingDeleteEntity]) only stops the treatment from being
+     * received again. A read that leaves its document out proves nothing: it holds only the
+     * newest treatments, and an older one is still there for a follower's history to bring back.
+     * Only a read of that one document ([LOOK_UP][Settlement.LOOK_UP]) lets it go.
      *
      * @param deleteConfirmed the server confirmed the delete in this pass
      * @param readsBack whether this uploader reads treatments back at all
@@ -373,9 +393,27 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         deleteConfirmed && !readsBack -> Settlement.DROP
         // Sent again next pass, whose read settles it; the server answers "gone" meanwhile.
         served == null -> Settlement.KEEP
-        !served -> Settlement.DROP
-        deleteConfirmed -> Settlement.NOT_TAKEN
-        else -> Settlement.KEEP
+        served && deleteConfirmed -> Settlement.NOT_TAKEN
+        served -> Settlement.KEEP
+        deleteConfirmed -> Settlement.DROP
+        else -> Settlement.LOOK_UP
+    }
+
+    /**
+     * Whether a tombstone whose delete is not sent may be looked up again: at most once a day,
+     * [lastLookupAt] being its last look (its last attempt, the first time).
+     */
+    internal fun isLookupDue(lastLookupAt: Long, nowMillis: Long): Boolean =
+        nowMillis - lastLookupAt >= TOMBSTONE_LOOKUP_INTERVAL_MILLIS || nowMillis < lastLookupAt
+
+    /**
+     * Whether the read of one document lets its tombstone go: the server no longer has it, or
+     * holds it marked deleted. Anything else, a failed read included, keeps it.
+     */
+    internal fun lookupLetsGo(read: ReceivedDocumentRead): Boolean = when (read) {
+        ReceivedDocumentRead.Gone -> true
+        is ReceivedDocumentRead.Found -> !read.document.optBoolean("isValid", true)
+        else -> false
     }
 
     /**
@@ -776,7 +814,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         } else {
             ReceiveOutcome(ReceiveResult.DONE)
         }
-        settleTombstones(dao, deletes, receiveEnabled, receive.readBody)
+        settleTombstones(dao, deletes, receiveEnabled, receive.readBody, baseUrl, rawSecret, useV3)
         retryAt?.let { bookTreatmentWake(it - System.currentTimeMillis()) }
         // A delete or an edit that failed on its own is deliberately not folded in here:
         // returning false backs off the whole treatment path, and a token that may not delete
@@ -818,10 +856,6 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         useV3: Boolean
     ): DeletePass {
         val pass = DeletePass()
-        // One v1 read per pass names every document known only by an undated identifier. On v3
-        // too: a v3 read leaves the _id out, and a v3 delete by that identifier would take
-        // whichever document carries it, this install's own included.
-        var recentTreatments: JSONArray? = null
         var ownRemoteIds: Set<String>? = null
         for (tomb in dao.getPendingNightscoutDeletes()) {
             if (!sendsDelete(tomb)) continue
@@ -838,35 +872,48 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
 
             var documentId = tomb.nsRemoteId
             val ownDocument = isOwnIdentifier(documentId)
+            var failedRead: HttpAnswer? = null
             if (isUndatedOwnIdentifier(documentId)) {
-                val read = recentTreatments ?: fetchTreatmentsWithIds(baseUrl, rawSecret, useV3)
-                if (read == null) {
-                    Log.e(LOG_ID, "tombstone entryId=${tomb.entryId}: treatments could not be read to name it; waiting")
-                    pass.failureCode = NightPost.ERROR_NO_RESPONSE
-                    pass.unanswered = true
-                    break
+                // Named by its _id first, from a v1 read of the documents that carry it, over all
+                // time. On v3 too: a v3 read leaves the _id out, and a v3 delete by that identifier
+                // would take whichever document carries it, this install's own included.
+                val lookup = httpRequest(
+                    "GET", identifierLookupUrl(baseUrl, documentId, IDENTIFIER_LOOKUP_LIMIT), rawSecret, tokenAuth = useV3
+                )
+                val documents = documentsRead(lookup.code, lookup.body)
+                if (documents == null) {
+                    failedRead = lookup
+                } else {
+                    // The documents this install still has rows for carry the same identifiers:
+                    // an entry whose old copy is being removed, or this install's own entry that
+                    // happens to share a row id with another install's.
+                    val ownIds = ownRemoteIds
+                        ?: dao.getOwnUploadedNightscoutRemoteIds().mapTo(HashSet()) { it.trim() }
+                    ownRemoteIds = ownIds
+                    when (val named = documentForIdentifier(documents, documentId, ownIds, IDENTIFIER_LOOKUP_LIMIT)) {
+                        is IdentifierDocument.One -> documentId = named.documentId
+                        IdentifierDocument.None -> {
+                            Log.i(LOG_ID, "tombstone entryId=${tomb.entryId} remoteId=$documentId: no document carries it; dropped")
+                            dao.clearPendingNightscoutDelete(tomb.entryId)
+                            continue
+                        }
+                        IdentifierDocument.Several -> {
+                            // Deleting a guess could take someone else's treatment.
+                            Log.i(
+                                LOG_ID,
+                                "tombstone entryId=${tomb.entryId} remoteId=$documentId names several documents; " +
+                                    "deleted here only, never on the server"
+                            )
+                            dao.recordFailedNightscoutDelete(tomb.entryId, MAX_DELETE_ATTEMPTS, System.currentTimeMillis())
+                            continue
+                        }
+                    }
                 }
-                recentTreatments = read
-                // The documents this install still has rows for carry the same identifiers:
-                // an entry whose old copy is being removed, or this install's own entry that
-                // happens to share a row id with another install's.
-                val ownIds = ownRemoteIds
-                    ?: dao.getOwnUploadedNightscoutRemoteIds().mapTo(HashSet()) { it.trim() }
-                ownRemoteIds = ownIds
-                val found = soleDocumentIdForIdentifier(read, documentId, excludeRemoteIds = ownIds)
-                if (found == null) {
-                    // None served, so nothing read back can return it; or several, and deleting
-                    // a guess could take someone else's treatment.
-                    Log.i(LOG_ID, "tombstone entryId=${tomb.entryId} remoteId=$documentId names no single document; dropping it")
-                    dao.clearPendingNightscoutDelete(tomb.entryId)
-                    continue
-                }
-                documentId = found
             }
 
             // Read before deleting: a loop system's document is never deleted from here, and one
             // already gone needs no delete. This app's own documents need no such look.
-            val failedRead = if (ownDocument) null else {
+            if (failedRead == null && !ownDocument) {
                 val read = httpRequest("GET", receivedDocumentUrl(baseUrl, documentId, useV3), rawSecret, tokenAuth = useV3)
                 when (deleteCheck(receivedDocumentRead(read.code, read.body))) {
                     DeleteCheck.KEEP_LOCAL -> {
@@ -882,8 +929,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                         pass.confirmed += ConfirmedDelete(tomb, documentId)
                         continue
                     }
-                    DeleteCheck.DELETE -> null
-                    null -> read
+                    DeleteCheck.DELETE -> Unit
+                    null -> failedRead = read
                 }
             }
             val code: Int
@@ -939,36 +986,66 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         return pass
     }
 
+    /** A tombstone to settle after a pass, the document id it stands for, and whether its delete was confirmed. */
+    private class SettlementCandidate(
+        val tombstone: JournalPendingDeleteEntity,
+        val documentId: String,
+        val deleteConfirmed: Boolean
+    )
+
     /**
-     * Lets go of tombstones the server no longer serves (see [settlement]). With sending on, only
-     * the deletes confirmed this pass are looked at: an unsent tombstone still has a document to
-     * delete, whether or not this read reached it. With sending off, every tombstone is local
-     * only and goes as soon as a read no longer serves its document.
+     * Lets go of tombstones the server no longer has (see [settlement]). With sending on, the
+     * deletes confirmed this pass are looked at, and those no longer sent; a tombstone still to
+     * be sent has a document to delete, whether or not this read reached it. With sending off,
+     * every tombstone is local only. One whose delete is not sent goes only when a read of its
+     * own document finds it gone, at most once a day each.
      */
     private suspend fun settleTombstones(
         dao: JournalDao,
         deletes: DeletePass?,
         readsBack: Boolean,
-        readBody: String?
+        readBody: String?,
+        baseUrl: String,
+        rawSecret: String,
+        useV3: Boolean
     ) {
-        val candidates = deletes?.confirmed?.map { it.tombstone to it.documentId }
-            ?: dao.getPendingNightscoutDeletes().map { it to it.nsRemoteId }
+        val confirmed = deletes?.confirmed.orEmpty().map { SettlementCandidate(it.tombstone, it.documentId, true) }
+        val confirmedIds = confirmed.mapTo(HashSet()) { it.tombstone.entryId }
+        val notSent = dao.getPendingNightscoutDeletes()
+            .filter { (deletes == null || !sendsDelete(it)) && it.entryId !in confirmedIds }
+            .map { SettlementCandidate(it, it.nsRemoteId, false) }
+        val candidates = confirmed + notSent
         if (candidates.isEmpty()) return
         // A v3 read serves an own v1 upload without the _id its tombstone holds; were it not
         // looked for under its identifier as well, it would read as gone and its tombstone go.
-        val v3Names = v3NamesOfV1Documents(candidates.map { it.first })
+        val v3Names = v3NamesOfV1Documents(candidates.map { it.tombstone })
         val served = readBody?.let { body ->
-            servedRemoteIds(body, candidates.mapTo(HashSet()) { it.second }, v3Names)
+            servedRemoteIds(body, candidates.mapTo(HashSet()) { it.documentId }, v3Names)
         }
-        for ((tomb, documentId) in candidates) {
+        var lookups = 0
+        for (candidate in candidates) {
+            val tomb = candidate.tombstone
+            val documentId = candidate.documentId
             val action = settlement(
-                deleteConfirmed = deletes != null,
+                deleteConfirmed = candidate.deleteConfirmed,
                 readsBack = readsBack,
                 served = served?.contains(documentId)
             )
             when (action) {
                 Settlement.DROP -> dao.clearPendingNightscoutDelete(tomb.entryId)
                 Settlement.KEEP -> Unit
+                Settlement.LOOK_UP -> {
+                    val now = System.currentTimeMillis()
+                    if (lookups >= TOMBSTONE_LOOKUPS_PER_PASS || !isLookupDue(tomb.lastAttemptAt, now)) continue
+                    lookups++
+                    val read = httpRequest("GET", receivedDocumentUrl(baseUrl, documentId, useV3), rawSecret, tokenAuth = useV3)
+                    if (lookupLetsGo(receivedDocumentRead(read.code, read.body))) {
+                        Log.i(LOG_ID, "tombstone entryId=${tomb.entryId} remoteId=$documentId: no longer on the server; dropped")
+                        dao.clearPendingNightscoutDelete(tomb.entryId)
+                    } else {
+                        dao.recordNightscoutDeleteLookup(tomb.entryId, now)
+                    }
+                }
                 Settlement.NOT_TAKEN -> {
                     // Deleted by the server's own account, yet served again: the delete did not
                     // take. Counted like a refusal, so a document that will not go is no longer
@@ -1158,16 +1235,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /** Where the document a received row stands for is read, to be changed. */
     internal fun receivedDocumentUrl(baseUrl: String, remoteId: String, useV3: Boolean): String {
         if (useV3) return "$baseUrl/api/v3/treatments/${pathSegment(remoteId)}"
-        // v1 turns find[_id] into an ObjectId (and then needs no date). An identifier needs the
-        // date, or only the last four days are looked at.
-        val find = if (isObjectId(remoteId)) {
-            urlEncoded("find[_id]") + "=" + urlEncoded(remoteId)
-        } else {
-            urlEncoded("find[identifier]") + "=" + urlEncoded(remoteId) + "&" +
-                urlEncoded("find[created_at][\$gte]") + "=" + V1_QUERY_ALL_TIME
-        }
         // Two, to tell one document from an identifier several carry.
-        return "$baseUrl/api/v1/treatments.json?$find&count=2"
+        if (!isObjectId(remoteId)) return identifierLookupUrl(baseUrl, remoteId, limit = 2)
+        // v1 turns find[_id] into an ObjectId, and then needs no date.
+        return "$baseUrl/api/v1/treatments.json?" + urlEncoded("find[_id]") + "=" + urlEncoded(remoteId) + "&count=2"
     }
 
     /** Where the edit goes: the document itself on v3; v1's PUT finds it by the _id in the body. */
@@ -1514,35 +1585,53 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         }.getOrNull()
     }
 
-    /**
-     * The _id of the one document [treatments] carries under [identifier], leaving out
-     * [excludeRemoteIds]; null when there is none, or more than one and so no telling which.
-     */
-    internal fun soleDocumentIdForIdentifier(
-        treatments: JSONArray,
-        identifier: String,
-        excludeRemoteIds: Set<String>
-    ): String? {
-        var match: String? = null
-        for (index in 0 until treatments.length()) {
-            val treatment = treatments.optJSONObject(index) ?: continue
-            if (treatment.optString("identifier") != identifier) continue
-            val remoteId = treatment.optNightscoutDocumentId() ?: continue
-            if (remoteId in excludeRemoteIds) continue
-            if (match != null && match != remoteId) return null
-            match = remoteId
-        }
-        return match
+    /** Which document an identifier names, from a read of every document that carries it. */
+    internal sealed class IdentifierDocument {
+        class One(val documentId: String) : IdentifierDocument()
+        /** None but the ones left out: the document is gone. */
+        object None : IdentifierDocument()
+        /** More than one, or as many as the read could hold: no telling which. */
+        object Several : IdentifierDocument()
     }
 
     /**
-     * The treatments as v1 serves them, each with its _id; null when they could not be had. A v3
-     * setup reads them the same way, with its token: v3 leaves the _id out.
+     * The document [documents] carries under [identifier], leaving out [excludeRemoteIds].
+     * [documents] is a read of at most [limit] of them; a read that full may have left some out.
      */
-    private fun fetchTreatmentsWithIds(baseUrl: String, secret: String, useV3: Boolean): JSONArray? =
-        runCatching {
-            fetchTreatmentsRead(baseUrl, secret, useV3 = false, tokenAuth = useV3)?.let(::JSONArray)
-        }.getOrNull()
+    internal fun documentForIdentifier(
+        documents: JSONArray,
+        identifier: String,
+        excludeRemoteIds: Set<String>,
+        limit: Int
+    ): IdentifierDocument {
+        if (documents.length() >= limit) return IdentifierDocument.Several
+        val ids = (0 until documents.length())
+            .mapNotNull { documents.optJSONObject(it) }
+            .filter { it.optString("identifier") == identifier }
+            .mapNotNull { it.optNightscoutDocumentId() }
+            .filterNot { it in excludeRemoteIds }
+            .distinct()
+        return when (ids.size) {
+            0 -> IdentifierDocument.None
+            1 -> IdentifierDocument.One(ids.single())
+            else -> IdentifierDocument.Several
+        }
+    }
+
+    /**
+     * The v1 read of the documents that carry [identifier], at most [limit] of them. v1 serves
+     * each with its _id, which v3 leaves out. Without a date v1 only looks at the last four days.
+     */
+    internal fun identifierLookupUrl(baseUrl: String, identifier: String, limit: Int): String =
+        "$baseUrl/api/v1/treatments.json?" +
+            urlEncoded("find[identifier]") + "=" + urlEncoded(identifier) + "&" +
+            urlEncoded("find[created_at][\$gte]") + "=" + V1_QUERY_ALL_TIME + "&count=$limit"
+
+    /** The documents a v1 read answered with; null when it answered anything else. */
+    internal fun documentsRead(code: Int, body: String): JSONArray? {
+        if (code !in 200..299) return null
+        return runCatching { JSONArray(body.trim()) }.getOrNull()
+    }
 
     private fun findRemoteIdByIdentifier(
         baseUrl: String,

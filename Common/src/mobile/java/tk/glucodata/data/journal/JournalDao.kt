@@ -292,6 +292,10 @@ interface JournalDao {
             "WHERE entryId = :entryId"
     )
     suspend fun recordFailedNightscoutDelete(entryId: Long, attempts: Int, attemptedAt: Long)
+
+    /** When a tombstone whose delete is not sent last had its document looked up. */
+    @Query("UPDATE journal_pending_deletes SET lastAttemptAt = :lookedUpAt WHERE entryId = :entryId")
+    suspend fun recordNightscoutDeleteLookup(entryId: Long, lookedUpAt: Long)
 }
 
 /** A journal row by id and time, for matching it to the Nightscout document it was sent as. */
