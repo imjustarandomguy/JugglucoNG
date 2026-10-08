@@ -235,6 +235,17 @@ interface JournalDao {
     @Query("UPDATE journal_entries SET nsUploadedAt = :nsUploadedAt WHERE id = :id AND updatedAt = :updatedAt")
     suspend fun settleReceivedNightscoutEdit(id: Long, updatedAt: Long, nsUploadedAt: Long?): Int
 
+    /**
+     * [settleReceivedNightscoutEdit] for an edit the server took in a write. The write gave the
+     * document a revision this row has not received (lvUploadedAt, see receivedRevisionOf), so it
+     * is unknown until the next receive.
+     */
+    @Query(
+        "UPDATE journal_entries SET nsUploadedAt = :nsUploadedAt, lvUploadedAt = NULL " +
+            "WHERE id = :id AND updatedAt = :updatedAt"
+    )
+    suspend fun settleWrittenNightscoutEdit(id: Long, updatedAt: Long, nsUploadedAt: Long): Int
+
     // Rows received from Nightscout are left out: the documents they stand for are other apps',
     // and an edit of one sets nsUploadedAt only to mark the edit (see nightscoutUploadedAtAfterWrite).
     @Query(

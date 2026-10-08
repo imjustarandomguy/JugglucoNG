@@ -89,10 +89,10 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
                 continue
             }
 
-            // A row the user edited keeps the edit until the server has it (or changed since).
-            val serverModifiedAt = JournalTreatmentTransfer.serverModifiedMillis(treatment)
+            // A row the user edited keeps the edit until the server has it (or changed it since).
+            val serverRevision = JournalTreatmentTransfer.serverModifiedMillis(treatment)
             for (input in parsed.inputs) {
-                if (repository.upsertReceivedNightscoutEntry(input, serverModifiedAt) != null) imported++
+                if (repository.upsertReceivedNightscoutEntry(input, serverRevision) != null) imported++
             }
             val importedIds = parsed.inputs.mapNotNull { it.sourceRecordId }.toSet()
             val staleIds = parsed.candidateSourceRecordIds.filterNot { it in importedIds }

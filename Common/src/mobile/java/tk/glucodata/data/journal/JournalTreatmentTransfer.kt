@@ -379,7 +379,8 @@ object JournalTreatmentTransfer {
     /**
      * When [treatment] was last changed, as far as it says: API v3's srvModified, which v3 sets on
      * every write, else an `updated_at` its writer kept. Null when it says nothing; a document only
-     * ever written over v1 usually carries neither.
+     * ever written over v1 usually carries neither. Server or writer time: a revision to compare
+     * with another of the same document, never with this phone's clock.
      */
     fun serverModifiedMillis(treatment: JSONObject): Long? =
         treatment.optEpochMillis("srvModified")
