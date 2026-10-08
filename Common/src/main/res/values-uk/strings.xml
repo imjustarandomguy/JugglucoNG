@@ -2963,4 +2963,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="live_notification_desc">Показує глюкозу в Now Bar і в чипі рядка стану. На деяких телефонах Samsung також потрібно Параметри розробника → Живі сповіщення для всіх застосунків</string>
     <string name="live_notification_promotion_off">Живі оновлення для цього застосунку вимкнено в налаштуваннях Android. Торкніться, щоб дозволити</string>
     <string name="live_notification_metric_age">Вік вимірювання</string>
+    <string name="live_notification_gauge_title">Показувати як шкалу</string>
+    <string name="live_notification_gauge_desc">Показує смугу діапазону графіка в кольорах діапазонів зі стрілкою тренду біля поточного значення</string>
 </resources>

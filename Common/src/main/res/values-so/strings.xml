@@ -3068,4 +3068,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="live_notification_desc">Wuxuu gulukooskaaga ku muujiyaa Now Bar iyo chip-ka bar-ka xaaladda. Taleefannada Samsung qaarkood waxay sidoo kale u baahan yihiin Xulashooyinka horumariyaha → Ogeysiisyada tooska ah ee dhammaan abka</string>
     <string name="live_notification_promotion_off">Cusboonaysiinta tooska ah waa ka xiran tahay abkan dejinta Android. Taabo si aad u oggolaato</string>
     <string name="live_notification_metric_age">Da\'da akhriska</string>
+    <string name="live_notification_gauge_title">U muuji sida cabbir</string>
+    <string name="live_notification_gauge_desc">Waxay muujinaysaa bar ku fidsan xadka jaantuska oo leh midabada xadka, iyadoo fallaarta isbeddelka ay ku taal qiimaha hadda</string>
 </resources>

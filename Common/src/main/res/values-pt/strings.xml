@@ -2884,4 +2884,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="live_notification_desc">Mostra a glicose na Now Bar e no chip da barra de status. Alguns celulares Samsung também precisam de Opções do desenvolvedor → Notificações ao vivo para todos os apps</string>
     <string name="live_notification_promotion_off">As atualizações ao vivo estão desativadas para este app nas configurações do Android. Toque para permiti-las</string>
     <string name="live_notification_metric_age">Idade da leitura</string>
+    <string name="live_notification_gauge_title">Mostrar como medidor</string>
+    <string name="live_notification_gauge_desc">Mostra uma barra sobre o intervalo do gráfico nas cores dos intervalos, com a seta de tendência no valor atual</string>
 </resources>

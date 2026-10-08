@@ -297,6 +297,9 @@ fun NotificationSettingsScreen(
             var liveNotification by rememberSaveable {
                 mutableStateOf(prefs.getBoolean(tk.glucodata.LiveGlucoseNotification.PREF_ENABLED, false))
             }
+            var liveGauge by rememberSaveable {
+                mutableStateOf(prefs.getBoolean(tk.glucodata.LiveGlucoseNotification.PREF_GAUGE, false))
+            }
             var canPromote by remember { mutableStateOf(tk.glucodata.LiveGlucoseNotification.canPromote(context)) }
             LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
                 canPromote = tk.glucodata.LiveGlucoseNotification.canPromote(context)
@@ -321,8 +324,25 @@ fun NotificationSettingsScreen(
                         if (!it) tk.glucodata.LiveGlucoseNotification.cancel(context)
                         viewModel.refreshNotificationSurfaces()
                     },
-                    position = if (promotionOff) CardPosition.TOP else CardPosition.SINGLE
+                    position = if (liveNotification) CardPosition.TOP else CardPosition.SINGLE
                 )
+                AnimatedVisibility(
+                    visible = liveNotification,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    SettingsSwitchItem(
+                        title = stringResource(R.string.live_notification_gauge_title),
+                        subtitle = stringResource(R.string.live_notification_gauge_desc),
+                        checked = liveGauge,
+                        onCheckedChange = {
+                            liveGauge = it
+                            prefs.edit().putBoolean(tk.glucodata.LiveGlucoseNotification.PREF_GAUGE, it).apply()
+                            viewModel.refreshNotificationSurfaces()
+                        },
+                        position = if (promotionOff) CardPosition.MIDDLE else CardPosition.BOTTOM
+                    )
+                }
                 // Android lets the user turn Live Updates off per app; the permission is otherwise
                 // granted at install.
                 AnimatedVisibility(

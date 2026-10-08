@@ -2925,4 +2925,6 @@
     <string name="live_notification_desc">Pokazuje glukozę na pasku Now Bar i w chipie paska stanu. Niektóre telefony Samsung wymagają też Opcje programisty → Powiadomienia na żywo dla wszystkich aplikacji</string>
     <string name="live_notification_promotion_off">Aktualizacje na żywo są wyłączone dla tej aplikacji w ustawieniach Androida. Dotknij, aby na nie zezwolić</string>
     <string name="live_notification_metric_age">Wiek odczytu</string>
+    <string name="live_notification_gauge_title">Pokaż jako wskaźnik</string>
+    <string name="live_notification_gauge_desc">Pokazuje pasek zakresu wykresu w kolorach zakresów, ze strzałką trendu przy bieżącej wartości</string>
 </resources>

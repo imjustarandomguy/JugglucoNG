@@ -2999,4 +2999,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="live_notification_desc">Zeigt die Glukose in der Now Bar und als Chip in der Statusleiste. Manche Samsung-Telefone brauchen zusätzlich Entwickleroptionen → Live-Benachrichtigungen für alle Apps</string>
     <string name="live_notification_promotion_off">Live-Updates sind für diese App in den Android-Einstellungen aus. Tippen, um sie zu erlauben</string>
     <string name="live_notification_metric_age">Alter des Werts</string>
+    <string name="live_notification_gauge_title">Als Skala anzeigen</string>
+    <string name="live_notification_gauge_desc">Zeigt einen Balken über den Diagrammbereich in den Bereichsfarben, mit dem Trendpfeil beim aktuellen Wert</string>
 </resources>

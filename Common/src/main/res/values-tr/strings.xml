@@ -2911,4 +2911,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="live_notification_desc">Glikozunuzu Now Bar\'da ve durum çubuğu çipinde gösterir. Bazı Samsung telefonlarda ayrıca Geliştirici seçenekleri → Tüm uygulamalar için canlı bildirimler gerekir</string>
     <string name="live_notification_promotion_off">Bu uygulamanın canlı güncellemeleri Android ayarlarında kapalı. İzin vermek için dokunun</string>
     <string name="live_notification_metric_age">Ölçüm yaşı</string>
+    <string name="live_notification_gauge_title">Gösterge olarak göster</string>
+    <string name="live_notification_gauge_desc">Grafik aralığı boyunca aralık renklerinde bir çubuk gösterir, trend oku mevcut değerde</string>
 </resources>
