@@ -381,7 +381,9 @@ fun JournalEntrySheet(
     sensorSerialProvider: () -> String?,
     recentAmountsLoader: suspend (JournalEntryType, Long?, Long) -> List<Float> = ::loadRecentJournalAmounts,
     // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
-    initialInsulinPresetId: Long? = null
+    initialInsulinPresetId: Long? = null,
+    // The dose a new insulin entry is filled in with, instead of the insulin's default.
+    initialInsulinAmount: Float? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val activeInsulinPresets = remember(insulinPresets) { insulinPresets.filter { !it.isArchived } }
@@ -402,6 +404,7 @@ fun JournalEntrySheet(
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
@@ -414,7 +417,13 @@ fun JournalEntrySheet(
             suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
             suggestedAmountFraction = suggestedAmountFraction,
             insulinStep = preferredInsulinStep
-        )
+        ).let { draft ->
+            // Kept when the insulin is then chosen: a filled-in amount is not replaced by a default.
+            JournalInsulinDosing.sanitizeDefaultDose(initialInsulinAmount)
+                ?.takeIf { existingEntry == null && draft.type == JournalEntryType.INSULIN }
+                ?.let { draft.copy(amountText = formatFloatForEditor(it)) }
+                ?: draft
+        }
     }
     val draftState = remember(
         existingEntry?.id,
@@ -423,6 +432,7 @@ fun JournalEntrySheet(
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
