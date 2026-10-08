@@ -30,12 +30,11 @@ After, before charging:
    adb -s <dev> shell dumpsys battery > batt-<dev>.txt
    adb -s <dev> shell pm list packages -U > pkgs-<dev>.txt
    adb -s <watch> shell dumpsys bluetooth_manager > btm-watch.txt
-   adb -s <dev> shell dumpsys batteryusagestats > bus-<dev>.txt
    ```
-   `batteryusagestats` is a second source of the per-app estimate (Android 12+). In run 3
-   the watch's `batterystats` printed "Computed drain: 0, actual drain: 0" although it had
-   measured 31.9 mAh (`Discharge:` line, 9–10 %): its per-app model came out empty, and
-   nothing else in the dump says why.
+   The watch's `batterystats` prints "Computed drain: 0" (runs 3 and 4) although it
+   measures its discharge (`Discharge:` line): its per-app model comes out empty. There
+   is no `batteryusagestats` service on these devices; compare the watch by CPU time
+   and wake locks instead.
 3. Read:
    - `Estimated power use (mAh)` and the `UID …` lines under it: totals and the
      per-app ranking. Map uids with the package list (`u0a462` = uid 10462).
@@ -251,3 +250,24 @@ owner's screen said 99 %), watch 98 %. Both unplugged.
 Main question: the phone's NG share without the Glance widget session (run 3: 9.6 mAh
 in 2.6 h, about half of it the widget). Logging still on. Note for the results: whether
 the Now Bar live notification was on, and which widgets were on the home screen.
+
+### Results: ended 2026-10-08 17:13 (17 h 59 min, night + day)
+
+Phone **98 % to 74 %** (1158 mAh measured, 1033 mAh computed; screen on 2 h 26 min, 76
+times; on power about 0.5 % of the run: Android Auto in the car in the morning, which
+did not reset the stats). Watch **98 % to 43 %** (157 mAh; screen on 3 min); its per-app
+model was empty again ("Computed drain: 0").
+
+- **Phone NG** (`u0a462`): **30.7 mAh, 1.7 mAh/h** over a day with 2.4 h of screen
+  (run 3: 3.7 mAh/h; night run 2: 1.5 mAh/h), 7th app (YouTube 159, Firefox 67, a
+  Reddit client 48). **No Glance SessionWorker wake locks any more** (the widget rework).
+  `Dexcom` 9 min 5 s (187 sessions), `DexcomRearm` 18 min 44 s (185, about 6 s each:
+  this build still let it run toward its 7 s cap; fixed in the next build, review #15).
+- **Watch NG** (`u0a228`): 215 G7 sessions (every reading), CPU 1 min 21 s user +
+  1 min 11 s system (about 8.5 s/h, as run 3); `Dexcom` 10 min 15 s, `DexcomRearm`
+  21 min 52 s (same ~6 s each; same fix).
+- **The phone read 187 sessions to the watch's 215 (about 13 % fewer)**, mostly at night;
+  the battery history hints at a 75-minute stretch 01:32–02:47 without a phone session
+  (history lines are not a complete record). No data was lost (the watch's readings
+  sync to the phone). Possibly the background autoConnect missing the G7's advertising
+  window in deep doze (review #14). Check with trace.log after the next build.
