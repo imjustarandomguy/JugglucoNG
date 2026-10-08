@@ -530,23 +530,30 @@ class JournalNightscoutReceivedEditTests {
     }
 
     @Test
-    fun anUnansweredOrFailedWriteKeepsTheEditPending() {
-        // Offline, a server error or not Nightscout at all: the edit is neither lost nor reverted,
-        // and goes again under the same backoff as any other upload.
-        for (code in listOf(408, 429, 500, 503)) {
-            assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(code, answeredByNightscout = true))
+    fun anUnansweredWriteKeepsTheEditPendingAndThePassWaits() {
+        // Offline, busy or not Nightscout at all: the edit is neither lost nor reverted, and goes
+        // again once the server is back, like any other upload.
+        for (code in listOf(401, 408, 429, 502, 503, 504)) {
+            assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(code, answeredByNightscout = true))
         }
-        assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(-1, answeredByNightscout = false))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(200, answeredByNightscout = false))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(404, answeredByNightscout = false))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(403, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(-1, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(200, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(404, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(403, answeredByNightscout = false))
+    }
+
+    @Test
+    fun aServerErrorOnTheEditIsRetriedOnItsOwn() {
+        assertEquals(ReceivedEditAction.RETRY, receivedEditWriteAction(500, answeredByNightscout = true))
+        // A server error page that is not JSON is still the server failing on this request.
+        assertEquals(ReceivedEditAction.RETRY, receivedEditWriteAction(500, answeredByNightscout = false))
     }
 
     @Test
     fun aRefusedWriteKeepsTheEditHereWithoutAskingAgain() {
         // A token that may create treatments but not change them answers 403 to every attempt;
         // retried, it held every later upload back.
-        for (code in listOf(400, 401, 403, 422)) {
+        for (code in listOf(400, 403, 422)) {
             assertEquals(ReceivedEditAction.KEEP_LOCAL, receivedEditWriteAction(code, answeredByNightscout = true))
         }
     }
@@ -554,9 +561,9 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun aRefusedReadOfTheDocumentKeepsTheEditHereToo() {
         assertEquals(ReceivedEditAction.KEEP_LOCAL, receivedEditFailureAction(403, answeredByNightscout = true))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(403, answeredByNightscout = false))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(500, answeredByNightscout = true))
-        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(-1, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditFailureAction(403, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.RETRY, receivedEditFailureAction(500, answeredByNightscout = true))
+        assertEquals(ReceivedEditAction.WAIT, receivedEditFailureAction(-1, answeredByNightscout = false))
     }
 
     @Test

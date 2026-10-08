@@ -11,15 +11,14 @@ import androidx.room.PrimaryKey
  * after the server confirmed the delete no longer serves the document; with sending off it is
  * never sent, and only keeps the document from being received while reads still serve it.
  *
- * [attempts] counts the deletes the server refused. A document the server will never
- * let us delete (a token without `api:treatments:delete`, say) would otherwise be
- * retried on every upload cycle forever, so the tombstone is dropped past
- * [JournalTreatmentUploader.MAX_DELETE_ATTEMPTS]. A delete that got no answer (the server
- * out of reach) is not a refusal and does not count.
+ * [attempts] counts the deletes the server refused or failed on, [lastAttemptAt] the last of
+ * them; each waits longer before it is sent again. A delete that got no answer (the server
+ * out of reach) is not counted.
  *
- * A tombstone at [JournalTreatmentUploader.MAX_DELETE_ATTEMPTS] is not sent at all: its document
- * is a loop system's, which is never deleted from here. It only keeps the document from being
- * received again.
+ * A tombstone at [JournalTreatmentUploader.MAX_DELETE_ATTEMPTS] is not sent any more: the
+ * server would not take it (a token without `api:treatments:delete`, say), or its document
+ * is a loop system's, which is never deleted from here. It stays, and only keeps the
+ * document from being received again.
  */
 @Entity(tableName = "journal_pending_deletes")
 data class JournalPendingDeleteEntity(
