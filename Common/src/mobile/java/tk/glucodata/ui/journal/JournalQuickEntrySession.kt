@@ -2,11 +2,11 @@ package tk.glucodata.ui.journal
 
 import android.content.Context
 import android.content.Intent
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,6 +20,7 @@ import tk.glucodata.data.journal.JournalFood
 import tk.glucodata.data.journal.JournalFoodInput
 import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalRepository
+import tk.glucodata.data.journal.JournalSave
 import tk.glucodata.data.prediction.DoseTarget
 import tk.glucodata.data.prediction.PredictionModelProfileStore
 import tk.glucodata.journal.InsulinReminders
@@ -59,18 +60,27 @@ internal object JournalQuickEntryPrefs {
 internal fun journalQuickEntryEnabled(context: Context): Boolean =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(JOURNAL_ENABLED_KEY, true)
 
-/** What the standalone sheet opens on; [openedAt] is also the time a new entry starts at. */
+/**
+ * What the standalone sheet opens on; [openedAt] is also the time a new entry starts at, and
+ * [insulinAmount] the dose a new insulin entry is filled in with (a reminder's, to confirm).
+ */
 internal data class QuickEntryRequest(
     val type: JournalEntryType,
     val insulinPresetId: Long?,
-    val openedAt: Long
+    val openedAt: Long,
+    val insulinAmount: Float? = null
 ) {
     companion object {
         fun from(intent: Intent?): QuickEntryRequest {
             val presetId = JournalQuickEntryActivity.insulinPresetIdOf(intent)
             val type = JournalQuickEntryActivity.typeOf(intent)
                 ?: if (presetId != null) JournalEntryType.INSULIN else JournalQuickEntryPrefs.lastType()
-            return QuickEntryRequest(type, presetId, System.currentTimeMillis())
+            return QuickEntryRequest(
+                type,
+                presetId,
+                System.currentTimeMillis(),
+                JournalQuickEntryActivity.insulinAmountOf(intent)
+            )
         }
     }
 }
@@ -88,8 +98,8 @@ internal class QuickEntryData(
     val presetsById: Map<Long, JournalInsulinPreset> = insulinPresets.associateBy { it.id }
 }
 
-/** A save, with the row ids an undo needs once the write is done. */
-internal class SavedEntries(val message: String, val ids: Deferred<List<Long>>)
+/** A stored save: "Saved 6 U Fiasp", and the rows an undo deletes. */
+internal class SavedEntries(val message: String, val ids: List<Long>)
 
 // The dashboard's settings (DashboardViewModel keeps its keys private).
 private const val JOURNAL_ENABLED_KEY = "dashboard_journal_enabled"
@@ -142,29 +152,26 @@ internal object QuickEntryWrites {
     private const val LOG_ID = "JournalQuickEntry"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Saves [inputs] in order; the result holds their row ids. */
-    fun save(context: Context, inputs: List<JournalEntryInput>): Deferred<List<Long>> {
-        val ids = CompletableDeferred<List<Long>>()
-        scope.launch {
-            try {
-                val repository = JournalRepository()
-                ids.complete(inputs.map { repository.upsertEntry(it) })
-            } catch (t: Throwable) {
-                Log.stack(LOG_ID, "save", t)
-                ids.completeExceptionally(t)
+    /**
+     * Saves [inputs] together (all or none) and, once they are stored, takes down the reminders
+     * of the doses among them. The result says which it was; it never fails itself.
+     */
+    fun save(context: Context, inputs: List<JournalEntryInput>): Deferred<JournalSave.Outcome> =
+        scope.async {
+            JournalSave.commit(inputs, JournalRepository()::upsertEntries) { committed ->
+                // "Tresiba not logged" is answered, whichever way the dose came.
+                InsulinReminders.onEntriesSaved(context, committed)
+            }.also { outcome ->
+                if (outcome is JournalSave.Outcome.Failed) Log.stack(LOG_ID, "save", outcome.error)
             }
         }
-        // "Tresiba not logged" is answered, whichever way the dose came.
-        InsulinReminders.onEntriesSaved(context, inputs)
-        return ids
-    }
 
-    /** Takes back a save: deletes what it added, through the repository (a user delete). */
-    fun undo(ids: Deferred<List<Long>>) {
+    /** Takes back a save: deletes the rows it stored, through the repository (a user delete). */
+    fun undo(ids: List<Long>) {
         scope.launch {
             try {
                 val repository = JournalRepository()
-                ids.await().forEach { repository.deleteEntry(it) }
+                ids.forEach { repository.deleteEntry(it) }
             } catch (t: Throwable) {
                 Log.stack(LOG_ID, "undo", t)
             }

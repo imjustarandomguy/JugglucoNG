@@ -221,6 +221,16 @@ class InsulinReminderPolicyTests {
         assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherName)))
     }
 
+    @Test
+    fun aDoseOfThisPhonesOwnCountsOnlyUnderItsInsulin() {
+        // Two presets named Tresiba (a vial and a pen, say): a dose typed for one is not the other's.
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        val otherTresiba = dose(at(20, 40), presetId = 7L, title = "Tresiba")
+        assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherTresiba)))
+        assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherTresiba.copy(source = JournalEntrySource.PEN))))
+        assertFalse(notifiesAt(tresiba, 21, entries = listOf(otherTresiba.copy(insulinPresetId = tresibaId))))
+    }
+
     // Snooze
 
     @Test
@@ -264,6 +274,70 @@ class InsulinReminderPolicyTests {
             InsulinReminderPolicy.loggedDose(
                 tresiba, minuteOfDay(21), at(21), at(21, 5), listOf(dose(at(21, dayOffset = -1)))
             )
+        )
+    }
+
+    @Test
+    fun theTapLogsTheDoseTheButtonShowed() {
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Log(25f),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", tresiba)
+        )
+    }
+
+    @Test
+    fun aDefaultChangedAfterPostingDoesNotChangeTheDoseLogged() {
+        // Posted as "Log 25 U"; the default became 30 U, or was cleared, before the tap.
+        val raised = basal(listOf(minuteOfDay(21))).copy(defaultDose = 30f)
+        val cleared = basal(listOf(minuteOfDay(21))).copy(defaultDose = null)
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Log(25f),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", raised)
+        )
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Log(25f),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", cleared)
+        )
+    }
+
+    @Test
+    fun anotherInsulinUnderTheSamePresetIsCheckedInTheSheet() {
+        val renamed = basal(listOf(minuteOfDay(21)), name = "Toujeo")
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(tresibaId, 25f),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", renamed)
+        )
+    }
+
+    @Test
+    fun anInsulinNoLongerInUseLogsNothing() {
+        val archived = basal(listOf(minuteOfDay(21)), isArchived = true)
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(null, null),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", archived)
+        )
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(null, null),
+            InsulinReminderPolicy.logDecision(25f, "Tresiba", null)
+        )
+    }
+
+    @Test
+    fun aButtonWithoutAKnownDoseLogsNothing() {
+        // A notification posted before the button carried its dose, or a damaged extra.
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(tresibaId, null),
+            InsulinReminderPolicy.logDecision(null, null, tresiba)
+        )
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(tresibaId, null),
+            InsulinReminderPolicy.logDecision(Float.NaN, "Tresiba", tresiba)
+        )
+        assertEquals(
+            InsulinReminderPolicy.LogDecision.Review(tresibaId, null),
+            InsulinReminderPolicy.logDecision(0f, "Tresiba", tresiba)
         )
     }
 
@@ -333,7 +407,7 @@ class InsulinReminderPolicyTests {
     @Test
     fun aDoseImportedUnderAnotherInsulinCountsByItsName() {
         val tresiba = basal(listOf(minuteOfDay(21)))
-        val imported = dose(at(21, 2, dayOffset = -1), presetId = fiaspId, title = "tresiba")
+        val imported = dose(at(21, 2, dayOffset = -1), presetId = fiaspId, title = "tresiba", source = JournalEntrySource.NIGHTSCOUT)
         assertEquals(imported, InsulinReminderPolicy.lastDose(listOf(imported), tresiba, at(21)))
     }
 

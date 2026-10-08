@@ -24,6 +24,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -85,6 +86,7 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -109,8 +111,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -372,11 +376,14 @@ fun JournalEntrySheet(
     recentAmountsLoader: suspend (JournalEntryType, Long?, Long) -> List<Float> = ::loadRecentJournalAmounts,
     // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
     initialInsulinPresetId: Long? = null,
-    // The form alone, never shown: the sheet measures one per type to choose its height.
-    sizingOnly: Boolean = false
+    // The dose a new insulin entry is filled in with, instead of the insulin's default.
+    initialInsulinAmount: Float? = null,
+    // For a host that keeps the sheet open until the save is stored: Save waits meanwhile, and
+    // a failed save is said above it, the entry kept.
+    saving: Boolean = false,
+    saveError: String? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val context = LocalContext.current
     val activeInsulinPresets = remember(insulinPresets) { insulinPresets.filter { !it.isArchived } }
     val calculationInsulinPresets = remember(activeInsulinPresets) {
         activeInsulinPresets.filter { it.useForCalculation }
@@ -395,6 +402,7 @@ fun JournalEntrySheet(
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
@@ -407,23 +415,28 @@ fun JournalEntrySheet(
             suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
             suggestedAmountFraction = suggestedAmountFraction,
             insulinStep = preferredInsulinStep
-        )
+        ).let { draft ->
+            // Kept when the insulin is then chosen: a filled-in amount is not replaced by a default.
+            JournalInsulinDosing.sanitizeDefaultDose(initialInsulinAmount)
+                ?.takeIf { existingEntry == null && draft.type == JournalEntryType.INSULIN }
+                ?.let { draft.copy(amountText = formatFloatForEditor(it)) }
+                ?: draft
     }
-    var draft by remember(
+    }
+    val draftState = remember(
         existingEntry?.id,
         initialType,
         selectedTimestamp,
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
         mutableStateOf(initialDraft)
     }
-    var showDatePicker by remember(existingEntry?.id, initialType, selectedTimestamp) { mutableStateOf(false) }
-    var showTimePicker by remember(existingEntry?.id, initialType, selectedTimestamp) { mutableStateOf(false) }
-    var noteFieldFocused by remember(existingEntry?.id) { mutableStateOf(false) }
+    var draft by draftState
     val selectedInsulinPreset = draft.insulinPresetId?.let(presetsById::get)
     // A treatment received from Nightscout keeps the time it came with (timeEditableFor): the
     // date and time are greyed out, and the edit is saved at the entry's own time regardless.
@@ -432,13 +445,7 @@ fun JournalEntrySheet(
     val saveInputs = draft.toInputs(unit, sensorSerialProvider(), presetsById, foodMacrosEnabled)
         .map { input -> keptTimestamp?.let { input.copy(timestamp = it) } ?: input }
     val canSave = saveInputs.isNotEmpty()
-    val calculatorProfile = remember(doseProfile, draft.timestamp) {
-        doseProfile?.at(draft.timestamp)?.takeIf {
-            it.enabled &&
-                    it.carbRatioGramsPerUnit > 0f &&
-                    it.insulinSensitivityMgDlPerUnit > 0f
-        }
-    }
+    val calculatorProfile = remember(doseProfile, draft.timestamp) { doseProfile.calculatorAt(draft.timestamp) }
     val activeInsulinUnits = remember(doseJournalEntries, presetsById, draft.timestamp) {
         JournalDosePresetPolicy.activeInsulinUnitsAt(
             entries = doseJournalEntries,
@@ -446,8 +453,6 @@ fun JournalEntrySheet(
             atMillis = draft.timestamp
         )
     }
-    // The step of the insulin chosen, else of the one a new entry starts on.
-    val insulinStep = selectedInsulinPreset?.doseStep ?: preferredInsulinStep
     val focusManager = LocalFocusManager.current
     // Ticks so the last-dose line ages, and goes, while the sheet stays open.
     val quickEntryNow by produceState(System.currentTimeMillis()) {
@@ -489,6 +494,7 @@ fun JournalEntrySheet(
     val recentAmounts = recentAmountsLoad.second.takeIf { recentAmountsLoad.first == recentAmountsKey }.orEmpty()
     // The Save button and the keyboard's Done key both end here.
     fun saveDraft() {
+        if (saving) return
         if (!canSave) {
             focusManager.clearFocus()
             return
@@ -508,26 +514,8 @@ fun JournalEntrySheet(
         ) {
             return@LaunchedEffect
         }
-        val requestedPreset = initialInsulinPresetId
-            ?.takeIf { draft.type == JournalEntryType.INSULIN }
-            ?.let { id -> activeInsulinPresets.firstOrNull { it.id == id } }
-        (requestedPreset ?: JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets))?.let { preset ->
-            draft = draft.copy(
-                insulinPresetId = preset.id,
-                title = preset.displayName,
-                // A meal's paired dose leaves the grams alone.
-                amountText = if (draft.type == JournalEntryType.INSULIN) {
-                    JournalInsulinDosing.amountAfterPresetChange(
-                        amountText = draft.amountText,
-                        previousDefault = null,
-                        selectedDefault = preset.defaultDose,
-                        format = ::formatFloatForEditor
-                    )
-                } else {
-                    draft.amountText
-                }
-            )
-        }
+        startingInsulinPreset(draft.type, initialInsulinPresetId, activeInsulinPresets, calculationInsulinPresets)
+            ?.let { preset -> draft = draft.startingOn(preset) }
     }
     LaunchedEffect(
         draft.type,
@@ -575,47 +563,124 @@ fun JournalEntrySheet(
     }
 
     JournalEntrySheetFrame(
-        sizingOnly = sizingOnly,
         onDismiss = onDismiss,
         sheetState = sheetState,
         // One height for every type, so switching tabs does not move the sheet: the tallest
         // form, of every type as it opens (of the entry itself when editing); what does not fit
         // scrolls above the Save button.
         sizingForms = {
-            val sizingTypes = if (existingEntry != null) listOf(existingEntry.type) else JournalEntryType.entries
-            sizingTypes.forEach { type ->
-                key(type) {
-                    JournalEntrySheet(
-                        unit = unit,
+            JournalEntrySizingForms(
+                types = if (existingEntry != null) listOf(existingEntry.type) else JournalEntryType.entries,
                         selectedTimestamp = selectedTimestamp,
+                existingEntry = existingEntry,
+                unit = unit,
                         suggestedGlucoseMgDl = suggestedGlucoseMgDl,
                         suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
                         suggestedAmountFraction = suggestedAmountFraction,
-                        insulinPresets = insulinPresets,
-                        foods = foods,
-                        foodMacrosEnabled = foodMacrosEnabled,
-                        doseJournalEntries = doseJournalEntries,
-                        doseProfile = doseProfile,
-                        initialType = type,
-                        existingEntry = existingEntry,
-                        onDismiss = {},
-                        onSave = {},
-                        // Shapes the food picker; never called from a form that is not shown.
-                        onSaveFood = onSaveFood,
-                        sensorSerialProvider = sensorSerialProvider,
-                        recentAmountsLoader = recentAmountsLoader,
+                activeInsulinPresets = activeInsulinPresets,
+                presetsById = presetsById,
+                calculationInsulinPresets = calculationInsulinPresets,
                         initialInsulinPresetId = initialInsulinPresetId,
-                        sizingOnly = true
+                preferredInsulinStep = preferredInsulinStep,
+                activeFoods = activeFoods,
+                foodMacrosEnabled = foodMacrosEnabled,
+                doseProfile = doseProfile,
+                doseJournalEntries = doseJournalEntries
                     )
                 }
-            }
-        }
     ) {
+        JournalEntryForm(
+            draftState = draftState,
+            existingEntry = existingEntry,
+            unit = unit,
+            activeInsulinPresets = activeInsulinPresets,
+            presetsById = presetsById,
+            calculationInsulinPresets = calculationInsulinPresets,
+            preferredInsulinStep = preferredInsulinStep,
+            activeFoods = activeFoods,
+            foodMacrosEnabled = foodMacrosEnabled,
+            calculatorProfile = calculatorProfile,
+            activeInsulinUnits = activeInsulinUnits,
+            lastDoseLine = lastInsulinDose?.let { dose ->
+                selectedInsulinPreset?.let { preset ->
+                    journalLastDoseLine(preset, dose.amount ?: 0f, journalElapsedText(dose.timestamp, quickEntryNow))
+                }
+            },
+            lastMealLine = lastMeal?.let { meal ->
+                journalLastMealLine(meal.amount ?: 0f, journalElapsedText(meal.timestamp, quickEntryNow))
+            },
+            recentAmounts = recentAmounts,
+            canSave = canSave,
+            saving = saving,
+            saveError = saveError,
+            onTypeSelected = { type ->
+                // The type's own fresh start, as if the sheet had opened on it: an amount or name
+                // typed for one type means nothing for another. The time and the note carry over.
+                draft = buildDraft(
+                    existingEntry = null,
+                    initialType = type,
+                    selectedTimestamp = draft.timestamp,
+                    unit = unit,
+                    suggestedGlucoseMgDl = suggestedGlucoseMgDl,
+                    suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
+                    suggestedAmountFraction = suggestedAmountFraction,
+                    insulinStep = preferredInsulinStep
+                ).copy(note = draft.note)
+            },
+            onSave = { saveDraft() },
+            onSaveFood = onSaveFood,
+            onDelete = onDelete,
+            interactive = true
+        )
+    }
+}
+
+/**
+ * The entry form and its Save button, from [draftState] and what the sheet worked out around it.
+ * It holds no effects of its own (no ticker, no loads, no draft rewrites), so the sheet can lay
+ * out copies of it to size itself; with [interactive] false, the parts below it leave theirs out
+ * too, and the list keeps its own height instead of filling the sheet.
+ */
+@Composable
+private fun ColumnScope.JournalEntryForm(
+    draftState: MutableState<JournalEntryDraft>,
+    existingEntry: JournalEntry?,
+    unit: String,
+    activeInsulinPresets: List<JournalInsulinPreset>,
+    presetsById: Map<Long, JournalInsulinPreset>,
+    calculationInsulinPresets: List<JournalInsulinPreset>,
+    preferredInsulinStep: Float,
+    activeFoods: List<JournalFood>,
+    foodMacrosEnabled: Boolean,
+    calculatorProfile: JournalDoseProfile?,
+    activeInsulinUnits: Float,
+    lastDoseLine: String?,
+    lastMealLine: String?,
+    recentAmounts: List<Float>,
+    canSave: Boolean,
+    saving: Boolean,
+    saveError: String?,
+    onTypeSelected: (JournalEntryType) -> Unit,
+    onSave: () -> Unit,
+    onSaveFood: ((JournalFoodInput) -> Unit)?,
+    onDelete: ((Long) -> Unit)?,
+    interactive: Boolean
+) {
+    var draft by draftState
+    val context = LocalContext.current
+    var showDatePicker by remember(existingEntry?.id) { mutableStateOf(false) }
+    var showTimePicker by remember(existingEntry?.id) { mutableStateOf(false) }
+    var noteFieldFocused by remember(existingEntry?.id) { mutableStateOf(false) }
+    val selectedInsulinPreset = draft.insulinPresetId?.let(presetsById::get)
+    // The step of the insulin chosen, else of the one a new entry starts on.
+    val insulinStep = selectedInsulinPreset?.doseStep ?: preferredInsulinStep
+    val timeEditable = timeEditableFor(existingEntry?.source)
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
                 // The space Save leaves on screen; its own height when measured for the sheet's.
-                .weight(1f, fill = !sizingOnly)
+            .weight(1f, fill = interactive)
                 .padding(horizontal = 20.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(top = 4.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -681,21 +746,7 @@ fun JournalEntrySheet(
             if (existingEntry == null) item(key = "type_selector") {
                 JournalEntryTypeTabs(
                     selectedType = draft.type,
-                    onTypeSelected = { type ->
-                        // The type's own fresh start, as if the sheet had opened on it: an amount
-                        // or name typed for one type means nothing for another. The time and
-                        // the note carry over.
-                        draft = buildDraft(
-                            existingEntry = null,
-                            initialType = type,
-                            selectedTimestamp = draft.timestamp,
-                            unit = unit,
-                            suggestedGlucoseMgDl = suggestedGlucoseMgDl,
-                            suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
-                            suggestedAmountFraction = suggestedAmountFraction,
-                            insulinStep = preferredInsulinStep
-                        ).copy(note = draft.note)
-                    }
+                onTypeSelected = onTypeSelected
                 )
             }
 
@@ -744,20 +795,8 @@ fun JournalEntrySheet(
                             }
                         )
                     }
-                    if (selectedInsulinPreset != null && lastInsulinDose != null) {
-                        item(key = "insulin_last_dose") {
-                            JournalContextLine(
-                                text = stringResource(
-                                    R.string.journal_last_dose,
-                                    selectedInsulinPreset.displayName,
-                                    stringResource(
-                                        R.string.unit_insulin_value,
-                                        formatFloatForEditor(lastInsulinDose.amount ?: 0f)
-                                    ),
-                                    journalElapsedText(lastInsulinDose.timestamp, quickEntryNow)
-                                )
-                            )
-                        }
+                if (lastDoseLine != null) {
+                    item(key = "insulin_last_dose") { JournalContextLine(text = lastDoseLine) }
                     }
                     draft.insulinPresetId?.let { presetId ->
                         presetsById[presetId]?.let { preset ->
@@ -780,7 +819,7 @@ fun JournalEntrySheet(
                             label = stringResource(R.string.journal_type_insulin),
                             suffix = stringResource(R.string.unit_insulin_short),
                             prominent = true,
-                            onDone = { saveDraft() }
+                        onDone = { onSave() }
                         )
                     }
                     if (recentAmounts.isNotEmpty()) {
@@ -823,6 +862,7 @@ fun JournalEntrySheet(
                                 onFoodAdded = { food -> draft = draft.plusFood(food, foodMacrosEnabled) },
                                 onFoodRemoved = { index -> draft = draft.removeFoodAt(index, foodMacrosEnabled) },
                                 onFoodImported = onSaveFood,
+                            interactive = interactive,
                                 onManualSelected = {
                                     draft = draft.copy(
                                         foodId = null,
@@ -835,16 +875,8 @@ fun JournalEntrySheet(
                             )
                         }
                     }
-                    if (lastMeal != null) {
-                        item(key = "carbs_last_meal") {
-                            JournalContextLine(
-                                text = stringResource(
-                                    R.string.journal_last_food,
-                                    stringResource(R.string.unit_carbs_value, formatFloatForEditor(lastMeal.amount ?: 0f)),
-                                    journalElapsedText(lastMeal.timestamp, quickEntryNow)
-                                )
-                            )
-                        }
+                if (lastMealLine != null) {
+                    item(key = "carbs_last_meal") { JournalContextLine(text = lastMealLine) }
                     }
                     item(key = "carbs_amount") {
                         JournalStepperField(
@@ -856,7 +888,7 @@ fun JournalEntrySheet(
                             label = stringResource(R.string.journal_type_food),
                             suffix = stringResource(R.string.unit_carbs_short),
                             prominent = true,
-                            onDone = { saveDraft() }
+                        onDone = { onSave() }
                         )
                     }
                     if (recentAmounts.isNotEmpty()) {
@@ -917,7 +949,7 @@ fun JournalEntrySheet(
                             label = stringResource(R.string.glucose_with_unit, unit),
                             suffix = null,
                             prominent = true,
-                            onDone = { saveDraft() }
+                        onDone = { onSave() }
                         )
                     }
                 }
@@ -942,7 +974,7 @@ fun JournalEntrySheet(
                             label = stringResource(R.string.duration_label),
                             suffix = stringResource(R.string.minutes),
                             keyboardType = KeyboardType.Number,
-                            onDone = { saveDraft() }
+                        onDone = { onSave() }
                         )
                     }
                     item(key = "activity_intensity") {
@@ -1006,11 +1038,22 @@ fun JournalEntrySheet(
             }
         }
 
+    if (saveError != null) {
+        Text(
+            text = saveError,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+        )
+    }
         // Outside the list, so it stays in reach whatever the type and however far the list
         // is scrolled.
         Button(
-            onClick = { saveDraft() },
-            enabled = canSave,
+        onClick = { onSave() },
+        enabled = canSave && !saving,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp)
@@ -1025,7 +1068,6 @@ fun JournalEntrySheet(
             Spacer(modifier = Modifier.width(10.dp))
             Text(text = stringResource(R.string.save))
         }
-    }
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(
@@ -1094,6 +1136,162 @@ fun JournalEntrySheet(
         )
     }
 }
+
+/**
+ * Every form the entry sheet can open on, laid out only to be measured: JournalEntrySheetFrame
+ * takes the tallest. Each is a [JournalEntryForm] on a draft that never changes, with nothing
+ * running (no ticker, no loads, no draft rewrites). What the real form only shows once it is
+ * known, the recent chips and the last-dose and last-food lines, is always reserved here, so
+ * its arrival never makes the sheet grow.
+ */
+@Composable
+private fun JournalEntrySizingForms(
+    types: List<JournalEntryType>,
+    selectedTimestamp: Long,
+    existingEntry: JournalEntry?,
+    unit: String,
+    suggestedGlucoseMgDl: Float?,
+    suggestedChartAnchorGlucoseMgDl: Float?,
+    suggestedAmountFraction: Float?,
+    activeInsulinPresets: List<JournalInsulinPreset>,
+    presetsById: Map<Long, JournalInsulinPreset>,
+    calculationInsulinPresets: List<JournalInsulinPreset>,
+    initialInsulinPresetId: Long?,
+    preferredInsulinStep: Float,
+    activeFoods: List<JournalFood>,
+    foodMacrosEnabled: Boolean,
+    doseProfile: JournalDoseProfile?,
+    doseJournalEntries: List<JournalEntry>
+) {
+    val calculatorProfile = remember(doseProfile, selectedTimestamp) { doseProfile.calculatorAt(selectedTimestamp) }
+    val activeInsulinUnits = remember(doseJournalEntries, presetsById, selectedTimestamp) {
+        JournalDosePresetPolicy.activeInsulinUnitsAt(
+            entries = doseJournalEntries,
+            presetsById = presetsById,
+            atMillis = selectedTimestamp
+        )
+    }
+    val longestElapsed = journalElapsedText(selectedTimestamp - SIZING_ELAPSED_MILLIS, selectedTimestamp)
+    types.forEach { type ->
+        key(type) {
+            val opened = buildDraft(
+                existingEntry = existingEntry,
+                initialType = type,
+                selectedTimestamp = selectedTimestamp,
+                unit = unit,
+                suggestedGlucoseMgDl = suggestedGlucoseMgDl,
+                suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
+                suggestedAmountFraction = suggestedAmountFraction,
+                insulinStep = preferredInsulinStep
+            ).let { draft ->
+                startingInsulinPreset(type, initialInsulinPresetId, activeInsulinPresets, calculationInsulinPresets)
+                    ?.takeIf { existingEntry == null && type == JournalEntryType.INSULIN }
+                    ?.let(draft::startingOn)
+                    ?: draft
+            }
+            // Keyed on the draft's value: an equal draft keeps its state, and the form its layout.
+            val draftState = remember(opened) { mutableStateOf(opened) }
+            val preset = opened.insulinPresetId?.let(presetsById::get)
+            val hasRecentAmounts = type == JournalEntryType.CARBS ||
+                    (type == JournalEntryType.INSULIN && opened.insulinPresetId != null)
+            Column(modifier = Modifier.fillMaxWidth()) {
+                JournalEntryForm(
+                    draftState = draftState,
+                    existingEntry = existingEntry,
+                    unit = unit,
+                    activeInsulinPresets = activeInsulinPresets,
+                    presetsById = presetsById,
+                    calculationInsulinPresets = calculationInsulinPresets,
+                    preferredInsulinStep = preferredInsulinStep,
+                    activeFoods = activeFoods,
+                    foodMacrosEnabled = foodMacrosEnabled,
+                    calculatorProfile = calculatorProfile,
+                    activeInsulinUnits = activeInsulinUnits,
+                    lastDoseLine = preset
+                        ?.takeIf { existingEntry == null && type == JournalEntryType.INSULIN }
+                        ?.let { journalLastDoseLine(it, SIZING_AMOUNT, longestElapsed) },
+                    lastMealLine = if (existingEntry == null && type == JournalEntryType.CARBS) {
+                        journalLastMealLine(SIZING_AMOUNT, longestElapsed)
+                    } else {
+                        null
+                    },
+                    recentAmounts = if (hasRecentAmounts) listOf(SIZING_AMOUNT) else emptyList(),
+                    canSave = true,
+                    saving = false,
+                    saveError = null,
+                    onTypeSelected = {},
+                    onSave = {},
+                    onSaveFood = null,
+                    onDelete = null,
+                    interactive = false
+                )
+            }
+        }
+    }
+}
+
+/** Stand-ins for the sizing forms' reserved lines and chips: one line and one chip each. */
+private const val SIZING_AMOUNT = 88f
+private const val SIZING_ELAPSED_MILLIS = (11 * 60 + 59) * 60_000L
+
+/** "Last Fiasp: 6 U · 1 h 20 min ago". */
+@Composable
+private fun journalLastDoseLine(preset: JournalInsulinPreset, amount: Float, elapsed: String): String =
+    stringResource(
+        R.string.journal_last_dose,
+        preset.displayName,
+        stringResource(R.string.unit_insulin_value, formatFloatForEditor(amount)),
+        elapsed
+    )
+
+/** "Last food: 45 g · 2 h ago". */
+@Composable
+private fun journalLastMealLine(amount: Float, elapsed: String): String =
+    stringResource(
+        R.string.journal_last_food,
+        stringResource(R.string.unit_carbs_value, formatFloatForEditor(amount)),
+        elapsed
+    )
+
+/** The dose calculator's profile at [timestamp], when it is on and complete; null otherwise. */
+private fun JournalDoseProfile?.calculatorAt(timestamp: Long): JournalDoseProfile? =
+    this?.at(timestamp)?.takeIf {
+        it.enabled &&
+                it.carbRatioGramsPerUnit > 0f &&
+                it.insulinSensitivityMgDlPerUnit > 0f
+    }
+
+/**
+ * The insulin a new entry of [type] starts on: the one asked for ([requestedId], a reminder's),
+ * for an insulin entry, else the preferred insulin for calculations.
+ */
+private fun startingInsulinPreset(
+    type: JournalEntryType,
+    requestedId: Long?,
+    activePresets: List<JournalInsulinPreset>,
+    calculationPresets: List<JournalInsulinPreset>
+): JournalInsulinPreset? {
+    val requested = requestedId
+        ?.takeIf { type == JournalEntryType.INSULIN }
+        ?.let { id -> activePresets.firstOrNull { it.id == id } }
+    return requested ?: JournalDosePresetPolicy.preferredPreset(calculationPresets)
+}
+
+/** This draft on [preset], with its default dose for an insulin entry; a meal's grams stay. */
+private fun JournalEntryDraft.startingOn(preset: JournalInsulinPreset): JournalEntryDraft = copy(
+    insulinPresetId = preset.id,
+    title = preset.displayName,
+    amountText = if (type == JournalEntryType.INSULIN) {
+        JournalInsulinDosing.amountAfterPresetChange(
+            amountText = amountText,
+            previousDefault = null,
+            selectedDefault = preset.defaultDose,
+            format = ::formatFloatForEditor
+        )
+    } else {
+        amountText
+    }
+)
 
 private fun buildDraft(
     existingEntry: JournalEntry?,
@@ -1670,6 +1868,8 @@ private fun JournalFoodLibrarySelector(
     onFoodAdded: (JournalFood) -> Unit,
     onFoodRemoved: (Int) -> Unit,
     onFoodImported: ((JournalFoodInput) -> Unit)? = null,
+    // False for a copy laid out only to be measured: no search, no keyboard.
+    interactive: Boolean = true,
     onManualSelected: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -1685,7 +1885,7 @@ private fun JournalFoodLibrarySelector(
     val visibleItems = remember(selectedItems, selectedFood) {
         selectedItems.ifEmpty { selectedFood?.toDraftFoodItem()?.let(::listOf).orEmpty() }
     }
-    LaunchedEffect(query) {
+    if (interactive) LaunchedEffect(query) {
         val needle = query.trim()
         legacyFoods = if (needle.length >= 2) {
             withContext(Dispatchers.Default) {
@@ -1695,7 +1895,7 @@ private fun JournalFoodLibrarySelector(
             emptyList()
         }
     }
-    LaunchedEffect(expanded) {
+    if (interactive) LaunchedEffect(expanded) {
         if (expanded) {
             focusRequester.requestFocus()
             keyboardController?.show()
@@ -1713,12 +1913,12 @@ private fun JournalFoodLibrarySelector(
     val savedFoodNames = remember(foods) {
         foods.map { it.displayName.lowercase(Locale.ROOT) }.toSet()
     }
-    LaunchedEffect(expandedFoodId) {
+    if (interactive) LaunchedEffect(expandedFoodId) {
         if (expandedFoodId != null) {
             expandedPortionText = "100"
         }
     }
-    LaunchedEffect(expandedFoodId, filteredFoods) {
+    if (interactive) LaunchedEffect(expandedFoodId, filteredFoods) {
         val food = filteredFoods.firstOrNull { it.id == expandedFoodId }
         expandedFoodDetails = null
         if (food != null) {

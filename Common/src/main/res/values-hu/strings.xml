@@ -2966,4 +2966,10 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="clone_background_desc">Nagyobb akkumulátorfogyasztás</string>
     <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
     <string name="floating_open_app_info">Alkalmazásinformáció</string>
+    <string name="insulin_reminder_changed">Nincs rögzítve: az inzulin megváltozott az emlékeztető óta. Koppintson az adag ellenőrzéséhez és rögzítéséhez.</string>
+    <string name="journal_save_failed">Nincs mentve: %1$s</string>
+    <string name="journal_save_try_again">Újra</string>
+    <string name="journal_save_failed_kept">Nincs mentve. A bejegyzés megmaradt; próbálja újra.</string>
+    <string name="journal_reminders_not_shown">Az inzulinemlékeztetők értesítései ki vannak kapcsolva: az emlékeztetők nem jelennek meg.</string>
+    <string name="journal_reminders_late">A pontos ébresztések nincsenek engedélyezve: az emlékeztetők néhány percet késhetnek.</string>
 </resources>

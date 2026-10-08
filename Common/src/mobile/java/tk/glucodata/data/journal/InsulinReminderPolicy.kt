@@ -49,15 +49,18 @@ object InsulinReminderPolicy {
         reminderAtMillis - windowMinutesBefore(minuteOfDay, times) * 60_000L
 
     /**
-     * Whether [entry] is a dose of [preset]: an insulin entry with an amount, either filed under
-     * the preset or named after it. The name matters for a dose received from Nightscout or AAPS,
-     * which is filed under whatever insulin the import guessed but keeps the insulin's name.
+     * Whether [entry] is a dose of [preset]: an insulin entry with an amount, filed under the
+     * preset. A row received from another system (Nightscout, AAPS, the API, Clone) also counts
+     * by the insulin's name: the import files it under whatever insulin it matched, but keeps the
+     * name. A row of this phone's own (typed, from the watch, a pen, a meter) is filed under the
+     * insulin chosen for it, so another preset of the same name is another insulin.
      */
     fun isDoseOf(entry: JournalEntry, preset: JournalInsulinPreset): Boolean {
         if (entry.type != JournalEntryType.INSULIN) return false
         val amount = entry.amount ?: return false
         if (!amount.isFinite() || amount <= 0f) return false
         if (entry.insulinPresetId == preset.id) return true
+        if (!isExternalJournalMirrorSource(entry.source)) return false
         val name = preset.displayName.trim()
         return name.isNotEmpty() && entry.title.trim().equals(name, ignoreCase = true)
     }
@@ -103,6 +106,37 @@ object InsulinReminderPolicy {
         return entries
             .filter { it.timestamp in from..until && isDoseOf(it, preset) }
             .maxByOrNull { it.timestamp }
+    }
+
+    /** What a tap on the reminder's one-tap "Log 25 U" does. */
+    sealed interface LogDecision {
+        /** Log [dose], the amount the button showed. */
+        data class Log(val dose: Float) : LogDecision
+
+        /**
+         * Log nothing: open the entry sheet to confirm, on [presetId] when that insulin is still
+         * in use, with [dose] filled in when there is one to show.
+         */
+        data class Review(val presetId: Long?, val dose: Float?) : LogDecision
+    }
+
+    /**
+     * The one-tap Log of a reminder posted for [labelledName] with the button "Log [labelledDose]",
+     * tapped when the insulin is [preset] (null once deleted). The dose logged is always the one
+     * the button showed, never the preset's default as it is now: a default changed meanwhile is
+     * not the dose the user confirmed. When the insulin is no longer the one named (renamed,
+     * archived, deleted), or the button's dose is unknown, nothing is logged and the user checks.
+     */
+    fun logDecision(labelledDose: Float?, labelledName: String?, preset: JournalInsulinPreset?): LogDecision {
+        val dose = JournalInsulinDosing.sanitizeDefaultDose(labelledDose)
+        val inUse = preset?.takeIf { !it.isArchived }
+        val sameInsulin = inUse != null && labelledName != null &&
+            inUse.displayName.trim() == labelledName.trim()
+        return if (sameInsulin && dose != null) {
+            LogDecision.Log(dose)
+        } else {
+            LogDecision.Review(inUse?.id, dose.takeIf { inUse != null })
+        }
     }
 
     /** Whether an alarm meant for [scheduledForMillis] that fires at [nowMillis] still counts. */

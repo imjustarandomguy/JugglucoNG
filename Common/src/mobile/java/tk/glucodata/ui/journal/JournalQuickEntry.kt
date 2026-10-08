@@ -62,6 +62,7 @@ import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalQuickEntryPolicy
 import tk.glucodata.data.journal.JournalRepository
+import tk.glucodata.data.journal.JournalSave
 import tk.glucodata.ui.components.CompactSheetDragHandle
 import tk.glucodata.ui.components.StableModalBottomSheet
 import tk.glucodata.ui.util.GlucoseFormatter
@@ -70,27 +71,20 @@ import tk.glucodata.ui.viewmodel.DashboardViewModel
 /**
  * The entry sheet around [content], the form and its Save button below it. One height for every
  * type, so switching tabs never moves the sheet: the natural height of the tallest of
- * [sizingForms] (every type's form as it opens, laid out unseen), at most the space there is.
- * The form's list takes what Save leaves and scrolls what does not fit; on a shorter type, Save
- * stays at the bottom with room above it.
+ * [sizingForms] (every type's form as it opens, laid out unseen and with nothing running), at
+ * most the space there is. The form's list takes what Save leaves and scrolls what does not fit;
+ * on a shorter type, Save stays at the bottom with room above it.
  *
- * While the sheet is open the height only grows: a form measured taller later (its recent
- * chips loaded) raises it, one measured shorter (its last-dose line gone) does not lower it.
- *
- * With [sizingOnly], [content] alone at its natural height, no sheet: one of [sizingForms].
+ * While the sheet is open the height only grows: [sizingForms] measured taller later (the
+ * insulins or foods changed) raise it, shorter ones do not lower it.
  */
 @Composable
 internal fun JournalEntrySheetFrame(
-    sizingOnly: Boolean,
     onDismiss: () -> Unit,
     sheetState: SheetState,
     sizingForms: @Composable () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    if (sizingOnly) {
-        Column(modifier = Modifier.fillMaxWidth(), content = content)
-        return
-    }
     // A sheet that wraps its content, not a share of the screen: a height modifier here would
     // also be the height Material takes for the whole window, and would set the sheet at its top.
     StableModalBottomSheet(
@@ -322,12 +316,14 @@ internal fun journalSavedSummary(
 }
 
 /**
- * Saves what the entry sheet hands back, then shows "Saved 6 U Fiasp" with Undo in
- * [snackbarHostState] for a few seconds. Undo deletes what the save added, or writes an edited
- * entry back as it was ([previous] is the entry before the edit, null for a new one); both go
- * through the repository, so Nightscout and the other uploads see a user delete or edit. The
- * dashboard, the journal and the history save this way; the sheet opened from outside the app
- * shows the same bar on its own (JournalQuickEntryActivity).
+ * Saves what the entry sheet hands back, all of it or none, then shows "Saved 6 U Fiasp" with
+ * Undo in [snackbarHostState] for a few seconds, once it is stored. Undo deletes the rows the
+ * save stored, or writes an edited entry back as it was ([previous] is the entry before the
+ * edit, null for a new one); both go through the repository, so Nightscout and the other uploads
+ * see a user delete or edit. A save that fails says so ("Not saved: 6 U Fiasp") and offers Try
+ * again with the same entries. The dashboard, the journal and the history save this way; the
+ * sheet opened from outside the app stays open until its save is stored
+ * (JournalQuickEntryActivity).
  */
 @Composable
 internal fun rememberJournalSaveWithUndo(
@@ -339,24 +335,36 @@ internal fun rememberJournalSaveWithUndo(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val undoLabel = stringResource(R.string.undo)
+    val retryLabel = stringResource(R.string.journal_save_try_again)
     val currentPresetsById by rememberUpdatedState(presetsById)
     val currentUnit by rememberUpdatedState(unit)
-    return remember(viewModel, snackbarHostState, context, scope, undoLabel) {
-        { inputs, previous ->
-            val message = context.getString(
-                R.string.journal_saved_entry,
-                journalSavedSummary(context, inputs, currentPresetsById, currentUnit)
-            )
-            viewModel.saveJournalEntries(inputs) { savedIds ->
-                scope.launch {
-                    snackbarHostState.currentSnackbarData?.dismiss()
-                    val result = snackbarHostState.showSnackbar(
-                        message = message,
-                        actionLabel = undoLabel,
-                        duration = SnackbarDuration.Short
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        viewModel.undoJournalSave(savedIds, previous)
+    return remember(viewModel, snackbarHostState, context, scope, undoLabel, retryLabel) {
+        object : (List<JournalEntryInput>, JournalEntry?) -> Unit {
+            override fun invoke(inputs: List<JournalEntryInput>, previous: JournalEntry?) {
+                val summary = journalSavedSummary(context, inputs, currentPresetsById, currentUnit)
+                viewModel.saveJournalEntries(inputs) { outcome ->
+                    scope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        when (outcome) {
+                            is JournalSave.Outcome.Saved -> {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = context.getString(R.string.journal_saved_entry, summary),
+                                    actionLabel = undoLabel,
+                                    duration = SnackbarDuration.Short
+                                )
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    viewModel.undoJournalSave(outcome.ids, previous)
+                                }
+                            }
+                            is JournalSave.Outcome.Failed -> {
+                                val result = snackbarHostState.showSnackbar(
+                                    message = context.getString(R.string.journal_save_failed, summary),
+                                    actionLabel = retryLabel,
+                                    duration = SnackbarDuration.Long
+                                )
+                                if (result == SnackbarResult.ActionPerformed) invoke(inputs, previous)
+                            }
+                        }
                     }
                 }
             }

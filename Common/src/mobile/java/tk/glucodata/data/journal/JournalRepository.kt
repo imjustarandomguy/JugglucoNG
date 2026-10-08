@@ -57,8 +57,20 @@ class JournalRepository {
         }
     }
 
-    suspend fun upsertEntry(input: JournalEntryInput): Long =
-        checkNotNull(writeEntry(input, received = null)) { "only a received copy is ever held back" }
+    suspend fun upsertEntry(input: JournalEntryInput): Long = upsertEntries(listOf(input)).single()
+
+    /**
+     * Writes [inputs] in one transaction: a dose and the meal saved with it are stored together,
+     * or neither is. Their row ids, in order. The uploads are woken once all are committed.
+     */
+    suspend fun upsertEntries(inputs: List<JournalEntryInput>): List<Long> {
+        if (inputs.isEmpty()) return emptyList()
+        val written = database.withTransaction {
+            inputs.map { checkNotNull(writeEntry(it, received = null)) { "only a received copy is ever held back" } }
+        }
+        written.forEachIndexed { i, (_, entity, existing) -> afterEntryWritten(entity, existing, inputs[i].source) }
+        return written.map { it.first }
+    }
 
     /**
      * Writes a treatment as Nightscout serves it, unless the row it lands on holds an edit of the
@@ -70,13 +82,23 @@ class JournalRepository {
      *        ([JournalTreatmentTransfer.serverModifiedMillis]); kept with the row
      * @return the row id, or null when the row's pending edit was kept
      */
-    suspend fun upsertReceivedNightscoutEntry(input: JournalEntryInput, serverRevision: Long?): Long? =
-        writeEntry(input, ReceivedCopy(serverRevision))
+    suspend fun upsertReceivedNightscoutEntry(input: JournalEntryInput, serverRevision: Long?): Long? {
+        val (id, entity, existing) = writeEntry(input, ReceivedCopy(serverRevision)) ?: return null
+        afterEntryWritten(entity, existing, input.source)
+        return id
+    }
 
     private class ReceivedCopy(val serverRevision: Long?)
 
-    private suspend fun writeEntry(input: JournalEntryInput, received: ReceivedCopy?): Long? {
-        val written = database.withTransaction {
+    /**
+     * One entry's write, joining the caller's transaction: its row id, its row, the row it replaced;
+     * null when [received] is a server copy held back by a pending edit.
+     */
+    private suspend fun writeEntry(
+        input: JournalEntryInput,
+        received: ReceivedCopy?,
+    ): Triple<Long, JournalEntryEntity, JournalEntryEntity?>? {
+        return database.withTransaction {
             val sourceRecordId = input.sourceRecordId?.takeIf { it.isNotBlank() }
             val recoveryId = CloneJournalIdentity.normalizeRecoveryId(input.recoveryId)
             val nsRemoteId = input.nsRemoteId?.takeIf { it.isNotBlank() }
@@ -252,8 +274,14 @@ class JournalRepository {
             // redundant local copy. This must never create a remote delete tombstone.
             redundantOverlap.forEach { dao.deleteEntryById(it.id) }
             Triple(rowId, entity, existing)
-        } ?: return null
-        val (id, entity, existing) = written
+        }
+    }
+
+    private fun afterEntryWritten(
+        entity: JournalEntryEntity,
+        existing: JournalEntryEntity?,
+        incomingSource: JournalEntrySource,
+    ) {
         val mirroredWrite = isExternalJournalMirrorSource(JournalEntrySource.fromStorage(entity.source))
         if (affectsIob(entity.entryType) || affectsIob(existing?.entryType)) {
             if (mirroredWrite) {
@@ -273,11 +301,10 @@ class JournalRepository {
             if (!affectsIob(entity.entryType) && !affectsIob(existing?.entryType)) {
                 tk.glucodata.Natives.wakebackup()
             }
-        } else if (isLocalEditOfReceivedTreatment(existing?.source, input.source)) {
+        } else if (isLocalEditOfReceivedTreatment(existing?.source, incomingSource)) {
             // The user's edit of a treatment received from Nightscout goes back to that document.
             tk.glucodata.NightscoutUploadWake.afterJournalChange()
         }
-        return id
     }
 
     /** Lets an importer skip a record it already wrote instead of overwriting later edits. */

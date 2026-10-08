@@ -6,6 +6,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToLong
+import kotlinx.coroutines.CancellationException
 
 /**
  * Per-insulin dosing settings kept in the insulin library: the pen's dial step, a default dose,
@@ -13,10 +14,11 @@ import kotlin.math.roundToLong
  */
 object JournalInsulinDosing {
     /**
-     * Whole units: what the common disposable pens (FlexTouch, KwikPen, SoloStar) dial in. Every
-     * preset starts here, built-in or not; a half-unit pen is set to 0.5 in the library.
+     * Half units: what the entry sheet's -/+ moved by before the step was set per insulin, so a
+     * preset keeps that until it is changed, built-in or not. A whole-unit pen (FlexTouch,
+     * KwikPen, SoloStar) is set to 1 in the library.
      */
-    const val DEFAULT_STEP = 1f
+    const val DEFAULT_STEP = 0.5f
 
     /** The steps the library offers: syringe tenths, half-unit pens, whole units, U200 pens. */
     val STEP_CHOICES: List<Float> = listOf(0.1f, 0.5f, 1f, 2f)
@@ -283,4 +285,40 @@ object JournalQuickEntryPolicy {
     }
 
     private fun JournalEntry.isPositiveAmount(): Boolean = amount?.let { it.isFinite() && it > 0f } == true
+}
+
+/**
+ * One save of the entry sheet, truthful about what was stored: all of its inputs are written in
+ * one transaction, and only once they are committed do the reminders they answer go. A failure
+ * is returned, not thrown, so the sheet can keep the inputs and offer to try again.
+ */
+object JournalSave {
+    sealed interface Outcome {
+        /** Everything was stored: [ids] are the rows, in the order of the inputs (what Undo takes back). */
+        data class Saved(val ids: List<Long>) : Outcome
+
+        /** Nothing was stored. */
+        data class Failed(val error: Throwable) : Outcome
+    }
+
+    /**
+     * Writes [inputs] with [writeAll], which stores all of them or none, then runs [afterCommit]
+     * (taking down the reminders of the doses saved). [afterCommit] runs only after a commit;
+     * its own failure does not make a stored save a failed one.
+     */
+    suspend fun commit(
+        inputs: List<JournalEntryInput>,
+        writeAll: suspend (List<JournalEntryInput>) -> List<Long>,
+        afterCommit: (List<JournalEntryInput>) -> Unit
+    ): Outcome {
+        val ids = try {
+            writeAll(inputs)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            return Outcome.Failed(error)
+        }
+        runCatching { afterCommit(inputs) }
+        return Outcome.Saved(ids)
+    }
 }

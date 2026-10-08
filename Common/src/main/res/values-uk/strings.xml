@@ -1848,6 +1848,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_quickadd_always_now_title">Використовувати поточний час</string>
     <string name="journal_quickadd_always_now_desc">Починати запис зараз, навіть якщо вибрано точку графіка</string>
     <string name="journal_saved_entry">Збережено: %1$s</string>
+    <string name="journal_save_failed">Не збережено: %1$s</string>
+    <string name="journal_save_try_again">Спробувати ще</string>
+    <string name="journal_save_failed_kept">Не збережено. Запис залишився тут; спробуйте ще раз.</string>
     <string name="journal_last_dose">Остання доза %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Остання їжа: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s тому</string>
@@ -1864,6 +1867,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Час, коли треба ввести цю дозу</string>
     <string name="journal_reminder_add">Додати час</string>
     <string name="journal_reminder_remove">Видалити %1$s</string>
+    <string name="journal_reminders_not_shown">Сповіщення нагадувань про інсулін вимкнено: нагадування не показуватимуться.</string>
+    <string name="journal_reminders_late">Точні будильники заборонено: нагадування можуть надходити на кілька хвилин пізніше.</string>
     <string name="journal_log_action">Записати</string>
     <string name="journal_quick_log_insulin">Записати інсулін</string>
     <string name="journal_quick_log_food">Записати їжу</string>
@@ -1878,6 +1883,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="insulin_reminder_log_dose">Записати %1$s</string>
     <string name="insulin_reminder_snooze">Відкласти на 30 хв</string>
     <string name="insulin_reminder_logged">Записано: %1$s</string>
+    <string name="insulin_reminder_changed">Не записано: інсулін змінився після нагадування. Торкніться, щоб перевірити дозу й записати її.</string>
     <string name="journal_visible_events">Події у вікні</string>
     <string name="journal_empty">У цьому вікні поки немає подій журналу</string>
     <string name="journal_type_insulin">Інсулін</string>

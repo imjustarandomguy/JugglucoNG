@@ -782,10 +782,14 @@ abstract class HistoryDatabase : RoomDatabase() {
          * v32 → v33: what the entry sheet needs to know about each insulin: the pen's dial
          * step, a default dose, and the times of day a long-acting dose is due.
          *
-         * Existing presets, built-in or not, get a step of 1 U (whole-unit pens; the half-unit
-         * step the sheet used to apply to every insulin is one choice away in the library), no
-         * default dose and no reminders. Each column is added only where absent, so a database
-         * that met these columns under another version number passes through unchanged.
+         * Existing presets, built-in or not, keep the half-unit step the sheet applied to every
+         * insulin (a whole-unit pen is one choice away in the library), and get no default dose
+         * and no reminders. Each column is added only where absent, so a database that met these
+         * columns under another version number passes through unchanged.
+         *
+         * The step column's declared default stays 1, as in the entity and the v33 schema, so a
+         * database already at v33 still matches the schema; Room writes every column, so that
+         * default only fills the rows that exist when the column is added, set to 0.5 at once.
          */
         private val MIGRATION_32_33 = object : Migration(32, 33) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -793,6 +797,7 @@ abstract class HistoryDatabase : RoomDatabase() {
                     db.execSQL(
                         "ALTER TABLE journal_insulin_presets ADD COLUMN doseStep REAL NOT NULL DEFAULT 1"
                     )
+                    db.execSQL("UPDATE journal_insulin_presets SET doseStep = 0.5")
                 }
                 if (!hasColumn(db, "journal_insulin_presets", "defaultDose")) {
                     db.execSQL("ALTER TABLE journal_insulin_presets ADD COLUMN defaultDose REAL")

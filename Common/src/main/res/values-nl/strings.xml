@@ -1816,6 +1816,9 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_quickadd_always_now_title">Huidige tijd gebruiken</string>
     <string name="journal_quickadd_always_now_desc">Start de invoer nu, ook als een grafiekpunt is geselecteerd</string>
     <string name="journal_saved_entry">Opgeslagen: %1$s</string>
+    <string name="journal_save_failed">Niet opgeslagen: %1$s</string>
+    <string name="journal_save_try_again">Opnieuw proberen</string>
+    <string name="journal_save_failed_kept">Niet opgeslagen. Je invoer staat er nog; probeer het opnieuw.</string>
     <string name="journal_last_dose">Laatste %1$s: %2$s · %3$s</string>
     <string name="journal_last_food">Laatste maaltijd: %1$s · %2$s</string>
     <string name="journal_time_ago">%1$s geleden</string>
@@ -1832,6 +1835,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_reminders_desc">Tijden waarop deze dosis gepland is</string>
     <string name="journal_reminder_add">Tijd toevoegen</string>
     <string name="journal_reminder_remove">%1$s verwijderen</string>
+    <string name="journal_reminders_not_shown">Meldingen voor insulineherinneringen staan uit: herinneringen worden niet getoond.</string>
+    <string name="journal_reminders_late">Exacte wekkers zijn niet toegestaan: herinneringen kunnen een paar minuten te laat komen.</string>
     <string name="journal_log_action">Invoeren</string>
     <string name="journal_quick_log_insulin">Insuline invoeren</string>
     <string name="journal_quick_log_food">Voeding invoeren</string>
@@ -1846,6 +1851,7 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="insulin_reminder_log_dose">%1$s invoeren</string>
     <string name="insulin_reminder_snooze">30 min snoozen</string>
     <string name="insulin_reminder_logged">Ingevoerd: %1$s</string>
+    <string name="insulin_reminder_changed">Niet ingevoerd: deze insuline is gewijzigd sinds de herinnering. Tik om de dosis te controleren en in te voeren.</string>
     <string name="journal_visible_events">Zichtbare gebeurtenissen</string>
     <string name="journal_empty">Nog geen dagboekitems in dit venster</string>
     <string name="journal_type_insulin">Insuline</string>
