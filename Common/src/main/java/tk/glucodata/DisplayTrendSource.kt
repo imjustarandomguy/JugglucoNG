@@ -114,6 +114,54 @@ object DisplayTrendSource {
         return current?.rate?.takeIf { it.isFinite() } ?: fallbackRate
     }
 
+    /**
+     * The rate a display arrow shows: [resolveTrendPoints], then [resolveArrowRate], the
+     * computation behind the dashboard hero and the notification arrow.
+     *
+     * [historyPoints] must be measured rows, neither calibrated nor smoothed (both reshape
+     * the recent slope), reaching back at least [TREND_WINDOW_MS] before the newest one.
+     *
+     * Not [CurrentDisplaySource.Snapshot.rate]: that one feeds the alert engine and is
+     * measured over the locally smoothed series, which "collapse into chunks" can leave
+     * without the newest reading. Near the ±0.5 mg/dL/min flat band the two differ enough
+     * to put one arrow flat and the other one up for the same readings.
+     */
+    @JvmStatic
+    fun resolveDisplayArrowRate(
+        historyPoints: List<GlucosePoint>?,
+        current: CurrentDisplaySource.Snapshot?,
+        activeSensorSerial: String?,
+        viewMode: Int,
+        isMmol: Boolean
+    ): Float = resolveArrowRate(
+        resolveTrendPoints(historyPoints, current, activeSensorSerial),
+        current,
+        viewMode,
+        isMmol,
+        Float.NaN
+    )
+
+    /**
+     * [resolveDisplayArrowRate] for [current], over the rows stored for its sensor: for
+     * surfaces that hold a snapshot but no history, such as the watch's complications.
+     */
+    @JvmStatic
+    fun loadDisplayArrowRate(current: CurrentDisplaySource.Snapshot): Float {
+        // Two windows back, as the alarm notification reads: resolveTrendPoints cuts at
+        // the newest point, and the reading at the far edge of the window must not
+        // depend on where this read starts.
+        val history = try {
+            NotificationHistorySource.getDisplayHistory(
+                current.timeMillis - 2 * TREND_WINDOW_MS,
+                current.isMmol,
+                current.sensorId
+            )
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        return resolveDisplayArrowRate(history, current, current.sensorId, current.viewMode, current.isMmol)
+    }
+
     private fun hasUsableTrendHistory(points: List<GlucosePoint>, useRaw: Boolean): Boolean {
         var usablePoints = 0
         var previousTimestamp = Long.MIN_VALUE
