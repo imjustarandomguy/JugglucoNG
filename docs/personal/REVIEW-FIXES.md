@@ -126,3 +126,21 @@ Unchanged: fix/wear-alarm-settings-sync, feat/alarm-history, feat/glucose-displa
 - #18: no per-entry upload status in the journal UI; a refused edit is only visible in the log.
 - #22: verified by reading; no UI test.
 - Device testing pending for all of the above.
+
+## Round 2 (Copilot's review of the fixes, snapshot d9acb1627)
+
+| Finding | Commit | Change |
+|---|---|---|
+| P1 cross-device silence ordering | 7859dd2d3 (feat/alarm-routing) | `ChangeId` is now a hybrid logical clock `(hlcMs, counter, origin)`, `Comparable`, ordered lexicographically. A local change takes `(wall ms, 0)` when the wall clock is past the last id, else `(last.hlcMs, last.counter + 1)`; every received message raises the stored clock to its highest id. When both entries carry ids, only the ids decide, so arrival time and transit delay no longer matter; entries without ids keep the 5 s time rule. Wire: ids in a new section 5 (18-byte records); section 4 reserved and skipped (the previous build drops a payload whose section 4 isn't a multiple of 14 bytes, so it was not widened); `WearProtocol.VERSION` unchanged; the previous build and this one treat each other as id-less peers. Convergence needs no new resend: the device with the newest change sends it unasked, and an older change received unasked is answered with the newer one. Tests simulate two devices with explicit delays: your counterexample converges to "cancelled" in both arrival orders and either origin order; same-millisecond changes; ±2 min clock skew converges to the same state on both; retransmission, out-of-order, older peer, wire layout. |
+| P2 Health Connect race during an import | 8b6168a08 (fix/health-connect) | The first read only selects candidates. `JournalRepository.upsertEntriesWhere` writes them in one Room transaction; inside it each row is re-read by sourceRecordId and the import decides again: skipped if now MANUAL, if gone and either remembered as imported or present at the first read, or if unchanged. The step clean-up (`deleteEntriesWhere`) deletes a row only while it is still the import's with the same `updatedAt` as read. Uploaders are woken once after the outer commit (the nested upsert/delete wakes fire before it). Logic in `HealthActivityImportPolicy.importRecords` / `removeStepsWithinSessions` behind a `Journal` interface. Tests (5) use the pure-policy seam with a stand-in journal and a hook between the read and the transaction: a real Room in-memory database can't run on this machine (Room tests need Robolectric, which fails on JDK 25). |
+| P2 non-Nightscout 500 counted | 1a88ab564 (fix/nightscout) | `operationFailure` returns WAIT for no answer or any answer that isn't recognisably Nightscout's (`answeredByNightscout`) before looking at the status; only Nightscout's JSON 5xx (except 502–504) counts as RETRY and its refusal as REFUSED, through the tombstone, tombstone-read and received-edit paths. Two tests that asserted the old behaviour were corrected (`JournalNightscoutReceivedEditTests`, `JournalTreatmentUploaderTests` line ~199); new cases: HTML 500, empty 500, HTML 403 → WAIT; JSON 500 → RETRY; JSON 403 → KEEP_LOCAL for edits, RETRY for deletes; non-Nightscout 400/403/422/500/501/507 → WAIT; never KEEP_LOCAL for a non-Nightscout answer. The #19 row above should read with this correction. |
+
+Also: `scripts/personal/test.sh` flagged a baseline entry as passing whenever its test
+class had results (e98dfdf4d fixes it). Unchanged and still open: the gaps listed above
+(SensorIdentity cache-miss lock path, watch-restart ownership window, mid-session wake
+lock, 10-day lifetime for newly converted Dexcom records), device validation, and
+upstream preparation. Test counts are "no new failures", not "all passing": see the
+summary line below.
+
+Tests on `personal` e98dfdf4d (all round-2 fixes merged): 7827 tests, 92 failed = 70 baseline + 22
+machine-only signatures, NEW 0. Release builds (phone arm64, watch) pass R8.
