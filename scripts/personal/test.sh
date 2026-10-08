@@ -123,14 +123,16 @@ while IFS=$'\t' read -r id msg; do
     fi
 done <"$failures"
 
-# Baseline entries whose class ran and that did not fail: candidates to drop.
+# Baseline entries whose test ran and did not fail: candidates to drop. The test itself
+# must be in the results: a branch without it (or a --tests filter) proves nothing.
 fixed=""
 while IFS= read -r e; do
     v="${e%% *}"; [[ " ${variants[*]} " == *" $v "* ]] || continue
     [[ "$e" == *'#*' ]] && continue
     [ -n "${failed[$e]:-}" ] && continue
-    cls="${e#* }"; cls="${cls%%#*}"
-    [ -f "$results/$(taskdir "$v")/TEST-$cls.xml" ] && fixed+="  $e"$'\n'
+    cls="${e#* }"; test="${cls#*#}"; cls="${cls%%#*}"
+    grep -qsF "<testcase name=\"$test\" classname=\"$cls\"" "$results/$(taskdir "$v")/TEST-$cls.xml" \
+        && fixed+="  $e"$'\n'
 done <"$entries"
 
 if [ $update -eq 1 ]; then
