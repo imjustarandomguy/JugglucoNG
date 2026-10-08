@@ -3,7 +3,6 @@ package tk.glucodata.alerts
 import tk.glucodata.Applic
 import tk.glucodata.Log
 import tk.glucodata.MessageSender
-import tk.glucodata.SensorOwnershipRuntime
 
 /** The phone's "Where alarms ring" setting. Global, not per alert type. */
 enum class AlarmRoutingMode {
@@ -46,8 +45,9 @@ data class GlobalAlertSettings(
  *
  * There is no escalation: an unanswered watch alarm never makes the phone ring,
  * and nothing is special about Very low. Whenever the phone cannot tell whether
- * the watch is reachable or charging, it rings. A firing held for the watch
- * stays pending ([offer]): if the watch drops out during the episode, the phone
+ * the watch is reachable or charging, it rings. Reachable takes a fresh status
+ * report from the watch ([WatchAlarmReadiness]), not only discovery finding its
+ * app. A firing held for the watch stays pending ([offer]): if the watch drops out during the episode, the phone
  * rings for it.
  *
  * Only glucose alarms follow the setting ([routes]). Sensor expiry is a notice
@@ -96,7 +96,7 @@ object AlarmRouting {
             if (onWatch || mode != AlarmRoutingMode.WATCH_WHEN_CONNECTED) {
                 shouldRing(onWatch, mode, watchReachable = null, watchCharging = null)
             } else {
-                shouldRing(false, mode, watchReachableFromPhone(), SensorOwnershipRuntime.peerCharging())
+                shouldRing(false, mode, watchAvailableFromPhone(), WatchAlarmReadiness.watchCharging())
             }
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "ringsHere ${type.name}", t)
@@ -129,7 +129,8 @@ object AlarmRouting {
         if (Applic.isWearable) {
             "mode=$mode on watch"
         } else {
-            "mode=$mode watchReachable=${watchReachableFromPhone()} watchCharging=${SensorOwnershipRuntime.peerCharging()}"
+            "mode=$mode watchDiscovered=${watchReachableFromPhone()} watchReachable=${watchAvailableFromPhone()} " +
+                "watchCharging=${WatchAlarmReadiness.watchCharging()} reportAgeMs=${WatchAlarmReadiness.reportAgeMs()}"
         }
     }.getOrDefault("inputs unavailable")
 
@@ -146,4 +147,12 @@ object AlarmRouting {
         val nodes = MessageSender.getMessageSender()?.nodes ?: return null
         return nodes.isNotEmpty()
     }
+
+    /**
+     * Phone: whether the watch counts as reachable for [shouldRing]: discovery finds
+     * it and its last status report is fresh ([WatchAlarmReadiness]). Null when
+     * discovery cannot tell.
+     */
+    @JvmStatic
+    fun watchAvailableFromPhone(): Boolean? = WatchAlarmReadiness.watchReachable(watchReachableFromPhone())
 }
