@@ -644,7 +644,29 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         val app = windowManager ?: return
         val host = pillHost ?: return
         if (hostWindowManager != null) return
+        forceLayoutTree(root)
         if (!addOverlay(host, root) && host !== app) addOverlay(app, root)
+    }
+
+    /**
+     * Has every view of the pill measured afresh at its new window's first layout, as a
+     * rotation does (a window's resize or new configuration forces the layout of every view
+     * in it). Without this a pill that grew while off screen came back clipped on one side
+     * until a rotation, or a later reading of another width.
+     *
+     * Its composition goes on without a window: at screen on it composes the new reading,
+     * 9.8 to 10.2 say, before the window goes back. With no window the composition asks
+     * the views for no layout, so the new window took their measures from the views' cache,
+     * as wide as the last window, and the composition's root kept the width it was last
+     * allowed: its last window's, from that window's first layout. The wider pill was laid
+     * out past that width on both sides, and as its root's size had not changed, nothing
+     * asked for a wider window.
+     */
+    private fun forceLayoutTree(view: View) {
+        view.forceLayout()
+        if (view is android.view.ViewGroup) {
+            for (i in 0 until view.childCount) forceLayoutTree(view.getChildAt(i))
+        }
     }
 
     /** Removes the pill's window; its composition stays, see pillRecomposer. */
