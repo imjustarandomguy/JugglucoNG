@@ -70,27 +70,20 @@ import tk.glucodata.ui.viewmodel.DashboardViewModel
 /**
  * The entry sheet around [content], the form and its Save button below it. One height for every
  * type, so switching tabs never moves the sheet: the natural height of the tallest of
- * [sizingForms] (every type's form as it opens, laid out unseen), at most the space there is.
- * The form's list takes what Save leaves and scrolls what does not fit; on a shorter type, Save
- * stays at the bottom with room above it.
+ * [sizingForms] (every type's form as it opens, laid out unseen and with nothing running), at
+ * most the space there is. The form's list takes what Save leaves and scrolls what does not fit;
+ * on a shorter type, Save stays at the bottom with room above it.
  *
- * While the sheet is open the height only grows: a form measured taller later (its recent
- * chips loaded) raises it, one measured shorter (its last-dose line gone) does not lower it.
- *
- * With [sizingOnly], [content] alone at its natural height, no sheet: one of [sizingForms].
+ * While the sheet is open the height only grows: [sizingForms] measured taller later (the
+ * insulins or foods changed) raise it, shorter ones do not lower it.
  */
 @Composable
 internal fun JournalEntrySheetFrame(
-    sizingOnly: Boolean,
     onDismiss: () -> Unit,
     sheetState: SheetState,
     sizingForms: @Composable () -> Unit,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    if (sizingOnly) {
-        Column(modifier = Modifier.fillMaxWidth(), content = content)
-        return
-    }
     // A sheet that wraps its content, not a share of the screen: a height modifier here would
     // also be the height Material takes for the whole window, and would set the sheet at its top.
     StableModalBottomSheet(
