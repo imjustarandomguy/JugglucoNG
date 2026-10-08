@@ -451,20 +451,22 @@ fun JournalEntrySheet(
             value = System.currentTimeMillis()
         }
     }
+    // The last-dose and last-food lines help decide a new entry. On an entry being viewed or
+    // edited they could only name some other entry, so they stay off there.
     val lastInsulinDose = remember(doseJournalEntries, selectedInsulinPreset, quickEntryNow, existingEntry?.id) {
-        selectedInsulinPreset?.let { preset ->
+        selectedInsulinPreset?.takeIf { existingEntry == null }?.let { preset ->
             JournalQuickEntryPolicy.lastActiveInsulin(
                 entries = doseJournalEntries,
                 presetId = preset.id,
                 durationMinutes = preset.durationMinutes,
-                nowMillis = quickEntryNow,
-                excludeEntryId = existingEntry?.id
+                nowMillis = quickEntryNow
             )
         }
     }
     val foodsById = remember(foods) { foods.associateBy { it.id } }
     val lastMeal = remember(doseJournalEntries, foodsById, quickEntryNow, existingEntry?.id) {
-        JournalQuickEntryPolicy.lastActiveMeal(doseJournalEntries, foodsById, quickEntryNow, existingEntry?.id)
+        if (existingEntry != null) null
+        else JournalQuickEntryPolicy.lastActiveMeal(doseJournalEntries, foodsById, quickEntryNow)
     }
     // Recent values of the type (and insulin) on screen. Each load is tagged with what it was
     // for, so a tab switch never shows the previous type's chips while the new ones load.
