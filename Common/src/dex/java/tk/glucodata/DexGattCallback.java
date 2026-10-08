@@ -189,11 +189,17 @@ private int triedinvain=0;
  * reconnect re-arms it. Before bonding the stack may not know the sensor's address
  * type, so pairing keeps direct connects and scans.
  */
-@SuppressLint("MissingPermission")
 @Override
 protected boolean useAutoConnect() {
-    if(super.useAutoConnect())
-        return true;
+    return super.useAutoConnect() || reconnectsInBackground();
+}
+
+/**
+ * A known G7 Android has bonded: the only sensor the background-connect paths are
+ * for. The application-wide autoconnect setting does not make a sensor one.
+ */
+@SuppressLint("MissingPermission")
+private boolean reconnectsInBackground() {
     final var device=mActiveBluetoothDevice;
     try {
         return known&&!removedBond&&device!=null&&device.getBondState()==BOND_BONDED;
@@ -379,7 +385,7 @@ private int connectionTimeouts=0;
                                 sensorbluetooth.connectToActiveDevice(this, stillwait);
                             }
                         }
-                        else if(useAutoConnect()) {
+                        else if(reconnectsInBackground()) {
                             // A background connect waits for the next advertisement
                             // itself: no alarm to wake for, no direct connect to time out.
                             cancelalarm();
@@ -403,7 +409,7 @@ private int connectionTimeouts=0;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
                     }
-                    else if((tim-datatime)<60000&&useAutoConnect()) {
+                    else if((tim-datatime)<60000&&reconnectsInBackground()) {
                             // An idle re-link just after a session, dropped by the sensor.
                             rearmAfterSession(sensorbluetooth);
                             }
