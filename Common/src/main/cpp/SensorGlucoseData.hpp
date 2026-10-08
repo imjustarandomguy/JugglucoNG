@@ -28,6 +28,7 @@
 #include <fstream>
 #include <math.h>
 #include <span>
+#include <vector>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -1599,7 +1600,8 @@ bool libreviewable() const {
   // Makes a record that held a G7's synced readings, in 1-minute slots, the
   // record its Dexcom driver writes: the header mkdatabaseDex would write and
   // 5-minute slots from the sensor's start. The old slots mean nothing in that
-  // layout, so they are cleared; the caller syncs them again.
+  // layout, so they are cleared; restoreDexcomPolls puts readings back.
+  // The lifetime is mkdatabaseDex's too: the caller does not know the sensor's.
   void becomeDexcom(std::string_view code, uint32_t sensorstart) {
     rebaseDirectStreamWindow(sensorstart);
     auto *info = getinfo();
@@ -1618,6 +1620,68 @@ bool libreviewable() const {
     info->healthconnectiter = 0;
     info->siIdlen = std::min(code.size(), sizeof(info->siId));
     memcpy(info->siId, code.data(), info->siIdlen);
+  }
+
+  // Clears a Dexcom record's slots for another start, keeping its header;
+  // restoreDexcomPolls puts readings back.
+  void moveDexcomStart(uint32_t sensorstart) {
+    auto *info = getinfo();
+    const auto historicPos = info->lastHistoricLifeCountReceivedPos;
+    rebaseDirectStreamWindow(sensorstart);
+    info->lastHistoricLifeCountReceivedPos = historicPos;
+  }
+
+  // Whether this record was made for the sensor with this scanned code; one
+  // without a code is taken to be.
+  bool hasDexcomCode(std::string_view code) const {
+    const auto *info = getinfo();
+    const size_t len = std::min<size_t>(info->siIdlen, sizeof(info->siId));
+    return !len || std::string_view(reinterpret_cast<const char *>(info->siId),
+                                    len) == code.substr(0, sizeof(info->siId));
+  }
+
+  struct KeptPoll {
+    ScanData poll;
+    uint16_t raw;
+    uint16_t temp;
+  };
+
+  // The readings in this record's poll slots, oldest first.
+  std::vector<KeptPoll> keptPolls() const {
+    std::vector<KeptPoll> kept;
+    const ScanData *buf = polls.data();
+    if (!buf)
+      return kept;
+    const RawData *raws = rawpolls.data();
+    const int count = pollcount();
+    for (int i = 0; i < count; ++i) {
+      if (buf[i].g > 0 && buf[i].t)
+        kept.push_back({buf[i], raws ? raws[i].raw : uint16_t(0),
+                        getTempForPoll(i)});
+    }
+    std::stable_sort(kept.begin(), kept.end(),
+                     [](const KeptPoll &a, const KeptPoll &b) {
+                       return a.poll.t < b.poll.t;
+                     });
+    return kept;
+  }
+
+  // Puts readings in the 5-minute slots their times fall in from this record's
+  // start; one from before the start has none.
+  void restoreDexcomPolls(const std::vector<KeptPoll> &kept) {
+    auto *info = getinfo();
+    const uint32_t start = info->starttime;
+    for (const auto &k : kept) {
+      if (k.poll.t < start)
+        continue;
+      const int slot = (k.poll.t - start) / interval5;
+      if (!validPollIndex(slot))
+        continue;
+      savepollallIDsQuiet<interval5>(k.poll.t, slot, k.poll.g, k.poll.tr,
+                                     k.poll.ch, k.raw, k.temp);
+    }
+    info->lastLifeCountReceived = 1;
+    consecutivelifecount();
   }
 
 #endif
