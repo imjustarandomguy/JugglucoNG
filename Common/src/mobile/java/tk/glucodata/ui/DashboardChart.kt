@@ -192,6 +192,27 @@ private val PreviewWindowHeight = 58.dp
 // Band edges soften over this fraction of the preview strip's height.
 private const val PREVIEW_BAND_FADE_FRACTION = 0.025f
 private val PreviewWindowOuterPadding = 12.dp
+// The chart handle's drag area, and how much of it lies above the handle's 12 dp slot.
+private val ChartHandleTouchHeight = 32.dp
+private val ChartHandleTouchAbove = 4.dp
+private val ChartHandleTouchWidth = 144.dp
+
+/**
+ * The chart handle's drag area: [ChartHandleTouchHeight] tall around its 12 dp slot,
+ * without moving anything. The range picker already sits 8 dp up over the chart's
+ * bottom edge, so [ChartHandleTouchAbove] more reaches 12 dp into the chart: the empty
+ * margin under the time labels, or the preview strip's 12 dp padding, never the strip
+ * or the plot. The rest reaches down over the picker's top padding; the picker's chips
+ * come after the handle, so they are hit first and keep their own taps.
+ */
+private fun Modifier.chartHandleTouchArea(progress: Float): Modifier = layout { measurable, constraints ->
+    val height = (ChartHandleTouchHeight * progress).roundToPx()
+    val above = (ChartHandleTouchAbove * progress).roundToPx()
+    val placeable = measurable.measure(Constraints.fixed(constraints.maxWidth, height))
+    layout(constraints.maxWidth, constraints.maxHeight) {
+        placeable.place(0, -above)
+    }
+}
 
 private data class ChartRangeThresholds(
     val veryLow: Float,
@@ -4891,18 +4912,34 @@ fun InteractiveGlucoseChart(
                 .zIndex(1f),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // With an owner that resizes the chart, the handle is a drag target, wider than
-            // it looks and always shown; without one it only fades in as the chart grows.
+            // With an owner that resizes the chart, the handle is a drag target, much larger
+            // than it looks (chartHandleTouchArea) and always shown; without one it only
+            // fades in as the chart grows.
             val handleDraggable = onExpansionHandleDrag != null
             val currentOnHandleDrag by rememberUpdatedState(onExpansionHandleDrag)
             val currentOnHandleDragStopped by rememberUpdatedState(onExpansionHandleDragStopped)
             Box(
                 modifier = Modifier
-                    .width(if (handleDraggable) 96.dp else 32.dp)
-                    .height(12.dp * safeExpandedProgress)
-                    .then(
-                        if (handleDraggable) {
-                            Modifier.pointerInput(Unit) {
+                    .width(if (handleDraggable) ChartHandleTouchWidth else 32.dp)
+                    .height(12.dp * safeExpandedProgress),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(4.dp * safeExpandedProgress)
+                        .graphicsLayer { alpha = if (handleDraggable) 1f else chartBoostProgress }
+                        .background(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(2.dp)
+                        )
+                )
+                if (handleDraggable) {
+                    Box(
+                        Modifier
+                            .matchParentSize()
+                            .chartHandleTouchArea(safeExpandedProgress)
+                            .pointerInput(Unit) {
                                 // Tracked on the summed drag, not on local positions: the
                                 // handle moves with the chart it resizes.
                                 val handleVelocity = VelocityTracker()
@@ -4923,22 +4960,8 @@ fun InteractiveGlucoseChart(
                                     currentOnHandleDrag?.invoke(dragAmount)
                                 }
                             }
-                        } else {
-                            Modifier
-                        }
-                    ),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(32.dp)
-                        .height(4.dp * safeExpandedProgress)
-                        .graphicsLayer { alpha = if (handleDraggable) 1f else chartBoostProgress }
-                        .background(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            shape = RoundedCornerShape(2.dp)
-                        )
-                )
+                    )
+                }
             }
 
             BoxWithConstraints(
