@@ -552,37 +552,20 @@ private void sendcertthread() {
     /*
      * A G7 keeps a separate pairing for each display channel, named by the auth
      * request's last byte: phone app (2), receiver or pump (1) and smartwatch
-     * (3). The sensor refused a watch the phone app's channel while it knew the
-     * phone, so a watch pairs on the smartwatch channel and reads alongside the
-     * phone; if the sensor refuses that one too, on the receiver's.
+     * (3). A watch pairs on the smartwatch channel and reads alongside the phone.
+     * Neither asks for the receiver's: that would take it from a receiver or pump.
      */
     private static final byte SLOT_PHONE = 0x02;
-    private static final byte SLOT_RECEIVER = 0x01;
     private static final byte SLOT_WATCH = 0x03;
-    private static final String SLOT_PREFS = "dexcom_auth_slots";
-
-    private byte authSlot() {
-        if (!isWearable)
-            return SLOT_PHONE;
-        return (byte) Applic.app.getSharedPreferences(SLOT_PREFS, Context.MODE_PRIVATE)
-                .getInt(SerialNumber, SLOT_WATCH);
-    }
-
-    private void useReceiverSlot() {
-        Applic.app.getSharedPreferences(SLOT_PREFS, Context.MODE_PRIVATE)
-                .edit().putInt(SerialNumber, SLOT_RECEIVER).apply();
-    }
-
-    private byte requestedSlot = SLOT_PHONE;
+    private static final byte AUTH_SLOT = isWearable ? SLOT_WATCH : SLOT_PHONE;
 
     private void requestAuth() {
-        requestedSlot = authSlot();
-        {if(doLog) {Log.i(LOG_ID,"requestAuth() slot=" + requestedSlot);};};
+        {if(doLog) {Log.i(LOG_ID,"requestAuth() slot=" + AUTH_SLOT);};};
         Random.fillbytes(random8);
         var uit = new byte[10];
         System.arraycopy(random8, 0, uit, 1, random8.length);
         uit[0] = (byte) 0x02;
-        uit[9] = requestedSlot;
+        uit[9] = AUTH_SLOT;
         charact[1].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         tryer(()->write(1, uit));
       }
@@ -711,25 +694,16 @@ private boolean removedBond=false;
                   resetCerts();
                   return;
                   }
-                boolean isbonded = bond == 1;
-
-                if(auth != 1) {
-                    // Not authenticated on this channel: certificates sent now only
-                    // make the sensor hang up. A fresh pairing refused on the
-                    // smartwatch channel moves to the receiver's from the next session.
+                final var next = DexcomAuthPolicy.afterChallengeReply(auth, bond, bonded, newcertificates, AUTH_SLOT == SLOT_WATCH);
+                if(next == DexcomAuthPolicy.Next.STOP) {
+                    // A pairing the sensor refused ends here, shown as the handshake state.
                     handshake = "auth != 1";
                     wrotepass[1] = System.currentTimeMillis();
-                    if(newcertificates && requestedSlot == SLOT_WATCH)
-                        useReceiverSlot();
                     resetCerts();
+                } else if(next == DexcomAuthPolicy.Next.GET_DATA) {
+                    getdatacmd();
                 } else {
-                    // A fresh pairing is a new channel: it needs its certificates
-                    // even when Android already bonded this device on another one.
-                    if(isbonded||(bonded&&bond==2&&!newcertificates)) {
-                        getdatacmd();
-                    } else {
-                        askcertificate(SendCertificate1);
-                    }
+                    askcertificate(SendCertificate1);
                 }
 
             }

@@ -205,6 +205,19 @@ internal fun resolveYieldWindow(
 }
 
 /**
+ * Whether a watch keeps off a sensor it could read alongside the phone: when
+ * it was not told to read it ("Direct sensor on watch") and the phone reports
+ * reading it now. A watch without a phone, or whose phone does not read the
+ * sensor, reads it itself.
+ */
+internal fun resolveWatchStaysOffAlongside(
+    isWearable: Boolean,
+    directRequested: Boolean,
+    readsAlongside: Boolean,
+    phoneReadsIt: Boolean,
+): Boolean = isWearable && readsAlongside && !directRequested && phoneReadsIt
+
+/**
  * Keeps exactly one device reading each sensor, and hands it over when that
  * device stops being able to.
  *
@@ -359,7 +372,7 @@ object SensorOwnershipRuntime {
         val computed = resolveOwnershipKey(
             raw,
             crossDeviceKey = { runCatching { SensorIdentity.crossDeviceKey(it) }.getOrNull() },
-            localNames = ::localSensorNames,
+            localNames = ::nativeSensorNames,
         )
         if (keyCache.size >= KEY_CACHE_MAX_ENTRIES) keyCache.clear()
         keyCache[raw] = CachedKey(computed, now)
@@ -384,14 +397,25 @@ object SensorOwnershipRuntime {
     }
 
     /**
-     * The names this device holds sensors under: its drivers' serials, and each
-     * record native lists, by that listing and by the full name native keeps it
-     * under. A watch lists a record named after a G7's alias by a shorter name
-     * still ("739749" for 12147739749), and that is what it used to report.
+     * The names this device holds sensors under: its drivers' serials, and
+     * [nativeSensorNames].
      */
     private fun localSensorNames(): List<String?> {
         val names = ArrayList<String?>()
         runCatching { SensorBluetooth.mygatts()?.forEach { names.add(it.SerialNumber) } }
+        names.addAll(nativeSensorNames())
+        return names
+    }
+
+    /**
+     * Each record native lists, by that listing and by the full name native
+     * keeps it under. A watch lists a record named after a G7's alias by a
+     * shorter name still ("739749" for 12147739749). Not the driver roster:
+     * [key] runs inside the connect gate, under a callback's monitor, and the
+     * roster lock is always taken before a callback's.
+     */
+    private fun nativeSensorNames(): List<String?> {
+        val names = ArrayList<String?>()
         runCatching { Natives.activeSensors() }.getOrNull()?.forEach { listed ->
             names.add(listed)
             names.add(runCatching { SensorIdentity.canonicalSensorId(listed) }.getOrNull())
@@ -551,16 +575,38 @@ object SensorOwnershipRuntime {
 
     /**
      * Hard gate consulted at every route to connectGatt: while the peer owns the
-     * sensor, and on a watch for a sensor read alongside the phone unless the
-     * watch was told to read it ("Direct sensor on watch"): dialling it costs
-     * the watch's battery and, the first time, a pairing prompt.
+     * sensor, and on a watch for a sensor the phone reads alongside it unless the
+     * watch was told to read it too ([resolveWatchStaysOffAlongside]): dialling
+     * it costs the watch's battery and, the first time, a pairing prompt.
+     *
+     * Called under [callback]'s monitor, so it never looks the callback up in
+     * the driver roster: that lock is taken before a callback's.
      */
     @JvmStatic
-    fun blocksLocalConnection(serial: String?): Boolean {
-        val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
+    fun blocksLocalConnection(callback: SuperGattCallback?): Boolean {
+        val cb = callback ?: return false
+        val target = cb.SerialNumber?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
         if (releaseState.isReleased(target)) return true
-        return Applic.isWearable && !WearSensorClaim.isDirectRequested() &&
-            findGatt(target)?.readsAlongside() == true
+        return resolveWatchStaysOffAlongside(
+            isWearable = Applic.isWearable,
+            directRequested = WearSensorClaim.isDirectRequested(),
+            readsAlongside = cb.readsAlongside(),
+            phoneReadsIt = phoneReadsByDriverSerial[target.lowercase(Locale.ROOT)] == true,
+        )
+    }
+
+    /**
+     * On a watch, per driver serial as spelled, whether the phone reports reading
+     * that sensor now. [blocksLocalConnection] cannot match the phone's names for
+     * a sensor itself, so every reconciliation records the answer here.
+     */
+    private val phoneReadsByDriverSerial = ConcurrentHashMap<String, Boolean>()
+
+    private fun notePhoneReads(serial: String, reads: Boolean) {
+        runCatching { SensorBluetooth.mygatts() }.getOrNull()?.forEach { gatt ->
+            val name = gatt.SerialNumber?.trim() ?: return@forEach
+            if (sameSensor(name, serial)) phoneReadsByDriverSerial[name.lowercase(Locale.ROOT)] = reads
+        }
     }
 
     /** Phone UI state for the deliberate gap and the subsequent watch-owned stream. */
@@ -931,6 +977,7 @@ object SensorOwnershipRuntime {
         sensors().forEach { serial ->
             val id = key(serial)
             val peer = if (companionEnabled && !peerGone) confirmedPeerReportFor(serial, now) else null
+            if (Applic.isWearable) notePhoneReads(serial, !peerGone && peerReadsCurrently(serial))
             val intent = intentFor(serial, companionEnabled)
             // Read alongside the peer over its own channel: neither device stands
             // down for the other, so there is nothing to hand over.
