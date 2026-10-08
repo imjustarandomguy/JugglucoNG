@@ -3436,4 +3436,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="food_move_up">Mozgatás fel</string>
     <string name="food_move_down">Mozgatás le</string>
     <string name="insulin_reminder_changed">Nincs rögzítve: az inzulin megváltozott az emlékeztető óta. Koppintson az adag ellenőrzéséhez és rögzítéséhez.</string>
+    <string name="journal_save_failed">Nincs mentve: %1$s</string>
+    <string name="journal_save_try_again">Újra</string>
+    <string name="journal_save_failed_kept">Nincs mentve. A bejegyzés megmaradt; próbálja újra.</string>
 </resources>
