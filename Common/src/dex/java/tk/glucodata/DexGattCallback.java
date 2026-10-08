@@ -207,9 +207,11 @@ protected boolean useAutoConnect() {
  * connect armed at once linked up again, idled (the reading was in) and was dropped
  * by the sensor, up to five times a session. Arming it once the advertising is over
  * saves those links. A wake lock covers the wait: the scheduler stops while the CPU
- * sleeps.
+ * sleeps. It is held until that connect runs or is dropped (pendingConnectEnded).
  */
 private static final long REARM_AFTER_SESSION_MSEC = 5_000L;
+/** Upper bound only, so a late scheduler still connects before the lock lapses. */
+private static final long REARM_LOCK_TIMEOUT_MSEC = REARM_AFTER_SESSION_MSEC + 2_000L;
 private final PowerManager.WakeLock rearmlock = newRearmLock();
 
 private static PowerManager.WakeLock newRearmLock() {
@@ -220,8 +222,20 @@ private static PowerManager.WakeLock newRearmLock() {
 }
 
 private void rearmAfterSession(SensorBluetooth sensorbluetooth) {
-    rearmlock.acquire(REARM_AFTER_SESSION_MSEC + 2_000L);
+    rearmlock.acquire(REARM_LOCK_TIMEOUT_MSEC);
     sensorbluetooth.connectToActiveDevice(this, REARM_AFTER_SESSION_MSEC);
+    if (!connectScheduled())
+        releaseRearmLock();
+}
+
+private void releaseRearmLock() {
+    if (rearmlock.isHeld())
+        rearmlock.release();
+}
+
+@Override
+protected void pendingConnectEnded() {
+    releaseRearmLock();
 }
 
 private boolean connected=false;
@@ -1110,6 +1124,7 @@ public void close() {
    resetconnect();
    releaselock();
    super.close();
+   releaseRearmLock();
    }
 
 
