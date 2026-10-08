@@ -25,9 +25,10 @@ setup and branch model. Paths are relative to `Common/src/`.
   pill's details card staying current while open; watch complication arrow vs phone; chart
   dots/limits/height; the pill's four next-reading styles (**pick one**; then remove the
   temporary picker).
-- **Open, not started:** items 7–10 at the end of "To do" (phone stands down after its own
+- **Open, not started:** items 7–11 at the end of "To do" (phone stands down after its own
   restart; 0.1 value gap phone/watch; chart right edge a day ahead; dashboard page hard to
-  scroll), the gaps listed at the end of REVIEW-FIXES.md, and upstream preparation per PR
+  scroll; two silence-sync ordering holes from Copilot's round 3), the gaps listed at the
+  end of REVIEW-FIXES.md, and upstream preparation per PR
   (REVIEW.md section 2–3; owner's choice: later, branch by branch).
 - **Battery:** run 4 in [BATTERY.md](BATTERY.md) (NG on the phone 1.7 mAh/h over a day, no
   widget sessions any more). Next run: test the watch reset hypothesis noted there.
