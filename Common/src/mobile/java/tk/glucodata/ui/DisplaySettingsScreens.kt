@@ -81,6 +81,7 @@ import tk.glucodata.ui.overlay.FloatingNextReadingStyle
 import tk.glucodata.ui.components.SettingsSwitchItem
 import tk.glucodata.ui.components.SettingsItem
 import tk.glucodata.ui.viewmodel.DashboardViewModel
+import kotlin.math.roundToInt
 
 private val legacySettingsHorizontalPadding = 16.dp
 private val aodPositionOptions = listOf(
@@ -495,6 +496,7 @@ fun FloatingGlucoseSettingsScreen(
     val fontWeight by repository.fontWeight.collectAsStateWithLifecycle(initialValue = "REGULAR")
     val showArrow by repository.showArrow.collectAsStateWithLifecycle(initialValue = true)
     val tapShowsDetails by repository.tapShowsDetails.collectAsStateWithLifecycle(initialValue = true)
+    val detailsOpacity by repository.detailsOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
     val cornerRadius by repository.cornerRadius.collectAsStateWithLifecycle(initialValue = 28f)
     val opacity by repository.backgroundOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsStateWithLifecycle(initialValue = false)
@@ -649,33 +651,44 @@ fun FloatingGlucoseSettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        Column(
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        // The two go as a pair, with the details card's opacity between them while the card is on.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_tap_details),
+            subtitle = stringResource(R.string.floating_tap_details_desc),
+            checked = tapShowsDetails,
+            onCheckedChange = {
+                repository.setTapShowsDetails(it)
+                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && aboveStatusBar)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.TOP,
             modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
-        ) {
-            SettingsSwitchItem(
-                title = stringResource(R.string.floating_tap_details),
-                subtitle = stringResource(R.string.floating_tap_details_desc),
-                checked = tapShowsDetails,
-                onCheckedChange = {
-                    repository.setTapShowsDetails(it)
-                    tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && aboveStatusBar)
-                },
-                position = CardPosition.TOP
+        )
+        if (tapShowsDetails) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LegacySliderControl(
+                label = stringResource(R.string.floating_details_opacity_percent, (detailsOpacity * 100).roundToInt()),
+                value = detailsOpacity,
+                onValueChange = { repository.setDetailsOpacity(it) },
+                range = 0.1f..1.0f,
+                steps = 18
             )
-            // Drawn over the status bar so the details can be opened from there.
-            SettingsSwitchItem(
-                title = stringResource(R.string.floating_above_status_bar),
-                subtitle = stringResource(R.string.floating_above_status_bar_desc),
-                checked = aboveStatusBar && tapShowsDetails,
-                enabled = tapShowsDetails,
-                onCheckedChange = {
-                    repository.setAboveStatusBar(it)
-                    tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && tapShowsDetails)
-                },
-                position = CardPosition.BOTTOM
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+        } else {
+            Spacer(modifier = Modifier.height(2.dp))
         }
+        // Drawn over the status bar so the details can be opened from there.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_above_status_bar),
+            subtitle = stringResource(R.string.floating_above_status_bar_desc),
+            checked = aboveStatusBar && tapShowsDetails,
+            enabled = tapShowsDetails,
+            onCheckedChange = {
+                repository.setAboveStatusBar(it)
+                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && tapShowsDetails)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.BOTTOM,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
         if (tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
             Spacer(modifier = Modifier.height(8.dp))
             WarningPanel(

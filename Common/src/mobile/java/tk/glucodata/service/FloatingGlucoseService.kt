@@ -17,6 +17,8 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.runtime.PausableMonotonicFrameClock
 import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -112,6 +114,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     // last touch down on the pill; see FloatingDetailsWindow.closedByThisTap.
     private var detailsClosedByTouchAt = Long.MIN_VALUE
     private var pillTouchDownAt = 0L
+    // The card's background opacity, followed from the settings: a card opens with it, and follows it.
+    private val detailsOpacity = MutableStateFlow(FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private lateinit var settingsRepository: FloatingSettingsRepository
@@ -426,6 +430,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
         val card = ComposeView(this).apply {
             setContent {
+                val opacity by detailsOpacity.collectAsState()
                 FloatingDetailsCard(
                     request = request,
                     isDark = androidx.compose.foundation.isSystemInDarkTheme(),
@@ -433,6 +438,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                         closeDetails()
                         openApp()
                     },
+                    backgroundOpacity = opacity,
                 )
             }
         }
@@ -561,6 +567,10 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             UiRefreshBus.events.collectLatest {
                 glucoseRepository.refreshSensorSerial()
             }
+        }
+
+        serviceScope.launch {
+            settingsRepository.detailsOpacity.collect { detailsOpacity.value = it }
         }
 
         serviceScope.launch {

@@ -2999,6 +2999,7 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="nightscout_iob_help">eIOB en COB worden in het veld jugglucong van devicestatus verstuurd, los van de standaard-IOB.</string>
     <string name="floating_tap_details">Details bij tikken</string>
     <string name="floating_tap_details_desc">Tikken toont de grafiek en details</string>
+    <string name="floating_details_opacity_percent">Achtergronddekking details: %1$d%%</string>
     <string name="floating_next_reading">Tijd tot volgende meting</string>
     <string name="floating_next_reading_desc">Een balk onderaan vult zich tot de volgende meting</string>
     <string name="floating_next_reading_style">Stijl van de indicator</string>

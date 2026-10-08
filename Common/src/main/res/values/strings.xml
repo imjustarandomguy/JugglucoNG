@@ -3208,6 +3208,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_iob_help">eIOB and COB are sent in the jugglucong field of devicestatus, separately from standard IOB.</string>
     <string name="floating_tap_details">Details on tap</string>
     <string name="floating_tap_details_desc">Tap for the chart and details</string>
+    <string name="floating_details_opacity_percent">Details background opacity: %1$d%%</string>
     <string name="floating_next_reading">Time to next reading</string>
     <string name="floating_next_reading_desc">A bar along the bottom fills until the next reading</string>
     <string name="floating_next_reading_style">Next reading style</string>

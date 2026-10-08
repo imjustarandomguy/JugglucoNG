@@ -16,6 +16,7 @@ class FloatingSettingsRepository(context: Context) {
     companion object {
         const val KEY_ENABLED = "floating_glucose_enabled"
         const val KEY_TAP_DETAILS = "floating_tap_details" // true = tap shows details, long press opens the app
+        const val KEY_DETAILS_OPACITY = "floating_details_opacity" // Float 0..1, the details card's background
         const val KEY_TRANSPARENT = "floating_transparent" // true = transparent, false = filled
         const val KEY_SHOW_SECONDARY = "floating_show_secondary"
         const val KEY_FONT_SOURCE = "floating_font_source" // "APP" or "SYSTEM"
@@ -40,6 +41,8 @@ class FloatingSettingsRepository(context: Context) {
 
         const val DEFAULT_FONT_SIZE = 14f
         const val DEFAULT_BACKGROUND_OPACITY = 1.0f
+        // The details card's background from before it could be set (alpha 0xF2).
+        const val DEFAULT_DETAILS_OPACITY = 0.95f
         const val DEFAULT_ISLAND_VERTICAL_OFFSET = 8f
     }
 
@@ -54,6 +57,7 @@ class FloatingSettingsRepository(context: Context) {
     // Implementation: Flow that emits on preference change
     val isEnabled: Flow<Boolean> = prefFlow(KEY_ENABLED, false)
     val tapShowsDetails: Flow<Boolean> = prefFlow(KEY_TAP_DETAILS, true)
+    val detailsOpacity: Flow<Float> = prefFlow(KEY_DETAILS_OPACITY, DEFAULT_DETAILS_OPACITY)
     val isTransparent: Flow<Boolean> = prefFlow(KEY_TRANSPARENT, false)
     val showSecondary: Flow<Boolean> = prefFlow(KEY_SHOW_SECONDARY, false)
     val fontSource: Flow<String> = prefFlow(KEY_FONT_SOURCE, "APP")
@@ -78,6 +82,7 @@ class FloatingSettingsRepository(context: Context) {
 
     fun setEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
     fun setTapShowsDetails(show: Boolean) = prefs.edit().putBoolean(KEY_TAP_DETAILS, show).apply()
+    fun setDetailsOpacity(opacity: Float) = prefs.edit().putFloat(KEY_DETAILS_OPACITY, opacity).apply()
     fun setTransparent(transparent: Boolean) = prefs.edit().putBoolean(KEY_TRANSPARENT, transparent).apply()
     fun setDynamicIslandEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND, enabled).apply()
     fun setAboveStatusBar(above: Boolean) = prefs.edit().putBoolean(KEY_ABOVE_STATUS_BAR, above).apply()
