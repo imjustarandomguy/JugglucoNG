@@ -670,7 +670,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                         continue
                     }
                     sendBackoff.reset()
-                    if (result.wrote) acceptedDocument = true
+                    if (result.wrote) {
+                        acceptedDocument = true
+                        dao.settleWrittenNightscoutEdit(entry.id, entry.updatedAt, maxOf(now, entry.updatedAt))
+                        continue
+                    }
                     dao.settleReceivedNightscoutEdit(
                         id = entry.id,
                         updatedAt = entry.updatedAt,
@@ -1223,7 +1227,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * Decides what becomes of [entry]'s edit, given [document] as the server now holds it.
      *
      * A loop system's document is never written to: the edit stays here. The server wins where it
-     * changed the document after the edit was made, where the document no longer holds the row's
+     * changed the document since the row was received, where the document no longer holds the row's
      * part, and where it may not be changed. API v3 will not move a document's date (it answers
      * 400), so on v3 an edited time is not sent: it is reported as kept by the server, and the
      * next receive shows the server's time again.
@@ -1235,9 +1239,12 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         if (JournalTreatmentTransfer.isReadOnlyDocument(document)) {
             return ReceivedEditPlan.ServerWins("the document is read-only")
         }
-        val modifiedAt = JournalTreatmentTransfer.serverModifiedMillis(document)
-        if (modifiedAt != null && modifiedAt > entry.updatedAt) {
-            return ReceivedEditPlan.ServerWins("the server changed it after the edit")
+        val changedSinceReceived = serverChangedSinceReceived(
+            receivedRevision = receivedRevisionOf(entry.source, entry.lvUploadedAt),
+            serverRevision = JournalTreatmentTransfer.serverModifiedMillis(document)
+        )
+        if (changedSinceReceived) {
+            return ReceivedEditPlan.ServerWins("the server changed it since it was received")
         }
         val changes = JournalTreatmentTransfer.receivedEditChanges(entry, document)
             ?: return ReceivedEditPlan.ServerWins("the document no longer holds this ${entry.entryType}")
