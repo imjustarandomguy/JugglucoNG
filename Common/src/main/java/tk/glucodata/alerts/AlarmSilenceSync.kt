@@ -42,8 +42,9 @@ import tk.glucodata.WearMessagePath
  * The receiver keeps the later change per alert type ([AlarmSilencePolicy.reconcile]) and
  * answers with its own state only when it holds something newer, never answering an
  * answer. A device that was out of reach therefore catches up as soon as either one hears
- * of the other. The rules and the wire format are in AlarmSilenceModel.kt; nothing
- * absolute crosses the wire, so the two clocks need not agree.
+ * of the other. The rules and the wire format are in AlarmSilenceModel.kt; times cross
+ * the wire as ages, so the two clocks need not agree on them, and each change carries a
+ * hybrid logical clock id ([ChangeId]) that orders it the same way on both devices.
  *
  * With "Where alarms ring" ([AlarmRouting]), sharing does not depend on the mode:
  *
@@ -72,11 +73,13 @@ object AlarmSilenceSync {
     private const val KEY_DISMISSED = "dismissed_"
     private const val KEY_QUIET_CHANGED = "quiet_changed"
     private const val KEY_ORIGIN = "origin"
-    private const val KEY_CLOCK = "clock"
+    private const val KEY_CLOCK_MS = "hlc_ms"
+    private const val KEY_CLOCK_COUNTER = "hlc_counter"
 
     // Suffixes of an entry's key for its change id ([ChangeId]); none when the change came
     // from an older build.
-    private const val REV = "_rev"
+    private const val HLC_MS = "_hlc_ms"
+    private const val COUNTER = "_hlc_counter"
     private const val ORIGIN = "_origin"
 
     /** After a failed send, hearing from the other device sends again, no more often than this. */
@@ -126,32 +129,40 @@ object AlarmSilenceSync {
         }
     }
 
-    /** The id of a change made here now: one revision above all this device made or saw. */
-    private fun nextId(store: SharedPreferences): ChangeId = synchronized(idLock) {
-        val rev = store.getLong(KEY_CLOCK, 0L) + 1L
-        store.edit().putLong(KEY_CLOCK, rev).apply()
-        ChangeId(rev, origin(store))
+    /** The highest id this device made or saw (its origin plays no part), null before any. */
+    private fun clock(store: SharedPreferences): ChangeId? {
+        val ms = store.getLong(KEY_CLOCK_MS, 0L)
+        return if (ms > 0L) ChangeId(ms, store.getInt(KEY_CLOCK_COUNTER, 0), 0) else null
     }
 
-    /** Revisions seen from the other device: a change made here later goes above them. */
+    private fun setClock(store: SharedPreferences, id: ChangeId) {
+        store.edit().putLong(KEY_CLOCK_MS, id.hlcMs).putInt(KEY_CLOCK_COUNTER, id.counter).apply()
+    }
+
+    /** The id of a change made here now: after every one this device made or saw. */
+    private fun nextId(store: SharedPreferences): ChangeId = synchronized(idLock) {
+        ChangeId.next(clock(store), System.currentTimeMillis(), origin(store)).also { setClock(store, it) }
+    }
+
+    /** Every message from the other device moves the clock up to the ids it carries. */
     private fun seen(store: SharedPreferences, state: SilenceState) {
-        val newest = (state.snoozes.map { it.id } + state.dismissals.map { it.id } + state.quiet?.id)
-            .maxOfOrNull { it?.rev ?: 0L } ?: 0L
+        val newest = ChangeId.newest(state) ?: return
         synchronized(idLock) {
-            if (newest > store.getLong(KEY_CLOCK, 0L)) store.edit().putLong(KEY_CLOCK, newest).apply()
+            val clock = clock(store)
+            if (clock == null || newest > clock) setClock(store, newest)
         }
     }
 
     private fun SharedPreferences.Editor.putId(key: String, id: ChangeId?): SharedPreferences.Editor =
         if (id == null) {
-            remove(key + REV).remove(key + ORIGIN)
+            remove(key + HLC_MS).remove(key + COUNTER).remove(key + ORIGIN)
         } else {
-            putLong(key + REV, id.rev).putInt(key + ORIGIN, id.origin)
+            putLong(key + HLC_MS, id.hlcMs).putInt(key + COUNTER, id.counter).putInt(key + ORIGIN, id.origin)
         }
 
     private fun SharedPreferences.idOf(key: String): ChangeId? {
-        val rev = getLong(key + REV, 0L)
-        return if (rev > 0L) ChangeId(rev, getInt(key + ORIGIN, 0)) else null
+        val ms = getLong(key + HLC_MS, 0L)
+        return if (ms > 0L) ChangeId(ms, getInt(key + COUNTER, 0), getInt(key + ORIGIN, 0)) else null
     }
 
     // ------------------------------------------------------------ local changes

@@ -9,27 +9,61 @@ import tk.glucodata.AlertDeliveryPolicy
  * dismissal of an alarm's episode, and the quiet window. The runtime is
  * [AlarmSilenceSync]; everything here is pure, so the rules can be tested.
  *
- * Every time below is in the clock of the device holding the value. Nothing absolute
- * crosses the wire: [AlarmSilenceCodec] sends how long ago a change was made and how
- * long a snooze or window still has to run, and the receiver puts them back on its own
- * clock. A phone and a watch whose clocks disagree by seconds or by hours still agree
- * on which change came last and on when a snooze ends. What is left is the transit
- * time of the message, which makes a received change look that much more recent and
- * a received snooze end that much later: seconds at most, which the tolerances below
- * absorb.
+ * Every time below is in the clock of the device holding the value. No time crosses the
+ * wire as a date: [AlarmSilenceCodec] sends how long ago a change was made and how long
+ * a snooze or window still has to run, and the receiver puts them back on its own clock.
+ * A phone and a watch whose clocks disagree by seconds or by hours still agree on when a
+ * snooze ends. What is left is the transit time of the message, which makes a received
+ * change look that much more recent and a received snooze end that much later: seconds
+ * at most, which the tolerances below absorb.
  *
- * Which change came last is decided by [ChangeId] where both devices send one, so two
- * changes made in quick succession, a state sent twice and a late message are each
- * ordered exactly; the times decide only between the two devices' own changes.
+ * Which change came last is decided by [ChangeId] where both devices send one: both
+ * devices compute the same order from the ids alone, whatever the transit times, so
+ * changes made in quick succession on either device, a state sent twice and a late
+ * message are each ordered the same way on both. The received times decide only between
+ * this build and one that sends no ids.
  */
 
 /**
- * Which change an entry holds: [origin], a random id of the device that made it, and
- * [rev], a revision above every one that device had made or seen when it made it (a
- * Lamport clock). A change taken from the other device keeps its id. Null in an entry
- * from a build that does not send ids.
+ * Which change an entry holds, and its place in the order both devices compute: a hybrid
+ * logical clock reading ([hlcMs], [counter]) and [origin], a random id of the device that
+ * made it. [hlcMs] is the later of that device's wall clock (epoch ms) and the highest
+ * [hlcMs] it had made or seen when it made the change; [counter] orders the changes
+ * within one [hlcMs] ([next]). A change made after seeing another is ordered after it,
+ * and changes made without seeing each other by their wall clocks, then [counter], then
+ * [origin] ([compareTo]).
+ * Assumes network-synced clocks: with a skew both devices still keep one order, less true to real time.
+ *
+ * A change taken from the other device keeps its id. Null in an entry from a build that
+ * does not send ids.
  */
-data class ChangeId(val rev: Long, val origin: Int)
+data class ChangeId(val hlcMs: Long, val counter: Int, val origin: Int) : Comparable<ChangeId> {
+    override fun compareTo(other: ChangeId): Int = when {
+        hlcMs != other.hlcMs -> hlcMs.compareTo(other.hlcMs)
+        counter != other.counter -> counter.compareTo(other.counter)
+        else -> origin.compareTo(other.origin)
+    }
+
+    companion object {
+        /**
+         * The id of a change [origin] makes when its wall clock reads [wallMs] and the
+         * highest id it made or saw is [last] (null: none): after both.
+         */
+        @JvmStatic
+        fun next(last: ChangeId?, wallMs: Long, origin: Int): ChangeId =
+            if (last == null || wallMs > last.hlcMs) {
+                ChangeId(wallMs, 0, origin)
+            } else {
+                ChangeId(last.hlcMs, last.counter + 1, origin)
+            }
+
+        /** The highest id in [state]: a change made after receiving it goes above it. */
+        @JvmStatic
+        fun newest(state: SilenceState): ChangeId? =
+            (state.snoozes.mapNotNull { it.id } + state.dismissals.mapNotNull { it.id } + listOfNotNull(state.quiet?.id))
+                .maxOrNull()
+    }
+}
 
 /**
  * One alert type's snooze as this device last changed it. [untilMs] is the end, 0 when
@@ -119,7 +153,9 @@ data class SilenceReconciliation(val actions: List<SilenceAction>, val reply: Bo
  *    newer alarm keeps ringing, and a dismissal arriving after the alarm has ended does
  *    nothing.
  *  - Answers: a device answers a state with its own only when it holds something newer,
- *    and never answers an answer, so two devices settle in at most one round trip.
+ *    and never answers an answer, so two devices settle in at most one round trip. Both
+ *    end with the newest change: the device that made it sent it unasked, and a device
+ *    holding a newer change than one it receives unasked answers with it.
  */
 object AlarmSilencePolicy {
     /**
@@ -149,26 +185,16 @@ object AlarmSilencePolicy {
      * How change a ([aChangedAtMs], [aId]) stands to change b; a missing b is older than
      * anything.
      *
-     *  - Both with ids, from one device: its revisions decide, whatever the times say.
-     *    Equal is the same change (sent again, or sent back); lower arrived late.
-     *  - Both with ids, from the two devices: the later time, when the times are more
-     *    than [SAME_CHANGE_TOLERANCE_MS] apart. Closer, the transit time could swap them:
-     *    the higher revision (made after seeing the other) wins, then the higher origin,
-     *    so both devices keep the same one.
+     *  - Both with ids: the ids ([ChangeId.compareTo]), whatever the times say, which the
+     *    transit time moves; both devices order any two changes the same way. Equal is
+     *    the same change (sent again, or sent back).
      *  - Either without an id (an older build): the times, two within the tolerance
      *    being the same change.
      */
     @JvmStatic
     fun order(aChangedAtMs: Long, aId: ChangeId?, bChangedAtMs: Long?, bId: ChangeId?): Order {
         if (bChangedAtMs == null) return Order.NEWER
-        if (aId != null && bId != null) {
-            if (aId.origin == bId.origin) return compare(aId.rev, bId.rev)
-            if (Math.abs(aChangedAtMs - bChangedAtMs) > SAME_CHANGE_TOLERANCE_MS) {
-                return compare(aChangedAtMs, bChangedAtMs)
-            }
-            val byRevision = compare(aId.rev, bId.rev)
-            return if (byRevision != Order.SAME) byRevision else compare(aId.origin.toLong(), bId.origin.toLong())
-        }
+        if (aId != null && bId != null) return compare(aId.compareTo(bId).toLong(), 0L)
         return when {
             aChangedAtMs > bChangedAtMs + SAME_CHANGE_TOLERANCE_MS -> Order.NEWER
             bChangedAtMs > aChangedAtMs + SAME_CHANGE_TOLERANCE_MS -> Order.OLDER
@@ -345,14 +371,15 @@ object AlarmSilencePolicy {
  *       2 dismissals,  9 bytes each: [u8 alert type][i64 dismissal age ms]
  *       3 quiet window, one:         [i64 change age ms][i64 remaining ms][u8 breakthrough minutes]
  *                                    [u8 n][n bytes mode][u8 n][n bytes breakthrough scope]
- *       4 change ids, 14 bytes each: [u8 section of the entry: 1, 2 or 3][u8 alert type, 0 for 3]
- *                                    [i64 revision][i32 origin]
+ *       4 reserved, skipped
+ *       5 change ids, 18 bytes each: [u8 section of the entry: 1, 2 or 3][u8 alert type, 0 for 3]
+ *                                    [i64 hlc ms][i32 counter][i32 origin]
  *
  * An age is how long before sending the change was made; a remaining time is how long
  * the snooze or window still runs, 0 when the change left none. A reader skips the
  * sections it does not know, so a later build can add one without a new format, and
  * a payload it cannot read is dropped whole. An older build reads the entries without
- * their ids (section 4); an entry without an id record has none ([ChangeId]).
+ * their ids (section 5); an entry without an id record has none ([ChangeId]).
  */
 object AlarmSilenceCodec {
     const val FORMAT = 1
@@ -362,11 +389,11 @@ object AlarmSilenceCodec {
     const val SECTION_SNOOZES = 1
     const val SECTION_DISMISSALS = 2
     const val SECTION_QUIET = 3
-    const val SECTION_IDS = 4
+    const val SECTION_IDS = 5
 
     private const val SNOOZE_BYTES = 1 + 8 + 8 + 1
     private const val DISMISS_BYTES = 1 + 8
-    private const val ID_BYTES = 1 + 1 + 8 + 4
+    private const val ID_BYTES = 1 + 1 + 8 + 4 + 4
 
     /** Nothing still running ends further out than this: the quiet window's cap, and a margin. */
     const val MAX_REMAINING_MS = 25L * 60L * 60L * 1000L
@@ -423,7 +450,8 @@ object AlarmSilenceCodec {
             for ((section, typeId, id) in ids) {
                 out.put(section.toByte())
                 out.put(typeId.toByte())
-                out.putLong(id.rev)
+                out.putLong(id.hlcMs)
+                out.putInt(id.counter)
                 out.putInt(id.origin)
             }
         }
@@ -486,9 +514,10 @@ object AlarmSilenceCodec {
                         repeat(length / ID_BYTES) {
                             val section = body.get().toInt() and 0xff
                             val typeId = body.get().toInt() and 0xff
-                            val rev = body.long
+                            val hlcMs = body.long
+                            val counter = body.int
                             val origin = body.int
-                            if (rev > 0L) ids[section to typeId] = ChangeId(rev, origin)
+                            if (hlcMs > 0L && counter >= 0) ids[section to typeId] = ChangeId(hlcMs, counter, origin)
                         }
                     }
                     else -> Unit // a later build's section
