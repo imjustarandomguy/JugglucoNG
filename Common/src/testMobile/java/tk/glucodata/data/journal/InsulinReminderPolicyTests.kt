@@ -221,6 +221,16 @@ class InsulinReminderPolicyTests {
         assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherName)))
     }
 
+    @Test
+    fun aDoseOfThisPhonesOwnCountsOnlyUnderItsInsulin() {
+        // Two presets named Tresiba (a vial and a pen, say): a dose typed for one is not the other's.
+        val tresiba = basal(listOf(minuteOfDay(21)))
+        val otherTresiba = dose(at(20, 40), presetId = 7L, title = "Tresiba")
+        assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherTresiba)))
+        assertTrue(notifiesAt(tresiba, 21, entries = listOf(otherTresiba.copy(source = JournalEntrySource.PEN))))
+        assertFalse(notifiesAt(tresiba, 21, entries = listOf(otherTresiba.copy(insulinPresetId = tresibaId))))
+    }
+
     // Snooze
 
     @Test
@@ -397,7 +407,7 @@ class InsulinReminderPolicyTests {
     @Test
     fun aDoseImportedUnderAnotherInsulinCountsByItsName() {
         val tresiba = basal(listOf(minuteOfDay(21)))
-        val imported = dose(at(21, 2, dayOffset = -1), presetId = fiaspId, title = "tresiba")
+        val imported = dose(at(21, 2, dayOffset = -1), presetId = fiaspId, title = "tresiba", source = JournalEntrySource.NIGHTSCOUT)
         assertEquals(imported, InsulinReminderPolicy.lastDose(listOf(imported), tresiba, at(21)))
     }
 
