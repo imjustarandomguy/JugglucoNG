@@ -98,6 +98,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1497,7 +1498,7 @@ fun InteractiveGlucoseChart(
         }
     }
 
-    // --- Y-AXIS STATE (Manual Scaling) ---
+    // --- Y-AXIS STATE ---
     val isMmol = if (unit.isNotEmpty()) tk.glucodata.ui.util.GlucoseFormatter.isMmol(unit) else tk.glucodata.ui.util.GlucoseFormatter.isMmolApp()
     val rangeThresholds = remember(isMmol, targetLow, targetHigh, veryLowThreshold, veryHighThreshold) {
         chartRangeThresholds(
@@ -1516,7 +1517,6 @@ fun InteractiveGlucoseChart(
         fallbackLow = fallbackMin,
         fallbackHigh = fallbackMax
     )
-    val minYAxisSpan = if (isMmol) 6f else 108f
 
     val visibleValueRange = remember(
         renderData,
@@ -1602,55 +1602,34 @@ fun InteractiveGlucoseChart(
         PresentedMinuteRecorder.recordVisible(presentedRecorderRepository, visible)
     }
 
-    // Manual scaling establishes the baseline; visible outliers may temporarily expand it.
-    var baselineYMin by rememberSaveable { mutableFloatStateOf(graphRangeDefaults.first) }
-    var baselineYMax by rememberSaveable { mutableFloatStateOf(graphRangeDefaults.second) }
-    var isYAxisAdjusting by remember { mutableStateOf(false) }
-
-    LaunchedEffect(graphRangeDefaults) {
-        baselineYMin = graphRangeDefaults.first
-        baselineYMax = graphRangeDefaults.second
-    }
-
-    val automaticYRange = remember(
-        baselineYMin,
-        baselineYMax,
-        visibleValueRange,
-        isMmol,
-        isYAxisAdjusting
-    ) {
-        if (isYAxisAdjusting) {
-            ChartYRange(min = baselineYMin, max = baselineYMax)
-        } else {
-            autoExpandedChartYRange(
-                baselineMin = baselineYMin,
-                baselineMax = baselineYMax,
-                visibleMin = visibleValueRange.first,
-                visibleMax = visibleValueRange.second,
-                isMmol = isMmol
-            )
-        }
-    }
-    val yRangeAnimationSpec = if (isYAxisAdjusting) {
-        tween<Float>(durationMillis = 0)
-    } else {
-        spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessLow
+    // The configured chart range is the axis. Readings and predictions in the window
+    // that fall outside it widen it just enough, and it returns once they scroll out.
+    val automaticYRange = remember(graphRangeDefaults, visibleValueRange, isMmol) {
+        autoExpandedChartYRange(
+            baselineMin = graphRangeDefaults.first,
+            baselineMax = graphRangeDefaults.second,
+            visibleMin = visibleValueRange.first,
+            visibleMax = visibleValueRange.second,
+            isMmol = isMmol
         )
     }
-    val displayYMin by animateFloatAsState(
+    // The window can load after the chart composes, so the first range with readings
+    // in it is where the chart opens: it is set, not animated to.
+    var yRangeHasShownData by remember { mutableStateOf(false) }
+    if (!yRangeHasShownData && visibleValueRange.first != null) {
+        SideEffect { yRangeHasShownData = true }
+    }
+    val yRangeAnimationSpec = tween<Float>(durationMillis = if (yRangeHasShownData) 200 else 0)
+    val renderedYMin by animateFloatAsState(
         targetValue = automaticYRange.min,
         animationSpec = yRangeAnimationSpec,
         label = "ChartYMinAutoRange"
     )
-    val displayYMax by animateFloatAsState(
+    val renderedYMax by animateFloatAsState(
         targetValue = automaticYRange.max,
         animationSpec = yRangeAnimationSpec,
         label = "ChartYMaxAutoRange"
     )
-    val renderedYMin = if (isYAxisAdjusting) baselineYMin else displayYMin
-    val renderedYMax = if (isYAxisAdjusting) baselineYMax else displayYMax
 
     // --- INTERACTION STATE ---
     var selectedPoint by remember { mutableStateOf<GlucosePoint?>(null) }
@@ -1924,7 +1903,6 @@ fun InteractiveGlucoseChart(
                             }
                         }
                         isUserInteracting = true
-                        isYAxisAdjusting = false
                         try {
                             // FIX: Use requireUnconsumed = true (default) to respect z-order.
                             // This prevents the chart from hijacking touches meant for the floating buttons.
@@ -2110,9 +2088,6 @@ fun InteractiveGlucoseChart(
                             var accumulatedPanX = 0f
                             var accumulatedPanY = 0f
                             var lockedPanAxis = 0 // 0 undecided, 1 horizontal, 2 vertical
-                            var yGestureStartMin = 0f
-                            var yGestureStartMax = 0f
-                            var yGestureAdjustsMax = false
                             var lastPointerCount = 1
                             val longPressJob = if (
                                 onTimelineTap != null && !isDoubleTapStart && !startedOnJournalMarker
@@ -2172,7 +2147,6 @@ fun InteractiveGlucoseChart(
                                     lockedPanAxis = 0
                                     accumulatedPanX = 0f
                                     accumulatedPanY = 0f
-                                    isYAxisAdjusting = false
                                     totalDragDistance = maxOf(totalDragDistance, viewConfiguration.touchSlop)
                                     change = newChange
                                     lastPointerCount = pointerCount
@@ -2248,6 +2222,7 @@ fun InteractiveGlucoseChart(
                                         val updatedPoint = getPointAt(currentTime)
                                         selectedPoint = updatedPoint
                                         performScrubHaptic(updatedPoint)
+                                        newChange.consume()
                                     } else {
                                         val panX = newChange.position.x - change.position.x
                                         val panY = newChange.position.y - change.position.y
@@ -2264,42 +2239,29 @@ fun InteractiveGlucoseChart(
                                             dismissJournalActionIfNeeded()
                                             if (lockedPanAxis == 0) {
                                                 lockedPanAxis = if (abs(accumulatedPanX) > abs(accumulatedPanY)) 1 else 2
-                                                if (lockedPanAxis == 2) {
-                                                    yGestureStartMin = currentRenderedYMin
-                                                    yGestureStartMax = currentRenderedYMax
-                                                    yGestureAdjustsMax = newChange.position.y < contentHeight / 2f
-                                                    baselineYMin = yGestureStartMin
-                                                    baselineYMax = yGestureStartMax
-                                                    isYAxisAdjusting = true
-                                                }
                                             }
                                         }
 
+                                        if (lockedPanAxis == 2) {
+                                            // A mostly vertical swipe is the page's: left unconsumed, so the
+                                            // list around the chart scrolls, and the chart lets the rest go.
+                                            break
+                                        }
                                         if (lockedPanAxis == 1) {
                                             // Horizontal pan
                                             panViewportByPixels(panX, usefulWidth)
-                                        } else if (lockedPanAxis == 2 && abs(accumulatedPanY) > 30f) {
-                                            // Vertical scale
-                                            val manualRange = manuallyAdjustedChartYRange(
-                                                startMin = yGestureStartMin,
-                                                startMax = yGestureStartMax,
-                                                totalDragY = accumulatedPanY,
-                                                chartHeight = contentHeight,
-                                                adjustsMax = yGestureAdjustsMax,
-                                                minimumSpan = minYAxisSpan,
-                                                maximumMax = manualChartYMaxCap(isMmol)
-                                            )
-                                            baselineYMin = manualRange.min
-                                            baselineYMax = manualRange.max
+                                            newChange.consume()
                                         }
+                                        // Moves under the touch slop stay unconsumed too: a list around
+                                        // the chart has to see them to reach its own slop. It needs a
+                                        // vertical travel past the slop, so the chart has decided by then.
                                     }
-                                    newChange.consume()
                                 }
                                 change = newChange
                                 lastPointerCount = pointerCount
                             }
 
-                            // ON UP
+                            // ON UP, or released to the page
                             val wasTap = !startedOnJournalMarker &&
                                 totalDragDistance < viewConfiguration.touchSlop
                             longPressJob?.cancel()
@@ -2396,7 +2358,6 @@ fun InteractiveGlucoseChart(
                                 }
                             }
                         } finally {
-                            isYAxisAdjusting = false
                             isUserInteracting = false
                             lastInteractionTimestamp = System.currentTimeMillis()
                         }

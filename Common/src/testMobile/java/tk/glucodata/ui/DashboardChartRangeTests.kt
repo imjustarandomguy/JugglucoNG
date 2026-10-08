@@ -6,109 +6,26 @@ import org.junit.Test
 class DashboardChartRangeTests {
 
     @Test
-    fun manualRangeUsesTotalDragFromItsStartingRange() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 0f,
-            startMax = 13f,
-            totalDragY = 50f,
-            chartHeight = 500f,
-            adjustsMax = true,
-            minimumSpan = 6f
-        )
-
-        assertEquals(0f, range.min, 0.001f)
-        assertEquals(15.6f, range.max, 0.001f)
-    }
-
-    @Test
-    fun manualRangeKeepsTheOppositeEdgeAnchored() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 3f,
-            startMax = 13f,
-            totalDragY = -50f,
-            chartHeight = 500f,
-            adjustsMax = false,
-            minimumSpan = 6f
-        )
-
-        assertEquals(1f, range.min, 0.001f)
-        assertEquals(13f, range.max, 0.001f)
-    }
-
-    @Test
-    fun manualRangeIgnoresInvalidGeometry() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 0f,
-            startMax = 13f,
-            totalDragY = 50f,
-            chartHeight = 0f,
-            adjustsMax = true,
-            minimumSpan = 6f
-        )
-
-        assertEquals(0f, range.min, 0.001f)
-        assertEquals(13f, range.max, 0.001f)
-    }
-
-    @Test
-    fun manualRangeTopStopsAtTheCap() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 0f,
-            startMax = 20f,
-            totalDragY = 400f,
-            chartHeight = 500f,
-            adjustsMax = true,
-            minimumSpan = 6f,
-            maximumMax = manualChartYMaxCap(isMmol = true)
-        )
-
-        assertEquals(0f, range.min, 0.001f)
-        assertEquals(22f, range.max, 0.001f)
-    }
-
-    @Test
-    fun manualRangeCapsAnAutoExpandedTopWhenTheBottomMoves() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 0f,
-            startMax = 450f,
-            totalDragY = 50f,
-            chartHeight = 500f,
-            adjustsMax = false,
-            minimumSpan = 108f,
-            maximumMax = manualChartYMaxCap(isMmol = false)
-        )
-
-        assertEquals(400f, range.max, 0.001f)
-        assertEquals(90f, range.min, 0.001f)
-    }
-
-    @Test
-    fun manualRangeKeepsTheMinimumSpanUnderTheCap() {
-        val range = manuallyAdjustedChartYRange(
-            startMin = 19f,
-            startMax = 25f,
-            totalDragY = 100f,
-            chartHeight = 500f,
-            adjustsMax = true,
-            minimumSpan = 6f,
-            maximumMax = 22f
-        )
-
-        assertEquals(22f, range.max, 0.001f)
-        assertEquals(16f, range.min, 0.001f)
-    }
-
-    @Test
-    fun autoRangeMayStillExceedTheCapForAReadingAboveIt() {
-        val range = autoExpandedChartYRange(
-            baselineMin = 0f,
-            baselineMax = manualChartYMaxCap(isMmol = true),
-            visibleMin = 5f,
-            visibleMax = 24f,
+    fun autoRangeIsTheConfiguredRangeWithNothingInView() {
+        val mmol = autoExpandedChartYRange(
+            baselineMin = 3f,
+            baselineMax = 12f,
+            visibleMin = null,
+            visibleMax = null,
             isMmol = true
         )
+        val mgdl = autoExpandedChartYRange(
+            baselineMin = 54f,
+            baselineMax = 216f,
+            visibleMin = null,
+            visibleMax = null,
+            isMmol = false
+        )
 
-        assertEquals(25f, range.max, 0.001f)
+        assertEquals(3f, mmol.min, 0.001f)
+        assertEquals(12f, mmol.max, 0.001f)
+        assertEquals(54f, mgdl.min, 0.001f)
+        assertEquals(216f, mgdl.max, 0.001f)
     }
 
     @Test
@@ -154,17 +71,53 @@ class DashboardChartRangeTests {
     }
 
     @Test
-    fun autoRangeReturnsToBaselineWhenOutlierLeavesViewport() {
+    fun autoRangeWidensTheMinForAMgdlLow() {
         val range = autoExpandedChartYRange(
+            baselineMin = 70f,
+            baselineMax = 250f,
+            visibleMin = 55f,
+            visibleMax = 180f,
+            isMmol = false
+        )
+
+        assertEquals(36f, range.min, 0.001f)
+        assertEquals(250f, range.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeWidensBothEndsForValuesOnBothSides() {
+        val range = autoExpandedChartYRange(
+            baselineMin = 4f,
+            baselineMax = 10f,
+            visibleMin = 3.5f,
+            visibleMax = 11.2f,
+            isMmol = true
+        )
+
+        assertEquals(3f, range.min, 0.001f)
+        assertEquals(12f, range.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeReturnsToBaselineWhenOutlierLeavesViewport() {
+        val withOutlier = autoExpandedChartYRange(
             baselineMin = 0f,
             baselineMax = 234f,
-            visibleMin = null,
+            visibleMin = 90f,
+            visibleMax = 260f,
+            isMmol = false
+        )
+        val outlierScrolledOut = autoExpandedChartYRange(
+            baselineMin = 0f,
+            baselineMax = 234f,
+            visibleMin = 90f,
             visibleMax = 220f,
             isMmol = false
         )
 
-        assertEquals(0f, range.min, 0.001f)
-        assertEquals(234f, range.max, 0.001f)
+        assertEquals(270f, withOutlier.max, 0.001f)
+        assertEquals(0f, outlierScrolledOut.min, 0.001f)
+        assertEquals(234f, outlierScrolledOut.max, 0.001f)
     }
 
     @Test
@@ -178,6 +131,77 @@ class DashboardChartRangeTests {
         )
 
         assertEquals(252f, range.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangePaddingCarriesAHighValuePastTheNextStep() {
+        // 4% of the span as padding: 0.52 mmol/L over 0..13, 9.36 mg/dL over 0..234.
+        val mmol = autoExpandedChartYRange(
+            baselineMin = 0f,
+            baselineMax = 13f,
+            visibleMin = 5f,
+            visibleMax = 14.8f,
+            isMmol = true
+        )
+        val mgdl = autoExpandedChartYRange(
+            baselineMin = 0f,
+            baselineMax = 234f,
+            visibleMin = 90f,
+            visibleMax = 245f,
+            isMmol = false
+        )
+
+        assertEquals(16f, mmol.max, 0.001f)
+        assertEquals(270f, mgdl.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangePaddingCarriesALowValuePastTheNextStep() {
+        val range = autoExpandedChartYRange(
+            baselineMin = 3f,
+            baselineMax = 13f,
+            visibleMin = 2.2f,
+            visibleMax = 8f,
+            isMmol = true
+        )
+
+        assertEquals(1f, range.min, 0.001f)
+        assertEquals(13f, range.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeUsesTheMinimumPaddingOnANarrowRange() {
+        // 4% of these spans is under the 0.4 mmol/L and 7 mg/dL minimum.
+        val mmol = autoExpandedChartYRange(
+            baselineMin = 4f,
+            baselineMax = 6f,
+            visibleMin = 4.5f,
+            visibleMax = 6.7f,
+            isMmol = true
+        )
+        val mgdl = autoExpandedChartYRange(
+            baselineMin = 70f,
+            baselineMax = 140f,
+            visibleMin = 90f,
+            visibleMax = 141f,
+            isMmol = false
+        )
+
+        assertEquals(8f, mmol.max, 0.001f)
+        assertEquals(162f, mgdl.max, 0.001f)
+    }
+
+    @Test
+    fun autoRangeStopsAtZero() {
+        val range = autoExpandedChartYRange(
+            baselineMin = 3f,
+            baselineMax = 13f,
+            visibleMin = 0.3f,
+            visibleMax = 8f,
+            isMmol = true
+        )
+
+        assertEquals(0f, range.min, 0.001f)
     }
 
     @Test
