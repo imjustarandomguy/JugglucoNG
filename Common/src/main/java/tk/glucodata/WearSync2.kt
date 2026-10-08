@@ -673,7 +673,7 @@ object WearSync2 {
                     // still gets off a dead sensor after a swap ("No data"
                     // with fresh chunks landing in the new one).
                     WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
-                    UiRefreshBus.requestDataRefresh()
+                    UiRefreshBus.requestDataRefresh(stamps.copyOf(written).max())
                 }
                 if (doLog) {
                     val scope = if (readsLocally) " (missing only)" else ""

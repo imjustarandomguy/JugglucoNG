@@ -615,18 +615,21 @@ object CurrentDisplaySource {
         if (current == null || current.timeMillis < historyStart) {
             return points
         }
-        val latestHistory = points.lastOrNull()
-        if (latestHistory != null &&
-            kotlin.math.abs(latestHistory.timestamp - current.timeMillis) <= MATCH_WINDOW_MS &&
-            (!preferIncomingSample || latestHistory.timestamp == current.timeMillis) &&
-            hasUsableDisplayLane(latestHistory, viewMode)
+        // The same rule as DisplayTrendSource.augmentHistory, which merges this snapshot
+        // into the same rows again for its trend: either both find the reading's row, or
+        // neither does.
+        val storedRow = DisplayTrendSource.storedRowIndex(points, current.timeMillis)
+        val ownRow = points.getOrNull(storedRow)
+        if (ownRow != null &&
+            (!preferIncomingSample || ownRow.timestamp == current.timeMillis) &&
+            hasUsableDisplayLane(ownRow, viewMode)
         ) {
             return points
         }
         val liveAuto = current.numericValue.takeIf { it.isFinite() && it > 0.1f } ?: Float.NaN
         val liveRawDirect = current.rawNumericValue.takeIf { it.isFinite() && it > 0.1f }
-        // liveRawIsFallback signals to preferRicherLivePoint that, on an exact
-        // timestamp merge, history's raw should win — the candidate has no real
+        // liveRawIsFallback signals to preferRicherLivePoint that, merged onto its
+        // own row, history's raw should win — the candidate has no real
         // raw to contribute. It is intentionally NOT baked into the candidate's
         // own rawValue: doing so would put the auto value into the raw lane,
         // and a non-exact insertion (Sibionics live arriving offset from history)
@@ -645,6 +648,14 @@ object CurrentDisplaySource {
         )
         if (points.isEmpty()) {
             return listOf(candidate)
+        }
+        if (ownRow != null && ownRow.timestamp != current.timeMillis) {
+            // The reading's own row under another time: one point at the live time, not
+            // two. Nearest to the live time, the row moves there without passing another.
+            return points.toMutableList().also {
+                it[storedRow] = preferRicherLivePoint(ownRow, candidate, liveRawIsFallback)
+                    .apply { timestamp = current.timeMillis }
+            }
         }
 
         val merged = ArrayList<GlucosePoint>(points.size + 1)
