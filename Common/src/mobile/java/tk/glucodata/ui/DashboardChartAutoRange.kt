@@ -7,9 +7,11 @@ internal data class ChartYRange(
 
 /**
  * The chart's y range: the configured chart range ([baselineMin]..[baselineMax]),
- * widened just enough to hold the values in the visible window that fall outside it,
- * with a little padding, rounded out to 1 mmol/L or 18 mg/dL. It never shrinks below
- * the configured range, and is that range again once those values leave the window.
+ * widened just enough that every value in the visible window keeps a little padding
+ * from the axis ends, rounded out to 1 mmol/L or 18 mg/dL. A value inside the range
+ * but within that padding of an end widens it too, so its line and dot are not cut
+ * by the plot's edge. It never shrinks below the configured range, and is that range
+ * again once those values leave the window.
  */
 internal fun autoExpandedChartYRange(
     baselineMin: Float,
@@ -25,7 +27,7 @@ internal fun autoExpandedChartYRange(
     val edgePadding = maxOf(span * 0.04f, if (isMmol) 0.4f else 7f)
 
     val low = visibleMin
-        ?.takeIf { it.isFinite() && it > 0.1f && it < safeMin }
+        ?.takeIf { it.isFinite() && it > 0.1f && it < safeMin + edgePadding }
         ?.let { value ->
             (kotlin.math.floor((value - edgePadding) / expansionStep) * expansionStep)
                 .toFloat()
@@ -34,7 +36,7 @@ internal fun autoExpandedChartYRange(
         ?.coerceAtMost(safeMin)
         ?: safeMin
     val high = visibleMax
-        ?.takeIf { it.isFinite() && it > safeMax }
+        ?.takeIf { it.isFinite() && it > safeMax - edgePadding }
         ?.let { value ->
             (kotlin.math.ceil((value + edgePadding) / expansionStep) * expansionStep).toFloat()
         }
