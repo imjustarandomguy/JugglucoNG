@@ -25,7 +25,16 @@ internal data class PersistentHighDecision(
  * Decision rule behind PERSISTENT_HIGH: "you have been above the threshold for this long".
  *
  * - The timer starts at the first reading above the threshold, at that reading's time,
- *   and a reading at or below the threshold resets it.
+ *   and a reading at or below the threshold resets it. When an episode starts, that
+ *   reading is looked up in the stored readings ([startFromHistory]): walking back from
+ *   the current reading while the value stayed above the threshold, it is the oldest
+ *   one. Phone and watch store the same readings, so both count from the same start,
+ *   whenever each began to look: a setting received while asleep, a missed live reading
+ *   or a restart in the middle of a high no longer moves it. In consequence, switching
+ *   the alarm on, changing it, or its time window opening during a high that has
+ *   already lasted the duration rings at the next check instead of waiting out a fresh
+ *   duration. A hole of more than [EpisodeHistory.MAX_GAP_MS] between stored readings
+ *   ends the stretch, and the walk looks back [EpisodeHistory.MAX_LOOKBACK_MS] at most.
  * - It fires once the time between that reading and the current one reaches the
  *   duration. Time is measured between readings, never on the wall clock: the alert
  *   runtime also evaluates every 15 s, and on that tick the reading is the same one, so
@@ -61,6 +70,10 @@ internal object PersistentHighPolicy {
      * @param value the current reading in display units, null when none is known.
      * @param readingTimeMs time of that reading.
      * @param rate mg/dl per minute, negative = falling.
+     * @param historyStartMs the start [startFromHistory] finds for the high at this
+     *   reading, 0 for none. Called only when an episode starts at this reading, so a
+     *   running episode never reads the history; a start that is not earlier than this
+     *   reading is ignored.
      */
     fun decide(
         startedAtMs: Long,
@@ -69,7 +82,8 @@ internal object PersistentHighPolicy {
         value: Float?,
         readingTimeMs: Long,
         rate: Float,
-        snoozed: Boolean
+        snoozed: Boolean,
+        historyStartMs: () -> Long = { 0L }
     ): PersistentHighDecision {
         val threshold = config.threshold
         val durationMs = (config.durationMinutes ?: 0) * 60_000L
@@ -79,9 +93,13 @@ internal object PersistentHighPolicy {
         if (value <= threshold) {
             return reset("persistent-high-cleared")
         }
-        val started = if (startedAtMs == 0L) readingTimeMs else startedAtMs
         if (!activeNow) {
             return reset("persistent-high-time-inactive")
+        }
+        val started = if (startedAtMs != 0L) {
+            startedAtMs
+        } else {
+            historyStartMs().takeIf { it in 1 until readingTimeMs } ?: readingTimeMs
         }
         if (FallSuppressionPolicy.fallingSuppresses(rate, config.fallRateSuppress)) {
             return PersistentHighDecision(PersistentHighAction.HOLD, started, "persistent-high-falling")
@@ -93,6 +111,21 @@ internal object PersistentHighPolicy {
             return PersistentHighDecision(PersistentHighAction.WAIT, started, "persistent-high-timing")
         }
         return PersistentHighDecision(PersistentHighAction.FIRE, started, "persistent-high-due")
+    }
+
+    /**
+     * The start of the high running at the current reading, the last of [readings]
+     * (oldest first, display units), by the line [decide] uses: the oldest reading of
+     * the stretch above the threshold, which a reading at or below it ends. A fall does
+     * not end it, as it does not reset the timer. Gaps and lookback are
+     * [EpisodeHistory.startOf]'s. Null without a threshold, or when the current reading
+     * is not above it.
+     */
+    fun startFromHistory(readings: List<StoredReading>, config: AlertConfig): EpisodeStart? {
+        val threshold = config.threshold ?: return null
+        return EpisodeHistory.startOf(readings) { value ->
+            if (value > threshold) EpisodeHistory.Kind.START else EpisodeHistory.Kind.END
+        }
     }
 
     private fun reset(reason: String) = PersistentHighDecision(PersistentHighAction.RESET, 0L, reason)
