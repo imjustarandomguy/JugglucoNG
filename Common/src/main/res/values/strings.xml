@@ -3267,4 +3267,22 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="live_notification_metric_age">Reading age</string>
     <string name="live_notification_gauge_title">Show as gauge</string>
     <string name="live_notification_gauge_desc">Shows a bar over the chart range in your range colors, with the trend arrow at the current value</string>
+    <string name="widget_value_label">Glucose</string>
+    <string name="widget_chart_label">Glucose chart</string>
+    <string name="widget_value_description">Current glucose, trend arrow and reading time</string>
+    <string name="widget_chart_description">Current glucose with a chart of recent readings</string>
+    <string name="widget_settings_title">Widget settings</string>
+    <string name="widgets_title">Widgets</string>
+    <string name="widgets_subtitle">Home and lock screen widgets</string>
+    <string name="widgets_empty">No widget placed yet. Add “Glucose” or “Glucose chart” from your home screen\'s widget list.</string>
+    <string name="widget_customize">Customize</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Range colors</string>
+    <string name="widget_range_colors_desc">Color the value by its range</string>
+    <string name="widget_delta">Change since last reading</string>
+    <string name="widget_reading_time">Reading time</string>
+    <string name="widget_chart_when_tall">Chart when tall enough</string>
+    <string name="widget_chart_range">Chart range</string>
+    <string name="widget_hours">%1$d h</string>
+    <string name="widget_background_none">None</string>
 </resources>

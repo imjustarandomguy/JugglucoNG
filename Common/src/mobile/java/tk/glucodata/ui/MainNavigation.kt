@@ -949,6 +949,7 @@ fun MainApp(themeMode: ThemeMode, onThemeChanged: (ThemeMode) -> Unit) {
                         FloatingGlucoseSettingsScreen(navController, dashboardViewModel)
                     }
                     composable("settings/aod-display") { AodSettingsScreen(navController) }
+                    composable("settings/widgets") { tk.glucodata.widget.WidgetListScreen(navController) }
 
                     composable("settings/turnserver") { tk.glucodata.ui.TurnServerSettingsScreen(navController) }
                     composable("settings/debug") { DebugSettingsScreen(navController) }
@@ -1105,6 +1106,7 @@ fun MainApp(themeMode: ThemeMode, onThemeChanged: (ThemeMode) -> Unit) {
                     FloatingGlucoseSettingsScreen(navController, dashboardViewModel)
                 }
                 composable("settings/aod-display") { AodSettingsScreen(navController) }
+                composable("settings/widgets") { tk.glucodata.widget.WidgetListScreen(navController) }
 
                 composable("settings/turnserver") { tk.glucodata.ui.TurnServerSettingsScreen(navController) }
                 composable("settings/debug") { DebugSettingsScreen(navController) }

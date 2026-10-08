@@ -28,6 +28,8 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         tk.glucodata.journal.InsulinReminders.start(application);
         // "Log insulin" / "Log food" on a long press of the app icon.
         tk.glucodata.ui.journal.JournalQuickEntryShortcuts.publish(application);
+        // Home-screen widgets: hear readings and screen-on, and catch up after a restart.
+        tk.glucodata.widget.GlucoseWidgets.start(application);
     }
 
     @Override

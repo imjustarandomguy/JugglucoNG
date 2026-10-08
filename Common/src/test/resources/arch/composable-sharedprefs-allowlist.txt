@@ -16,4 +16,3 @@ src/mobile/java/tk/glucodata/ui/alerts/AlertSettingsScreen.kt
 src/mobile/java/tk/glucodata/ui/alerts/SoundPicker.kt
 src/mobile/java/tk/glucodata/ui/calibration/CalibrationListScreen.kt
 src/mobile/java/tk/glucodata/ui/stats/StatsScreen.kt
-src/mobile/java/tk/glucodata/widget/ExpressiveAppWidget.kt

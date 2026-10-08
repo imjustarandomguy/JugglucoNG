@@ -1,11 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- "Glucose chart": from two cells by one row (value only) up; the chart appears
+     once the widget is tall enough. Readings drive the updates. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:description="@string/app_name"
-    android:initialLayout="@layout/glance_default_loading_layout"
-    android:minWidth="140dp"
-    android:minHeight="80dp"
-    android:minResizeWidth="140dp"
-    android:minResizeHeight="80dp"
+    android:configure="tk.glucodata.widget.WidgetConfigActivity"
+    android:description="@string/widget_chart_description"
+    android:initialKeyguardLayout="@layout/widget_glucose_loading"
+    android:initialLayout="@layout/widget_glucose_loading"
+    android:maxResizeHeight="600dp"
+    android:maxResizeWidth="800dp"
+    android:minHeight="110dp"
+    android:minResizeHeight="40dp"
+    android:minResizeWidth="110dp"
+    android:minWidth="250dp"
+    android:previewImage="@drawable/widget_chart_preview_image"
+    android:previewLayout="@layout/widget_chart_preview"
     android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="2"
+    android:targetCellWidth="4"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen|keyguard"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

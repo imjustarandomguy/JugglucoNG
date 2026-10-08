@@ -3016,4 +3016,22 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="live_notification_metric_age">Idade da leitura</string>
     <string name="live_notification_gauge_title">Mostrar como medidor</string>
     <string name="live_notification_gauge_desc">Mostra uma barra sobre o intervalo do gráfico nas cores dos intervalos, com a seta de tendência no valor atual</string>
+    <string name="widget_value_label">Glicose</string>
+    <string name="widget_chart_label">Gráfico de glicose</string>
+    <string name="widget_value_description">Glicose atual, seta de tendência e hora da leitura</string>
+    <string name="widget_chart_description">Glicose atual com um gráfico das leituras recentes</string>
+    <string name="widget_settings_title">Definições do widget</string>
+    <string name="widgets_title">Widgets</string>
+    <string name="widgets_subtitle">Widgets do ecrã inicial e de bloqueio</string>
+    <string name="widgets_empty">Ainda não há widgets. Adicione «Glicose» ou «Gráfico de glicose» a partir da lista de widgets do ecrã inicial.</string>
+    <string name="widget_customize">Personalizar</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Cores dos intervalos</string>
+    <string name="widget_range_colors_desc">Colorir o valor segundo o seu intervalo</string>
+    <string name="widget_delta">Variação desde a última leitura</string>
+    <string name="widget_reading_time">Hora da leitura</string>
+    <string name="widget_chart_when_tall">Gráfico quando houver altura</string>
+    <string name="widget_chart_range">Período do gráfico</string>
+    <string name="widget_hours">%1$d h</string>
+    <string name="widget_background_none">Nenhum</string>
 </resources>

@@ -3015,4 +3015,22 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="live_notification_metric_age">Mätningens ålder</string>
     <string name="live_notification_gauge_title">Visa som mätare</string>
     <string name="live_notification_gauge_desc">Visar en stapel över diagramintervallet i intervallfärgerna, med trendpilen vid det aktuella värdet</string>
+    <string name="widget_value_label">Glukos</string>
+    <string name="widget_chart_label">Glukosdiagram</string>
+    <string name="widget_value_description">Aktuellt glukosvärde, trendpil och mättid</string>
+    <string name="widget_chart_description">Aktuellt glukosvärde med ett diagram över de senaste värdena</string>
+    <string name="widget_settings_title">Widgetinställningar</string>
+    <string name="widgets_title">Widgetar</string>
+    <string name="widgets_subtitle">Widgetar för hem- och låsskärm</string>
+    <string name="widgets_empty">Ingen widget har lagts till än. Lägg till ”Glukos” eller ”Glukosdiagram” från hemskärmens widgetlista.</string>
+    <string name="widget_customize">Anpassa</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Intervallfärger</string>
+    <string name="widget_range_colors_desc">Färga värdet efter dess intervall</string>
+    <string name="widget_delta">Ändring sedan senaste värdet</string>
+    <string name="widget_reading_time">Mättid</string>
+    <string name="widget_chart_when_tall">Diagram när höjden räcker</string>
+    <string name="widget_chart_range">Diagramperiod</string>
+    <string name="widget_hours">%1$d tim</string>
+    <string name="widget_background_none">Ingen</string>
 </resources>

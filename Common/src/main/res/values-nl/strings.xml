@@ -3058,4 +3058,22 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="live_notification_metric_age">Leeftijd meting</string>
     <string name="live_notification_gauge_title">Als meter tonen</string>
     <string name="live_notification_gauge_desc">Toont een balk over het grafiekbereik in de bereikkleuren, met de trendpijl bij de huidige waarde</string>
+    <string name="widget_value_label">Glucose</string>
+    <string name="widget_chart_label">Glucosegrafiek</string>
+    <string name="widget_value_description">Actuele glucose, trendpijl en meettijd</string>
+    <string name="widget_chart_description">Actuele glucose met een grafiek van recente metingen</string>
+    <string name="widget_settings_title">Widgetinstellingen</string>
+    <string name="widgets_title">Widgets</string>
+    <string name="widgets_subtitle">Widgets voor start- en vergrendelscherm</string>
+    <string name="widgets_empty">Nog geen widget geplaatst. Voeg ‘Glucose’ of ‘Glucosegrafiek’ toe vanuit de widgetlijst van je startscherm.</string>
+    <string name="widget_customize">Aanpassen</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Bereikkleuren</string>
+    <string name="widget_range_colors_desc">Kleur de waarde naar haar bereik</string>
+    <string name="widget_delta">Verandering sinds de vorige meting</string>
+    <string name="widget_reading_time">Meettijd</string>
+    <string name="widget_chart_when_tall">Grafiek als er genoeg hoogte is</string>
+    <string name="widget_chart_range">Grafiekperiode</string>
+    <string name="widget_hours">%1$d u</string>
+    <string name="widget_background_none">Geen</string>
 </resources>

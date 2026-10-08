@@ -82,12 +82,15 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
+        <!-- Home-screen widgets. Only the system talks to them (it may send to
+             receivers that are not exported); readings reach them in-process
+             (tk.glucodata.widget.GlucoseWidgets), not by broadcast. -->
         <receiver
             android:name=".GlucoseWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_value_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="tk.glucodata.action.GLUCOSE_UPDATE" />
             </intent-filter>
 
             <meta-data
@@ -97,16 +100,28 @@
 
         <receiver
             android:name=".widget.ExpressiveWidgetReceiver"
-            android:enabled="true"
-            android:exported="true">
+            android:exported="false"
+            android:label="@string/widget_chart_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="tk.glucodata.action.GLUCOSE_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/expressive_widget_info" />
         </receiver>
+
+        <!-- Per-widget settings. Exported: some hosts start a widget's configuration
+             activity themselves rather than through the system. -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/widget_settings_title"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <receiver
             android:name=".receivers.AapsJournalReceiver"

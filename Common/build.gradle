@@ -395,9 +395,6 @@ dependencies {
     implementation "com.google.android.gms:play-services-wearable:$GMSWEAR"
     // implementation 'com.google.android.gms:play-services-wearable:10.2.0' Needed for China? https://developer.android.com/training/wearables/creating-app-china#data-layer
 
-    // Glance Support
-    implementation "androidx.glance:glance-appwidget:1.1.1"
-    implementation "androidx.glance:glance-material3:1.1.1"
     implementation "androidx.work:work-runtime:2.11.2"
 
     // ---- mobile ----

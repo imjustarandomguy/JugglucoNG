@@ -3043,4 +3043,22 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="live_notification_metric_age">Ölçüm yaşı</string>
     <string name="live_notification_gauge_title">Gösterge olarak göster</string>
     <string name="live_notification_gauge_desc">Grafik aralığı boyunca aralık renklerinde bir çubuk gösterir, trend oku mevcut değerde</string>
+    <string name="widget_value_label">Glikoz</string>
+    <string name="widget_chart_label">Glikoz grafiği</string>
+    <string name="widget_value_description">Güncel glikoz, trend oku ve ölçüm saati</string>
+    <string name="widget_chart_description">Son ölçümlerin grafiğiyle güncel glikoz</string>
+    <string name="widget_settings_title">Widget ayarları</string>
+    <string name="widgets_title">Widget\'lar</string>
+    <string name="widgets_subtitle">Ana ekran ve kilit ekranı widget\'ları</string>
+    <string name="widgets_empty">Henüz widget eklenmedi. Ana ekranınızın widget listesinden “Glikoz” veya “Glikoz grafiği” ekleyin.</string>
+    <string name="widget_customize">Özelleştir</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Aralık renkleri</string>
+    <string name="widget_range_colors_desc">Değeri aralığının rengiyle göster</string>
+    <string name="widget_delta">Son ölçümden beri değişim</string>
+    <string name="widget_reading_time">Ölçüm saati</string>
+    <string name="widget_chart_when_tall">Yükseklik yeterliyse grafik</string>
+    <string name="widget_chart_range">Grafik süresi</string>
+    <string name="widget_hours">%1$d sa</string>
+    <string name="widget_background_none">Yok</string>
 </resources>
