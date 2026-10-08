@@ -43,6 +43,13 @@ enum class WearMessagePath(val wire: String) {
     SYNC2_OWN("/sync2/own"),
     SYNC2_REMOVE("/sync2/remove"),
     SYNC2_REQ("/sync2/req"),
+    // Both ways: snoozes, dismissals and the quiet window (AlarmSilenceSync). Under
+    // /sync2 so the existing manifest prefix delivers it; an older build logs it as
+    // unknown and drops it.
+    SYNC2_SILENCE("/sync2/silence"),
+    // A test alarm from the phone's alert settings (phone to watch), and its stop (both
+    // ways): AlarmTestSync. Under /sync2 for the same reason; an older build drops it.
+    SYNC2_ALARM_TEST("/sync2/alarmtest"),
     TOGGLES("/toggles"),
     TOGGLES_REQ("/toggles/req"),
     TOGGLES_SET("/toggles/set"),

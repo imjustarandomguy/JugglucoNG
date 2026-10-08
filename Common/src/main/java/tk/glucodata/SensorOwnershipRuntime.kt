@@ -61,6 +61,22 @@ internal fun resolvePeerGone(
     return undiscoverableForMs >= 0L && undiscoverableForMs >= graceMs
 }
 
+/**
+ * Whether the peer was on its charger, from its last report: null when that
+ * report did not say (an older build), or is older than [maxAgeMs], the same
+ * silence after which its ownership report stops counting.
+ */
+internal fun resolvePeerCharging(
+    charging: Boolean?,
+    receivedAtMs: Long,
+    nowMs: Long,
+    maxAgeMs: Long,
+): Boolean? {
+    val age = nowMs - receivedAtMs
+    if (age < 0L || age > maxAgeMs) return null
+    return charging
+}
+
 /** Whether to trust the peer's most recent "I don't own it" report yet; see [resolvePeerStandDownConfirmation]. */
 internal data class PeerStandDownConfirmation(
     /**
@@ -311,6 +327,22 @@ object SensorOwnershipRuntime {
 
     /** When discovery first came back empty; 0 while the peer is being found. */
     @Volatile private var peerUndiscoverableSince = 0L
+
+    /**
+     * Phone: the watch's charger state from its last report, and when that
+     * arrived. Where alarms ring ([tk.glucodata.alerts.AlarmRouting]) reads it
+     * through [peerCharging]. Null until a report has said, and again once the
+     * watch drops out of reach: it may have been put on its charger since.
+     */
+    private data class PeerCharging(val charging: Boolean?, val receivedAtMs: Long)
+    @Volatile private var peerChargingReport: PeerCharging? = null
+
+    /**
+     * Watch: the charger state last put on the wire, and whether it is owed
+     * again (at start, and when the phone comes back into reach) whatever it is.
+     */
+    @Volatile private var lastAnnouncedCharging: Boolean? = null
+    @Volatile private var chargingAnnounceDue = true
 
     @Volatile private var started = false
 
@@ -569,6 +601,7 @@ object SensorOwnershipRuntime {
                     peerReports.clear()
                     peerSerials.clear()
                     yieldStartedAt.clear()
+                    peerChargingReport = null
                     watchUntimedSinceMs.clear()
                     resumeReleasedSensors("WearOS companion disabled")
                 }
@@ -618,6 +651,9 @@ object SensorOwnershipRuntime {
             receivedAtMs = receivedAt,
             directReading = DirectReadingStatus.fromWire(report.directAgeMs, receivedAt),
         )
+        if (!Applic.isWearable) {
+            peerChargingReport = PeerCharging(decodeCharging(data), System.currentTimeMillis())
+        }
         if (Log.doLog) {
             Log.i(
                 LOG_ID,
@@ -731,6 +767,11 @@ object SensorOwnershipRuntime {
         // its full timeout, and doing that once per sensor would starve the tick
         // this runs on.
         var probed = false
+        // Watch: its charger state rides along, for where the phone's alarms
+        // ring. A change goes out at once, as an ownership change does.
+        val charging = if (Applic.isWearable) localCharging() else null
+        val chargingDue = Applic.isWearable && (chargingAnnounceDue || charging != lastAnnouncedCharging)
+        var announced = false
         sensors().forEach { serial ->
             val owns = holdsLiveConnection(serial)
             val newest = localReadings[key(serial)] ?: 0L
@@ -750,8 +791,9 @@ object SensorOwnershipRuntime {
                 lastReportedAtMs = lastAt,
                 nowMs = now,
             )
-            if (previous == owns && !dueForHeartbeat && !directNews) return@forEach
-            val payload = encode(serial, owns, newest, DirectReadingStatus.wireAge(direct, now))
+            if (previous == owns && !dueForHeartbeat && !directNews && !chargingDue) return@forEach
+            announced = true
+            val payload = encode(serial, owns, newest, DirectReadingStatus.wireAge(direct, now), charging)
             if (autoSwitch && !probed) {
                 probed = true
                 val delivered = MessageSender.sendSyncMessageAwait(
@@ -769,7 +811,35 @@ object SensorOwnershipRuntime {
             lastAnnouncedAt[id] = now
             lastAnnouncedDirect[id] = direct
         }
+        if (announced && Applic.isWearable) {
+            lastAnnouncedCharging = charging
+            chargingAnnounceDue = false
+        }
     }
+
+    /**
+     * Phone: whether the watch is on its charger, from its latest report, or
+     * null when that cannot be told: no report yet, a report from a build that
+     * does not say, the watch out of reach since, or a report older than the
+     * silence after which its ownership report stops counting too.
+     */
+    @JvmStatic
+    fun peerCharging(): Boolean? {
+        if (Applic.isWearable) return null
+        val report = peerChargingReport ?: return null
+        val maxAgeMs = if (autoSwitchEnabled()) AUTO_SWITCH_PEER_SILENT_AFTER_MS else PEER_SILENT_AFTER_MS
+        return resolvePeerCharging(report.charging, report.receivedAtMs, System.currentTimeMillis(), maxAgeMs)
+    }
+
+    /** Watch: whether it is on its charger (plugged in, charging or full), or null if unreadable. */
+    private fun localCharging(): Boolean? = runCatching {
+        val status = Applic.app?.registerReceiver(
+            null,
+            android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED),
+        ) ?: return@runCatching null
+        val plugged = status.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, -1)
+        if (plugged < 0) null else plugged != 0
+    }.getOrNull()
 
     private fun autoSwitchEnabled(): Boolean =
         runCatching { AutoSensorSwitch.isEnabled() }.getOrDefault(false)
@@ -819,6 +889,14 @@ object SensorOwnershipRuntime {
             peerUndiscoverableSince = 0L
         } else if (peerUndiscoverableSince == 0L) {
             peerUndiscoverableSince = System.currentTimeMillis()
+        }
+        if (reachable && Applic.isWearable) {
+            // The phone may have missed a charger change while it was away.
+            chargingAnnounceDue = true
+            executor.execute { runCatching { announce() }.onFailure { Log.stack(LOG_ID, "charging announce", it) } }
+        } else if (!reachable) {
+            // A watch out of reach may be put on its charger without a word.
+            peerChargingReport = null
         }
         executor.execute {
             runCatching { reconcile() }.onFailure { Log.stack(LOG_ID, "reachability reconcile", it) }
@@ -1122,24 +1200,56 @@ object SensorOwnershipRuntime {
 
     //   [u8 ver=1][u8 owns][u8 len][serial utf8][i64 lastReadingMs]
     //   [i64 directAgeMs]  appended later; -1 = never read it itself
+    //   [u8 status]        optional, after directAgeMs; bit 0 = on its charger
     //
-    // The appended field leaves the version alone: every build reads the fields
-    // it knows and ignores what follows them, and a report without it reads as
+    // The appended fields leave the version alone: every build reads the fields
+    // it knows and ignores what follows them, and a report without one reads as
     // "unknown". A version bump would instead have made each side drop the
     // other's reports, and with them the arbitration.
 
     private const val VERSION = 1
 
-    internal fun encode(serial: String, owns: Boolean, lastReadingMs: Long, directAgeMs: Long): ByteArray {
+    /** Bit 0 of the optional trailing status byte: the sender is on its charger. */
+    private const val STATUS_CHARGING = 0x01
+
+    /** Bytes before the trailing status byte: header, serial, lastReadingMs, directAgeMs. */
+    private fun statusOffset(serialLength: Int) = 3 + serialLength + 8 + 8
+
+    /**
+     * [charging], when known, goes in one trailing status byte after
+     * [directAgeMs]. [decodeReport] reads exactly its own fields, so a build
+     * without this byte ignores it.
+     */
+    internal fun encode(
+        serial: String,
+        owns: Boolean,
+        lastReadingMs: Long,
+        directAgeMs: Long,
+        charging: Boolean? = null,
+    ): ByteArray {
         val serialBytes = serial.toByteArray(StandardCharsets.UTF_8)
-        return ByteBuffer.allocate(1 + 1 + 1 + serialBytes.size + 8 + 8)
+        val buffer = ByteBuffer.allocate(statusOffset(serialBytes.size) + if (charging == null) 0 else 1)
             .put(VERSION.toByte())
             .put(if (owns) 1 else 0)
             .put(serialBytes.size.toByte())
             .put(serialBytes)
             .putLong(lastReadingMs)
             .putLong(directAgeMs)
-            .array()
+        if (charging != null) buffer.put(if (charging) STATUS_CHARGING.toByte() else 0)
+        return buffer.array()
+    }
+
+    /** Without a direct-reading age: sent as -1, "never read it itself". */
+    internal fun encode(serial: String, owns: Boolean, lastReadingMs: Long, charging: Boolean? = null): ByteArray =
+        encode(serial, owns, lastReadingMs, -1L, charging)
+
+    /** The trailing status byte's charger state, or null when the report has none or is not one. */
+    internal fun decodeCharging(data: ByteArray?): Boolean? {
+        val bytes = data ?: return null
+        if (decodeReport(bytes) == null) return null
+        val statusAt = statusOffset(bytes[2].toInt() and 0xFF)
+        if (bytes.size <= statusAt) return null
+        return bytes[statusAt].toInt() and STATUS_CHARGING != 0
     }
 
     /** One ownership report as read off the wire. */

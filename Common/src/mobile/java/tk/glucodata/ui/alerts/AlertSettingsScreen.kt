@@ -22,6 +22,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -173,6 +175,18 @@ fun AlertSettingsScreen(
         sameDirectionSuppressionMinutes = minutes
         AlertRepository.saveSameDirectionSuppressionMinutes(minutes)
     }
+    var alarmRouting by remember { mutableStateOf(AlertRepository.loadAlarmRouting()) }
+    fun persistAlarmRouting(mode: AlarmRoutingMode) {
+        if (mode == alarmRouting) return
+        alarmRouting = mode
+        AlertRepository.saveAlarmRouting(mode)
+    }
+    var watchAlarmStyle by remember { mutableStateOf(AlertRepository.loadWatchAlarmStyle()) }
+    fun persistWatchAlarmStyle(style: WatchAlarmStyle) {
+        if (style == watchAlarmStyle) return
+        watchAlarmStyle = style
+        AlertRepository.saveWatchAlarmStyle(style)
+    }
 
     // Collected outside the LazyColumn: the quiet-window card only exists while
     // something can be silenced, or while a window runs.
@@ -290,6 +304,18 @@ fun AlertSettingsScreen(
                     QuietWindowCard(anySound = anySound)
                     Spacer(Modifier.height(8.dp))
                 }
+            }
+
+            // Which device sounds the glucose alarms, and how the watch does: one
+            // choice of each for all of them.
+            item(key = "alarm-routing") {
+                AlarmRoutingCard(
+                    selected = alarmRouting,
+                    onSelect = { persistAlarmRouting(it) },
+                    watchStyle = watchAlarmStyle,
+                    onSelectWatchStyle = { persistWatchAlarmStyle(it) }
+                )
+                Spacer(Modifier.height(8.dp))
             }
 
             // === HIGH ALERTS SECTION ===
@@ -921,6 +947,95 @@ private fun SliderSettingsItem(
                 )
                 Spacer(Modifier.height(8.dp))
                 slider()
+            }
+        }
+    }
+}
+
+/**
+ * "Where alarms ring": the three choices, and one line saying what the chosen one does.
+ * Under it "On the watch", the same way: how the watch rings the alarms it rings.
+ */
+@Composable
+private fun AlarmRoutingCard(
+    selected: AlarmRoutingMode,
+    onSelect: (AlarmRoutingMode) -> Unit,
+    watchStyle: WatchAlarmStyle,
+    onSelectWatchStyle: (WatchAlarmStyle) -> Unit
+) {
+    val choices = listOf(
+        AlarmRoutingMode.BOTH to R.string.alarm_routing_both,
+        AlarmRoutingMode.WATCH_WHEN_CONNECTED to R.string.alarm_routing_watch,
+        AlarmRoutingMode.PHONE_ONLY to R.string.alarm_routing_phone
+    )
+    val explanation = when (selected) {
+        AlarmRoutingMode.BOTH -> R.string.alarm_routing_both_summary
+        AlarmRoutingMode.WATCH_WHEN_CONNECTED -> R.string.alarm_routing_watch_summary
+        AlarmRoutingMode.PHONE_ONLY -> R.string.alarm_routing_phone_summary
+    }
+    val watchChoices = listOf(
+        WatchAlarmStyle.SAME_AS_PHONE to R.string.watch_alarm_style_same,
+        WatchAlarmStyle.VIBRATE_ONLY to R.string.watch_alarm_style_vibrate,
+        WatchAlarmStyle.SOUND_AND_VIBRATION to R.string.watch_alarm_style_sound,
+        WatchAlarmStyle.SCREEN_ONLY to R.string.watch_alarm_style_screen
+    )
+    val watchExplanation = when (watchStyle) {
+        WatchAlarmStyle.SAME_AS_PHONE -> R.string.watch_alarm_style_same_summary
+        WatchAlarmStyle.VIBRATE_ONLY -> R.string.watch_alarm_style_vibrate_summary
+        WatchAlarmStyle.SOUND_AND_VIBRATION -> R.string.watch_alarm_style_sound_summary
+        WatchAlarmStyle.SCREEN_ONLY -> R.string.watch_alarm_style_screen_summary
+    }
+    SliderSettingsItem(
+        title = stringResource(R.string.alarm_routing_title),
+        subtitle = stringResource(explanation),
+        icon = Icons.Filled.Watch,
+        position = SettingsItemPosition.SINGLE
+    ) {
+        RadioChoiceRows(choices = choices, selected = selected, onSelect = onSelect)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            text = stringResource(R.string.watch_alarm_style_title),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = stringResource(watchExplanation),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(8.dp))
+        RadioChoiceRows(choices = watchChoices, selected = watchStyle, onSelect = onSelectWatchStyle)
+    }
+}
+
+/** One radio row per choice, its label a string resource. */
+@Composable
+private fun <T> RadioChoiceRows(
+    choices: List<Pair<T, Int>>,
+    selected: T,
+    onSelect: (T) -> Unit
+) {
+    Column(Modifier.selectableGroup()) {
+        choices.forEach { (choice, label) ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = choice == selected,
+                        onClick = { onSelect(choice) },
+                        role = androidx.compose.ui.semantics.Role.RadioButton
+                    )
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = choice == selected, onClick = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

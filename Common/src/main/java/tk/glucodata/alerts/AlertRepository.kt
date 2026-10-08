@@ -22,6 +22,8 @@ object AlertRepository {
     private const val KEY_SAME_DIRECTION_SUPPRESSION_MINUTES = "same_direction_suppression_min"
     private const val KEY_ACKNOWLEDGED_HIGH_COVERAGE = "acknowledged_high_coverage"
     private const val KEY_RETURN_TO_PREVIOUS_APP_AFTER_ALARM = "alarm_return_to_previous_app"
+    private const val KEY_ALARM_ROUTING = "alarm_routing"
+    private const val KEY_WATCH_ALARM_STYLE = "watch_alarm_style"
     @Volatile
     private var hiddenLegacyAlertCleanupDone = false
     @Volatile
@@ -240,6 +242,8 @@ object AlertRepository {
         prefs.edit {
             putInt(KEY_SAME_DIRECTION_SUPPRESSION_MINUTES, sanitizeSameDirectionSuppressionMinutes(minutes))
         }
+        // The watch evaluates with it too ([AlertConfigSync]'s global line).
+        runCatching { tk.glucodata.WearToggleSync.push() }
     }
 
     /** Whether acknowledged rising-side alerts may cover HIGH during the quiet period. */
@@ -254,10 +258,70 @@ object AlertRepository {
         prefs.edit {
             putBoolean(KEY_ACKNOWLEDGED_HIGH_COVERAGE, enabled)
         }
+        runCatching { tk.glucodata.WearToggleSync.push() }
     }
 
     private fun sanitizeSameDirectionSuppressionMinutes(minutes: Int): Int {
         return minutes.coerceIn(0, AlertDefaults.SAME_DIRECTION_SUPPRESSION_MAX_MINUTES)
+    }
+
+    /**
+     * Where glucose alarms ring ([AlarmRouting]). A value this build cannot
+     * read, from a newer phone say, reads as BOTH: both devices ring.
+     */
+    fun loadAlarmRouting(): AlarmRoutingMode {
+        return parseEnumPref(prefs.getString(KEY_ALARM_ROUTING, null), AlarmRoutingMode.BOTH)
+    }
+
+    fun saveAlarmRouting(mode: AlarmRoutingMode) {
+        prefs.edit {
+            putString(KEY_ALARM_ROUTING, mode.name)
+        }
+        runCatching { tk.glucodata.WearToggleSync.push() }
+    }
+
+    /**
+     * How the watch rings the alarms it rings ([WatchAlarmStyle]). A value this
+     * build cannot read, or none, reads as SAME_AS_PHONE: each alert's own
+     * sound and vibration.
+     */
+    fun loadWatchAlarmStyle(): WatchAlarmStyle {
+        return parseEnumPref(prefs.getString(KEY_WATCH_ALARM_STYLE, null), WatchAlarmStyle.SAME_AS_PHONE)
+    }
+
+    fun saveWatchAlarmStyle(style: WatchAlarmStyle) {
+        prefs.edit {
+            putString(KEY_WATCH_ALARM_STYLE, style.name)
+        }
+        runCatching { tk.glucodata.WearToggleSync.push() }
+    }
+
+    /** The shared settings the watch mirrors through [AlertConfigSync]'s global line. */
+    fun loadGlobalSettings(): GlobalAlertSettings = GlobalAlertSettings(
+        alarmRouting = loadAlarmRouting(),
+        sameDirectionSuppressionMinutes = loadSameDirectionSuppressionMinutes(),
+        acknowledgedHighCoverage = loadAcknowledgedHighCoverageEnabled(),
+        watchAlarmStyle = loadWatchAlarmStyle(),
+    )
+
+    /** Stores all of [settings] at once: the watch, applying what the phone sent. */
+    fun saveGlobalSettings(settings: GlobalAlertSettings) {
+        prefs.edit { writeGlobalEntries(settings, this) }
+        runCatching { tk.glucodata.WearToggleSync.push() }
+    }
+
+    /**
+     * Every key [saveGlobalSettings] stores, written to [editor]: the one list
+     * of them, which the watch sync records instead of keeping its own.
+     */
+    internal fun writeGlobalEntries(settings: GlobalAlertSettings, editor: SharedPreferences.Editor) {
+        editor.putString(KEY_ALARM_ROUTING, settings.alarmRouting.name)
+        editor.putInt(
+            KEY_SAME_DIRECTION_SUPPRESSION_MINUTES,
+            sanitizeSameDirectionSuppressionMinutes(settings.sameDirectionSuppressionMinutes)
+        )
+        editor.putBoolean(KEY_ACKNOWLEDGED_HIGH_COVERAGE, settings.acknowledgedHighCoverage)
+        editor.putString(KEY_WATCH_ALARM_STYLE, settings.watchAlarmStyle.name)
     }
 
     /** After a full-screen alarm is dismissed or snoozed, return to the app that was open (default) instead of opening JugglucoNG. */
@@ -760,6 +824,16 @@ object AlertRepository {
         readSource.set(source)
         try {
             return loadFromPrefs(type, AlertDefaults.defaultConfig(type, isMmol))
+        } finally {
+            readSource.remove()
+        }
+    }
+
+    /** The shared settings as [source] holds them, through the readers [loadGlobalSettings] uses. */
+    internal fun readGlobalSettings(source: SharedPreferences): GlobalAlertSettings {
+        readSource.set(source)
+        try {
+            return loadGlobalSettings()
         } finally {
             readSource.remove()
         }

@@ -100,6 +100,22 @@ object AlertStateTracker {
     }
 
     /**
+     * A firing the other device sounds ([AlarmRouting]): spends the episode and
+     * its rearm cooldown here as [onAlertTriggered] does, so this device does
+     * not ring for it later, when the other one drops out of reach say. Arms no
+     * SMS watchdog: nothing shown here can be acknowledged here.
+     */
+    @Synchronized
+    fun onAlertHeld(type: AlertType, config: AlertConfig? = null) {
+        if (manualTests.isActive(type)) {
+            return
+        }
+        dismissedAlerts.remove(type)
+        lastTriggerTime[type] = System.currentTimeMillis()
+        cooldownUntilTime[type] = lastTriggerTime.getValue(type) + effectiveRearmCooldownMs(config)
+    }
+
+    /**
      * The rearm cooldown after a firing. The configured minimum re-arm
      * interval (forecast alerts) extends the built-in short cooldown, never
      * shortens it; unset/0 keeps today's behaviour.
@@ -109,9 +125,30 @@ object AlertStateTracker {
         return maxOf(DEFAULT_REARM_COOLDOWN_MS, configuredMs)
     }
 
+    // Set while a dismissal from the other device runs through the one below.
+    private var dismissingFromPeer = false
+
+    /**
+     * A person dismissed [type]'s alarm on the other device ([AlarmSilenceSync]):
+     * this device takes it as its own dismissal, through the same path, and does
+     * not send it back.
+     */
+    @Synchronized
+    fun onAlertDismissed(type: AlertType, fromPeer: Boolean): Boolean {
+        if (!fromPeer) return onAlertDismissed(type)
+        dismissingFromPeer = true
+        try {
+            return onAlertDismissed(type)
+        } finally {
+            dismissingFromPeer = false
+        }
+    }
+
     @Synchronized
     fun onAlertDismissed(type: AlertType): Boolean {
         if (manualTests.consumeAction(type)) {
+            // A test alarm: nothing to record, but the test stops on the other device too.
+            if (!dismissingFromPeer) AlarmTestSync.onLocalTestStopped(type)
             return false
         }
         dismissedAlerts.add(type)
@@ -120,13 +157,27 @@ object AlertStateTracker {
         // Acknowledged: a quiet window's silenced episode must not break through now.
         QuietWindow.clearSilencedEpisode(type.id)
         Log.i(LOG_ID, "Dismissed ${type.name} for current episode")
+        // The same alarm stops on the other device; one it dismissed is not sent back.
+        if (!dismissingFromPeer) AlarmSilenceSync.onLocalDismiss(type)
         return true
     }
 
+    /** A snooze of [type]'s alarm: true, and nothing snoozed, when that alarm is a test. */
     @Synchronized
     fun consumeManualTestAction(type: AlertType): Boolean {
-        return manualTests.consumeAction(type)
+        if (!manualTests.consumeAction(type)) return false
+        // The test stops on the other device too ([AlarmTestSync]).
+        AlarmTestSync.onLocalTestStopped(type)
+        return true
     }
+
+    /**
+     * The other device stopped the test alarm of [type] ([AlarmTestSync]): it ends here
+     * as a dismissal of it here would, recording nothing and sending nothing back. False
+     * when no test of [type] is on here: a real alarm took over, or it was answered here.
+     */
+    @Synchronized
+    fun endManualTestFromPeer(type: AlertType): Boolean = manualTests.consumeAction(type)
 
     @Synchronized
     fun isWaitingForRearmCooldown(type: AlertType): Boolean {
@@ -146,6 +197,14 @@ object AlertStateTracker {
     /** True once [onAlertDismissed] took this episode, until [resetState]. */
     @Synchronized
     fun isDismissed(type: AlertType): Boolean = type in dismissedAlerts
+
+    /**
+     * When the running episode first fired, or was held for the other device; 0 with
+     * none. A dismissal from the other device reaches only an episode that started
+     * before it ([AlarmSilencePolicy.dismissApplies]).
+     */
+    @Synchronized
+    fun episodeStartedAtMs(type: AlertType): Long = lastTriggerTime[type] ?: 0L
 
     /** Whether the last real firing was acknowledged for the cross-family quiet period. */
     @Synchronized
