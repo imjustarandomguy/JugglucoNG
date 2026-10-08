@@ -270,8 +270,7 @@ model was empty again ("Computed drain: 0").
 - **Watch NG** (`u0a228`): 215 G7 sessions (every reading), CPU 1 min 21 s user +
   1 min 11 s system (about 8.5 s/h, as run 3); `Dexcom` 10 min 15 s, `DexcomRearm`
   21 min 52 s (same ~6 s each; same fix).
-- **The phone read 187 sessions to the watch's 215 (about 13 % fewer)**, mostly at night;
-  the battery history hints at a 75-minute stretch 01:32–02:47 without a phone session
-  (history lines are not a complete record). No data was lost (the watch's readings
-  sync to the phone). Possibly the background autoConnect missing the G7's advertising
-  window in deep doze (review #14). Check with trace.log after the next build.
+- **Both devices read every session.** trace.log shows 216 phone sessions (216 handshakes and
+  service discoveries, no gap over 7 min). The wake-lock count (187) is lower because
+  overlapping acquisitions count once, and gaps in the battery history were an artifact
+  of how it records wake locks: count sessions from trace.log, not from batterystats.
