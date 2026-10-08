@@ -3,6 +3,37 @@
 Hand-off notes for the next session. Read [BUILD.md](BUILD.md) first for the
 setup and branch model. Paths are relative to `Common/src/`.
 
+## Where things stand (2026-10-08 evening) — start here
+
+- **Installed on both devices (17:14–17:15):** `personal` at e98dfdf4d (1.2.3-Alpha):
+  upstream synced to b8f3e2e3b, every fix from the two reviews ([REVIEW.md](REVIEW.md),
+  [REVIEW-COPILOT.md](REVIEW-COPILOT.md); what changed: [REVIEW-FIXES.md](REVIEW-FIXES.md),
+  rounds 1 and 2), the Now Bar dropped. Unit tests: no new failures (7827 run, 92 failing
+  = 70 baseline + 22 machine-only; run them only with `scripts/personal/test.sh`). After
+  the install both devices read the G7 (phone again from 17:22, see item 7); the phone
+  has one GATT client left (the leak fix works). Logging (trace.log) still on.
+- **Friday ~2026-10-10, sensor change:** pair the new G7 on the PHONE first. The phone's
+  fresh-pairing path is main's again (review #10); never tested on a device. Then check
+  the new-sensor handoff to the watch (also untested at a sensor change). Bring adb and
+  trace.log if anything goes wrong.
+- **To try on the devices** (nothing below has been device-tested): the alarm settings
+  save bar + "Unsaved alarm changes" notification; Persistent low after a dismissed Very
+  low; shared quiet window start-then-cancel within seconds on either device; the insulin
+  reminder's Log button and "Not logged: this insulin changed"; quick entry save errors;
+  Nightscout uploads after an edit/delete of a received treatment; Health Connect import
+  (no re-uploads of unchanged activities); widgets (resize, settings, screen-off); the
+  pill's details card staying current while open; watch complication arrow vs phone; chart
+  dots/limits/height; the pill's four next-reading styles (**pick one**; then remove the
+  temporary picker).
+- **Open, not started:** items 7–10 at the end of "To do" (phone stands down after its own
+  restart; 0.1 value gap phone/watch; chart right edge a day ahead; dashboard page hard to
+  scroll), the gaps listed at the end of REVIEW-FIXES.md, and upstream preparation per PR
+  (REVIEW.md section 2–3; owner's choice: later, branch by branch).
+- **Battery:** run 4 in [BATTERY.md](BATTERY.md) (NG on the phone 1.7 mAh/h over a day, no
+  widget sessions any more). Next run: test the watch reset hypothesis noted there.
+- **Around 2026-10-14:** check trace.log for `FloatingGlucose: pill behind:` lines; none →
+  remove the repair part of `FloatingPillWatchdog` (see below), then turn logging off.
+
 ## Status (2026-10-06)
 
 In `personal`, built, installed and verified on the owner's devices:
