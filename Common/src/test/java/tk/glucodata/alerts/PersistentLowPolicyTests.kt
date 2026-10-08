@@ -31,9 +31,18 @@ class PersistentLowPolicyTests {
         riseRateSuppress = riseRateSuppress
     )
 
-    /** Feeds readings through the policy, threading its state like the runtime does. */
-    private class Run(val config: AlertConfig, val isMmol: Boolean = true) {
+    /**
+     * Feeds readings through the policy, threading its state like the runtime
+     * does. With [stored], an episode's start comes from those readings before
+     * the current one, then the current one, as [EpisodeHistory.load] hands them over.
+     */
+    private class Run(
+        val config: AlertConfig,
+        val isMmol: Boolean = true,
+        val stored: List<StoredReading>? = null
+    ) {
         var state = PersistentLowState()
+        var historyReads = 0
         lateinit var last: PersistentLowDecision
 
         fun reading(
@@ -53,7 +62,14 @@ class PersistentLowPolicyTests {
                 readingTimeMs = atMs,
                 rate = rate,
                 veryLowActive = veryLowActive,
-                snoozed = snoozed
+                snoozed = snoozed,
+                historyStartMs = {
+                    historyReads++
+                    stored?.let { readings ->
+                        val upToNow = readings.filter { it.timeMs < atMs } + StoredReading(atMs, value!!)
+                        PersistentLowPolicy.startFromHistory(upToNow, config, isMmol)?.startedAtMs
+                    } ?: 0L
+                }
             )
             state = last.state
             return last.action
@@ -319,6 +335,124 @@ class PersistentLowPolicyTests {
         run.reading(t0, 3.5f)
         run.reading(t0 + 5 * minute, 3.5f)
         assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 10 * minute, 3.5f))
+    }
+
+    /**
+     * The evening behind the stored start (3.9 with a 0.6 margin, 15 min): one G7
+     * reading every 5 minutes from 19:22:41 ([t0]) to 19:57:41. The alarm was
+     * edited at 19:45:53. The phone then counted from its last reading, 19:42:41,
+     * and rang at 19:57:41; the watch got the setting while asleep, counted from
+     * 19:47:41 and was due at 20:02:41, when the value was back at the line.
+     */
+    private val tonight = listOf(3.67f, 3.61f, 3.5f, 3.5f, 3.44f, 3.56f, 3.67f, 3.78f)
+        .mapIndexed { i, value -> StoredReading(t0 + i * 5 * minute, value) }
+
+    @Test
+    fun phoneAndWatchCountFromTheSameStoredStart() {
+        val config = mmolConfig(rearmMargin = 0.6f)
+        assertEquals(EpisodeStart(t0, 5), PersistentLowPolicy.startFromHistory(tonight.take(5), config, isMmol = true))
+        // Phone: the 15 s check after the edit, on the 19:42:41 reading.
+        val phone = Run(config, stored = tonight)
+        assertEquals(PersistentLowAction.FIRE, phone.reading(tonight[4].timeMs, tonight[4].value))
+        // Watch: its first look, on the 19:47:41 reading.
+        val watch = Run(config, stored = tonight)
+        assertEquals(PersistentLowAction.FIRE, watch.reading(tonight[5].timeMs, tonight[5].value))
+        // Both count from 19:22:41, low for longer than 15 minutes already, so
+        // both ring at that check instead of a fresh 15 minutes later.
+        assertEquals(t0, phone.state.startedAtMs)
+        assertEquals(t0, watch.state.startedAtMs)
+        // A restart in the middle of the low finds the same start.
+        val restarted = Run(config, stored = tonight)
+        restarted.reading(tonight[7].timeMs, tonight[7].value)
+        assertEquals(t0, restarted.state.startedAtMs)
+    }
+
+    @Test
+    fun aStoredRecoveryEndsTheWalk() {
+        val config = mmolConfig(rearmMargin = 0.6f)
+        // 4.5 = 3.9 + 0.6 at 19:37:41: the low counts from 19:42:41.
+        val recovered = tonight.mapIndexed { i, reading -> if (i == 3) reading.copy(value = 4.5f) else reading }
+        val run = Run(config, stored = recovered)
+        assertEquals(PersistentLowAction.WAIT, run.reading(recovered[5].timeMs, recovered[5].value))
+        assertEquals(recovered[4].timeMs, run.state.startedAtMs)
+        // 4.4 is in the band, not a recovery: the low goes on back to 19:22:41.
+        val inBand = tonight.mapIndexed { i, reading -> if (i == 3) reading.copy(value = 4.4f) else reading }
+        assertEquals(EpisodeStart(t0, 6), PersistentLowPolicy.startFromHistory(inBand.take(6), config, isMmol = true))
+    }
+
+    @Test
+    fun storedReadingsInTheBandDoNotStartTheEpisode() {
+        val config = mmolConfig(rearmMargin = 0.6f)
+        // Recovered, hovering in the band, then the first reading below.
+        val stored = listOf(4.6f, 4.0f, 4.2f, 3.8f).mapIndexed { i, value -> StoredReading(t0 + i * 5 * minute, value) }
+        assertEquals(EpisodeStart(t0 + 15 * minute, 3), PersistentLowPolicy.startFromHistory(stored, config, isMmol = true))
+        assertNull(PersistentLowPolicy.startFromHistory(stored.take(3), config, isMmol = true))
+    }
+
+    @Test
+    fun storedStartInMgdl() {
+        val config = AlertConfig(
+            type = AlertType.PERSISTENT_LOW, enabled = true, threshold = 70f,
+            durationMinutes = 15, rearmMargin = 3f
+        )
+        // 73 = 70 + 3 has recovered, 71 and 72 are the band, 68 starts the low.
+        val stored = listOf(80f, 73f, 72f, 68f, 71f, 66f, 64f)
+            .mapIndexed { i, value -> StoredReading(t0 + i * 5 * minute, value) }
+        assertEquals(EpisodeStart(t0 + 15 * minute, 5), PersistentLowPolicy.startFromHistory(stored, config, isMmol = false))
+        // 64 is 15 minutes after 68: due on its first look.
+        val run = Run(config, isMmol = false, stored = stored)
+        assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 30 * minute, 64f))
+        assertEquals(t0 + 15 * minute, run.state.startedAtMs)
+    }
+
+    @Test
+    fun theHistoryIsReadOnlyWhenAnEpisodeStarts() {
+        // Off, outside its hours, or in the band without an episode: nothing starts.
+        val off = Run(mmolConfig(enabled = false), stored = tonight)
+        off.reading(t0, 3.5f)
+        off.reading(t0 + 5 * minute, 3.5f, activeNow = false)
+        assertEquals(0, off.historyReads)
+
+        val run = Run(mmolConfig(durationMinutes = 15), stored = emptyList())
+        run.reading(t0, 4.0f)
+        assertEquals(0, run.historyReads)
+        run.reading(t0 + 5 * minute, 3.7f)
+        assertEquals(1, run.historyReads)
+        // Neither the 15 s checks nor the episode's later readings read it again.
+        repeat(20) { run.reading(t0 + 5 * minute, 3.7f) }
+        run.reading(t0 + 10 * minute, 4.0f)
+        run.reading(t0 + 15 * minute, 3.6f)
+        assertEquals(1, run.historyReads)
+        // A recovery ends the episode; the next low reads it once more.
+        run.reading(t0 + 20 * minute, 4.5f)
+        run.reading(t0 + 25 * minute, 3.6f)
+        assertEquals(2, run.historyReads)
+    }
+
+    @Test
+    fun aStoredStartThatIsNotEarlierIsIgnored() {
+        listOf(0L, t0, t0 + minute).forEach { storedStartMs ->
+            val decision = PersistentLowPolicy.decide(
+                state = PersistentLowState(),
+                config = mmolConfig(),
+                isMmol = true,
+                activeNow = true,
+                value = 3.7f,
+                readingTimeMs = t0,
+                rate = 0f,
+                veryLowActive = false,
+                snoozed = false,
+                historyStartMs = { storedStartMs }
+            )
+            assertEquals(t0, decision.state.startedAtMs)
+        }
+    }
+
+    @Test
+    fun aStoredStartStillHoldsForALiveVeryLow() {
+        val run = Run(mmolConfig(rearmMargin = 0.6f), stored = tonight)
+        assertEquals(PersistentLowAction.HOLD, run.reading(tonight[4].timeMs, tonight[4].value, veryLowActive = true))
+        assertEquals(t0, run.state.startedAtMs)
     }
 
     @Test
