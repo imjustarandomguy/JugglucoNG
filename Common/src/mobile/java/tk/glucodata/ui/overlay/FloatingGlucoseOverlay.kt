@@ -65,9 +65,6 @@ import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.UiRefreshBus
 
-/** How often a current reading is rechecked for staleness. */
-private const val STALE_RECHECK_MS = 30_000L
-
 /**
  * A stale reading on the pill: its last value stays, dimmed, beside the next-reading
  * bar's amber; "---" is only for no value at all. Pure, see the tests.
@@ -207,8 +204,9 @@ fun FloatingGlucoseOverlay(
 
     // The overlay only recomposes on new data, so once readings stop nothing would
     // ever notice the last one aging out. Re-read the clock until it crosses the
-    // same timeout the widget and dashboard use, then show the no-data state.
-    val latestReadingMillis = maxOf(currentSnapshot?.timeMillis ?: 0L, glucosePoint?.timestamp ?: 0L)
+    // same timeout the widget and dashboard use; the reading then stays, dimmed.
+    // This is the pill's only freshness clock.
+    val latestReadingMillis = reading.readingTime
     val freshnessNow by produceState(System.currentTimeMillis(), latestReadingMillis) {
         while (true) {
             value = System.currentTimeMillis()
@@ -216,8 +214,9 @@ fun FloatingGlucoseOverlay(
             delay(wait)
         }
     }
-    // Every layout (pill, side and top island) reads value and arrow from this.
-    val displayPoint = overlayDisplayPoint(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
+    // Every layout (pill, side and top island) dims value and arrow by this; the range
+    // colours and the time to the next reading follow it too.
+    val isStale = !overlayReadingIsFresh(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
 
     // View Mode & Calibration
     val viewData = remember(currentSnapshot, glucosePoint, currentSensorId) {
@@ -407,7 +406,8 @@ fun FloatingGlucoseOverlay(
         onOpenApp()
     }
 
-    val displayValues = displayPoint?.let { point ->
+    // A stale reading keeps its value (dimmed below); "---" is only for no reading at all.
+    val displayValues = glucosePoint?.let { point ->
         val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
         currentSnapshot?.displayValues ?: run {
             val isRawModeForCal = viewMode == 1 || viewMode == 3
@@ -427,21 +427,6 @@ fun FloatingGlucoseOverlay(
 
     // Range colours (the app-wide setting) only while the reading is current.
     // A filled pill is dark in either theme, so it takes the dark-theme shades.
-    val readingTime = glucosePoint?.timestamp ?: 0L
-    var isFreshReading by remember(readingTime) {
-        mutableStateOf(readingTime > 0L && System.currentTimeMillis() - readingTime <= Notify.glucosetimeout)
-    }
-    LaunchedEffect(readingTime) {
-        // Short steps against the wall clock: delay() pauses while the device sleeps.
-        while (isFreshReading) {
-            val untilStale = readingTime + Notify.glucosetimeout - System.currentTimeMillis()
-            if (untilStale <= 0L) {
-                isFreshReading = false
-            } else {
-                kotlinx.coroutines.delay(minOf(untilStale, STALE_RECHECK_MS))
-            }
-        }
-    }
     val paletteRevision = GlucosePaletteState.revision
     val primaryValue = displayValues?.primaryValue
     // The value's range colour, whether or not the value is drawn in it: the time to the
@@ -467,7 +452,7 @@ fun FloatingGlucoseOverlay(
             )
         }
     }
-    val valueColor = if (!isFreshReading || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
+    val valueColor = if (isStale || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
 
     // Time to the next reading: a bar along the pill's bottom edge (its long inner side on
     // an upright island) or its outline, drawn on its clipped background, or a ring around
@@ -475,7 +460,6 @@ fun FloatingGlucoseOverlay(
     val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
         Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
     }
-    val isStale = !isFreshReading
     val hasArrow = showArrow && glucosePoint != null
     val nextReading = nextReadingIndicator(
         enabled = showNextReading,
@@ -1038,21 +1022,23 @@ internal fun nextOverlayFreshnessCheckDelay(
 }
 
 /**
- * The point the overlay may show at [nowMillis]: the latest one while it is within
- * the widget/dashboard freshness window, null (the no-data state) once it is not.
+ * Whether the overlay's reading is current at [nowMillis]: within the widget/dashboard
+ * freshness window, counted from the newer of [latestPoint] and the current value's
+ * [snapshotMillis]. False without a reading. A reading that is not current stays on
+ * the pill, dimmed (FloatingStaleValue), with a late next-reading indicator.
  */
-internal fun overlayDisplayPoint(
+internal fun overlayReadingIsFresh(
     latestPoint: GlucosePoint?,
     snapshotMillis: Long,
     nowMillis: Long,
     freshnessWindowMillis: Long = Notify.glucosetimeout
-): GlucosePoint? {
-    val isFresh = DisplayDataState.resolve(
+): Boolean {
+    if (latestPoint == null) return false
+    return DisplayDataState.resolve(
         sensorPresent = true,
         currentTimestampMillis = snapshotMillis,
-        latestHistoryTimestampMillis = latestPoint?.timestamp ?: 0L,
+        latestHistoryTimestampMillis = latestPoint.timestamp,
         freshnessWindowMillis = freshnessWindowMillis,
         nowMillis = nowMillis
     ).isFresh
-    return latestPoint?.takeIf { isFresh }
 }
