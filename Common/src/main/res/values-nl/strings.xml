@@ -2936,4 +2936,21 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
         <item quantity="one">%d item</item>
         <item quantity="other">%d items</item>
     </plurals>
+    <string name="floating_tap_details">Details bij tikken</string>
+    <string name="floating_tap_details_desc">Tikken toont de grafiek en details</string>
+    <string name="floating_details_opacity_percent">Achtergronddekking details: %1$d%%</string>
+    <string name="floating_next_reading">Tijd tot volgende meting</string>
+    <string name="floating_next_reading_desc">Een balk onderaan vult zich tot de volgende meting</string>
+    <string name="floating_next_reading_style">Stijl van de indicator</string>
+    <string name="floating_next_reading_style_bar">Dunne balk</string>
+    <string name="floating_next_reading_style_colored_bar">Gekleurde balk</string>
+    <string name="floating_next_reading_style_outline">Omtrek</string>
+    <string name="floating_next_reading_style_arrow_ring">Ring om de pijl</string>
+    <string name="floating_above_status_bar">Boven de statusbalk</string>
+    <string name="floating_above_status_bar_desc">Blijft aantikbaar boven de statusbalk</string>
+    <string name="floating_accessibility_service_off">Zet ‘%1$s’ aan in de toegankelijkheidsinstellingen</string>
+    <string name="floating_accessibility_service_label">JugglucoNG zwevende glucose</string>
+    <string name="floating_accessibility_service_desc">Maakt de zwevende glucose boven de statusbalk aantikbaar. Leest het scherm niet.</string>
+    <string name="floating_mirrored">Indeling spiegelen</string>
+    <string name="floating_mirrored_desc">Eerst de pijl, dan de waarde</string>
 </resources>

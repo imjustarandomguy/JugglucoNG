@@ -2921,4 +2921,21 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
         <item quantity="one">%d kayıt</item>
         <item quantity="other">%d kayıt</item>
     </plurals>
+    <string name="floating_tap_details">Dokununca ayrıntılar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir</string>
+    <string name="floating_details_opacity_percent">Ayrıntılar arka plan opaklığı: %1$d%%</string>
+    <string name="floating_next_reading">Sonraki ölçüme kalan süre</string>
+    <string name="floating_next_reading_desc">Alttaki çubuk sonraki ölçüme kadar dolar</string>
+    <string name="floating_next_reading_style">Gösterge stili</string>
+    <string name="floating_next_reading_style_bar">İnce çubuk</string>
+    <string name="floating_next_reading_style_colored_bar">Renkli çubuk</string>
+    <string name="floating_next_reading_style_outline">Dış çizgi</string>
+    <string name="floating_next_reading_style_arrow_ring">Okun etrafında halka</string>
+    <string name="floating_above_status_bar">Durum çubuğunun üstünde</string>
+    <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunulabilir</string>
+    <string name="floating_accessibility_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın</string>
+    <string name="floating_accessibility_service_label">JugglucoNG yüzen glikoz</string>
+    <string name="floating_accessibility_service_desc">Yüzen glikozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekranı okumaz.</string>
+    <string name="floating_mirrored">Düzeni aynala</string>
+    <string name="floating_mirrored_desc">Önce ok, sonra değer</string>
 </resources>

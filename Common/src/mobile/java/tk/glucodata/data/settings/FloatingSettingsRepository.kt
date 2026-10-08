@@ -15,6 +15,8 @@ class FloatingSettingsRepository(context: Context) {
     // Keys
     companion object {
         const val KEY_ENABLED = "floating_glucose_enabled"
+        const val KEY_TAP_DETAILS = "floating_tap_details" // true = tap shows details, long press opens the app
+        const val KEY_DETAILS_OPACITY = "floating_details_opacity" // Float 0..1, the details card's background
         const val KEY_TRANSPARENT = "floating_transparent" // true = transparent, false = filled
         const val KEY_SHOW_SECONDARY = "floating_show_secondary"
         const val KEY_FONT_SOURCE = "floating_font_source" // "APP" or "SYSTEM"
@@ -26,13 +28,21 @@ class FloatingSettingsRepository(context: Context) {
         const val KEY_CORNER_RADIUS = "floating_corner_radius" // Float dp
         const val KEY_OPACITY = "floating_opacity" // Float 0..1
         const val KEY_DYNAMIC_ISLAND = "floating_dynamic_island"
+        const val KEY_ABOVE_STATUS_BAR = "floating_above_status_bar" // drawn as an accessibility overlay
         const val KEY_ISLAND_VERTICAL_OFFSET = "floating_island_vertical_offset"
         const val KEY_ISLAND_GAP = "floating_island_gap"
         const val KEY_NOTIFICATION_DOT = "floating_notification_dot"
         const val KEY_SUBTLE_OUTLINE = "floating_subtle_outline"
+        const val KEY_MIRRORED = "floating_mirrored" // true = arrow first, value second
+        const val KEY_NEXT_READING = "floating_next_reading" // bar to the next reading along the bottom
+        // Temporary, while its styles are tried: how the time to the next reading is drawn,
+        // a FloatingNextReadingStyle name ("CURRENT" by default). Goes once one is chosen.
+        const val KEY_NEXT_READING_STYLE = "floating_next_reading_style"
 
         const val DEFAULT_FONT_SIZE = 14f
         const val DEFAULT_BACKGROUND_OPACITY = 1.0f
+        // The details card's background from before it could be set (alpha 0xF2).
+        const val DEFAULT_DETAILS_OPACITY = 0.95f
         const val DEFAULT_ISLAND_VERTICAL_OFFSET = 8f
     }
 
@@ -46,6 +56,8 @@ class FloatingSettingsRepository(context: Context) {
     
     // Implementation: Flow that emits on preference change
     val isEnabled: Flow<Boolean> = prefFlow(KEY_ENABLED, false)
+    val tapShowsDetails: Flow<Boolean> = prefFlow(KEY_TAP_DETAILS, true)
+    val detailsOpacity: Flow<Float> = prefFlow(KEY_DETAILS_OPACITY, DEFAULT_DETAILS_OPACITY)
     val isTransparent: Flow<Boolean> = prefFlow(KEY_TRANSPARENT, false)
     val showSecondary: Flow<Boolean> = prefFlow(KEY_SHOW_SECONDARY, false)
     val fontSource: Flow<String> = prefFlow(KEY_FONT_SOURCE, "APP")
@@ -55,20 +67,32 @@ class FloatingSettingsRepository(context: Context) {
     val cornerRadius: Flow<Float> = prefFlow(KEY_CORNER_RADIUS, 28f)
     val backgroundOpacity: Flow<Float> = prefFlow(KEY_OPACITY, DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIslandEnabled: Flow<Boolean> = prefFlow(KEY_DYNAMIC_ISLAND, false)
+    val isAboveStatusBar: Flow<Boolean> = prefFlow(KEY_ABOVE_STATUS_BAR, false)
     val islandVerticalOffset: Flow<Float> = prefFlow(KEY_ISLAND_VERTICAL_OFFSET, DEFAULT_ISLAND_VERTICAL_OFFSET)
     val islandGap: Flow<Float> = prefFlow(KEY_ISLAND_GAP, 0f) // 0 implies auto/default
     val showNotificationDot: Flow<Boolean> = prefFlow(KEY_NOTIFICATION_DOT, true)
     val useSubtleOutline: Flow<Boolean> = prefFlow(KEY_SUBTLE_OUTLINE, false)
+    val isMirrored: Flow<Boolean> = prefFlow(KEY_MIRRORED, false)
+    val showNextReading: Flow<Boolean> = prefFlow(KEY_NEXT_READING, true)
+    val nextReadingStyle: Flow<String> = prefFlow(KEY_NEXT_READING_STYLE, "CURRENT")
+    /** The app-wide "colour value by range" setting. */
+    val valueRangeColors: Flow<Boolean> = prefFlow(tk.glucodata.GlucoseValueTone.PREF_VALUE_RANGE_COLORS, false)
 
 
 
     fun setEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
+    fun setTapShowsDetails(show: Boolean) = prefs.edit().putBoolean(KEY_TAP_DETAILS, show).apply()
+    fun setDetailsOpacity(opacity: Float) = prefs.edit().putFloat(KEY_DETAILS_OPACITY, opacity).apply()
     fun setTransparent(transparent: Boolean) = prefs.edit().putBoolean(KEY_TRANSPARENT, transparent).apply()
     fun setDynamicIslandEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND, enabled).apply()
+    fun setAboveStatusBar(above: Boolean) = prefs.edit().putBoolean(KEY_ABOVE_STATUS_BAR, above).apply()
     fun setIslandVerticalOffset(offset: Float) = prefs.edit().putFloat(KEY_ISLAND_VERTICAL_OFFSET, offset).apply()
     fun setIslandGap(gap: Float) = prefs.edit().putFloat(KEY_ISLAND_GAP, gap).apply()
     fun setShowNotificationDot(show: Boolean) = prefs.edit().putBoolean(KEY_NOTIFICATION_DOT, show).apply()
     fun setUseSubtleOutline(use: Boolean) = prefs.edit().putBoolean(KEY_SUBTLE_OUTLINE, use).apply()
+    fun setMirrored(mirrored: Boolean) = prefs.edit().putBoolean(KEY_MIRRORED, mirrored).apply()
+    fun setShowNextReading(show: Boolean) = prefs.edit().putBoolean(KEY_NEXT_READING, show).apply()
+    fun setNextReadingStyle(style: String) = prefs.edit().putString(KEY_NEXT_READING_STYLE, style).apply()
     fun setShowSecondary(show: Boolean) = prefs.edit().putBoolean(KEY_SHOW_SECONDARY, show).apply()
     fun setFontSource(source: String) = prefs.edit().putString(KEY_FONT_SOURCE, source).apply()
     fun setFontSize(size: Float) = prefs.edit().putFloat(KEY_FONT_SIZE, size).apply()

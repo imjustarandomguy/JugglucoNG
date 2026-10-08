@@ -2944,4 +2944,21 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d записей</item>
         <item quantity="other">%d записи</item>
     </plurals>
+    <string name="floating_tap_details">Подробности по нажатию</string>
+    <string name="floating_tap_details_desc">Нажатие показывает график и подробности</string>
+    <string name="floating_details_opacity_percent">Непрозрачность фона подробностей: %1$d%%</string>
+    <string name="floating_next_reading">Время до следующего значения</string>
+    <string name="floating_next_reading_desc">Полоска внизу заполняется до следующего значения</string>
+    <string name="floating_next_reading_style">Вид индикатора</string>
+    <string name="floating_next_reading_style_bar">Тонкая полоска</string>
+    <string name="floating_next_reading_style_colored_bar">Цветная полоска</string>
+    <string name="floating_next_reading_style_outline">Контур</string>
+    <string name="floating_next_reading_style_arrow_ring">Кольцо вокруг стрелки</string>
+    <string name="floating_above_status_bar">Поверх строки состояния</string>
+    <string name="floating_above_status_bar_desc">Можно нажимать и поверх строки состояния</string>
+    <string name="floating_accessibility_service_off">Включите «%1$s» в настройках специальных возможностей</string>
+    <string name="floating_accessibility_service_label">JugglucoNG плавающая глюкоза</string>
+    <string name="floating_accessibility_service_desc">Позволяет нажимать на плавающую глюкозу поверх строки состояния. Не читает экран.</string>
+    <string name="floating_mirrored">Зеркальный макет</string>
+    <string name="floating_mirrored_desc">Сначала стрелка, затем значение</string>
 </resources>

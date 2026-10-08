@@ -2899,4 +2899,21 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entrée</item>
         <item quantity="other">%d entrées</item>
     </plurals>
+    <string name="floating_tap_details">Détails au toucher</string>
+    <string name="floating_tap_details_desc">Un appui affiche le graphique et les détails</string>
+    <string name="floating_details_opacity_percent">Opacité du fond des détails : %1$d%%</string>
+    <string name="floating_next_reading">Temps avant la prochaine mesure</string>
+    <string name="floating_next_reading_desc">Une barre en bas se remplit jusqu\'à la prochaine mesure</string>
+    <string name="floating_next_reading_style">Style de l\'indicateur</string>
+    <string name="floating_next_reading_style_bar">Barre fine</string>
+    <string name="floating_next_reading_style_colored_bar">Barre colorée</string>
+    <string name="floating_next_reading_style_outline">Contour</string>
+    <string name="floating_next_reading_style_arrow_ring">Anneau autour de la flèche</string>
+    <string name="floating_above_status_bar">Au-dessus de la barre d\'état</string>
+    <string name="floating_above_status_bar_desc">Reste touchable au-dessus de la barre d\'état</string>
+    <string name="floating_accessibility_service_off">Activez « %1$s » dans les paramètres d\'accessibilité</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glucose flottant</string>
+    <string name="floating_accessibility_service_desc">Permet de toucher le glucose flottant au-dessus de la barre d\'état. Ne lit pas l\'écran.</string>
+    <string name="floating_mirrored">Disposition inversée</string>
+    <string name="floating_mirrored_desc">Flèche d\'abord, puis la valeur</string>
 </resources>

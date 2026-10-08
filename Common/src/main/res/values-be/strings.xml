@@ -2968,4 +2968,21 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d запісаў</item>
         <item quantity="other">%d запісу</item>
     </plurals>
+    <string name="floating_tap_details">Падрабязнасці па націску</string>
+    <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці</string>
+    <string name="floating_details_opacity_percent">Непразрыстасць фону падрабязнасцей: %1$d%%</string>
+    <string name="floating_next_reading">Час да наступнага значэння</string>
+    <string name="floating_next_reading_desc">Палоска ўнізе запаўняецца да наступнага значэння</string>
+    <string name="floating_next_reading_style">Выгляд індыкатара</string>
+    <string name="floating_next_reading_style_bar">Тонкая палоска</string>
+    <string name="floating_next_reading_style_colored_bar">Каляровая палоска</string>
+    <string name="floating_next_reading_style_outline">Контур</string>
+    <string name="floating_next_reading_style_arrow_ring">Кальцо вакол стрэлкі</string>
+    <string name="floating_above_status_bar">Над радком стану</string>
+    <string name="floating_above_status_bar_desc">Можна націскаць і над радком стану</string>
+    <string name="floating_accessibility_service_off">Уключыце «%1$s» у наладах спецыяльных магчымасцей</string>
+    <string name="floating_accessibility_service_label">JugglucoNG плаваючая глюкоза</string>
+    <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Не чытае экран.</string>
+    <string name="floating_mirrored">Люстраны макет</string>
+    <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне</string>
 </resources>

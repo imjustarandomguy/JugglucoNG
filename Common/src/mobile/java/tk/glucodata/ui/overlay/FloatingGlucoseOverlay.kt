@@ -6,10 +6,14 @@ import android.graphics.Typeface // Added for Google Sans
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.indication
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.Icon
@@ -22,6 +26,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
@@ -41,33 +47,116 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.emptyFlow
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.theme.MainFontFile
 import tk.glucodata.ui.GlucosePoint
+import tk.glucodata.ui.GlucosePaletteState
 import tk.glucodata.ui.components.TrendIndicator
 import tk.glucodata.logic.TrendEngine
 import tk.glucodata.data.calibration.CalibrationManager
 import tk.glucodata.ui.getDisplayValues
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.DisplayDataState
+import tk.glucodata.GlucoseValueTone
 import tk.glucodata.Natives
 import tk.glucodata.Notify
-import tk.glucodata.SensorIdentity
 import tk.glucodata.UiRefreshBus
 
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+/**
+ * A stale reading on the pill: its last value stays, dimmed, beside the next-reading
+ * bar's amber; "---" is only for no value at all. Pure, see the tests.
+ */
+internal object FloatingStaleValue {
+    /** Opacity of a stale value against a current one: clearly old, still readable. */
+    const val DIMMED_ALPHA = 0.5f
+
+    /**
+     * The opacity factor for the value, its trend arrow and its secondary value:
+     * [DIMMED_ALPHA] while there is a value and it is [stale], the same flag the
+     * next-reading bar is late by; 1 otherwise.
+     */
+    fun alpha(hasValue: Boolean, stale: Boolean): Float = if (hasValue && stale) DIMMED_ALPHA else 1f
+}
+
+/** The reading a details card is opened for. */
+/** Width of the details card; the service places its window by it. */
+internal val FloatingDetailsCardWidth = 260.dp
+
+data class FloatingDetailsRequest(
+    val point: GlucosePoint,
+    val sensorId: String?,
+    val isMmol: Boolean,
+    val viewMode: Int,
+    val displayGlucose: Float,
+)
+
+/**
+ * The reading the pill shows, resolved by FloatingGlucoseService: the newest of the
+ * readings it follows, and the current value as the notification resolves it.
+ *
+ * The pill used to resolve the current value itself, in a remember keyed on the
+ * readings and the refresh revision. The resolution reads the live reading, which
+ * Compose does not observe, so a change that moved none of the keys (the live reading
+ * expiring, a value revised under the same time) left the pill on the old one.
+ *
+ * [revision] changes with every new reading, so the pill can say which one it drew.
+ * [intervalMillis] is the sensor's reading interval, 0 when not known; see
+ * FloatingNextReading.intervalMillis.
+ */
+data class FloatingPillReading(
+    val point: GlucosePoint?,
+    val snapshot: CurrentDisplaySource.Snapshot?,
+    val sensorId: String?,
+    val revision: Long = 0L,
+    val intervalMillis: Long = 0L,
+) {
+    /**
+     * Time of the reading shown: the value's own (the live reading may be newer than the
+     * stored one), else the stored one's. The time to the next reading counts from it.
+     */
+    val readingTime: Long
+        get() = maxOf(snapshot?.timeMillis ?: 0L, point?.timestamp ?: 0L)
+
+    companion object {
+        val NONE = FloatingPillReading(point = null, snapshot = null, sensorId = null)
+    }
+}
+
+@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FloatingGlucoseOverlay(
     repository: FloatingSettingsRepository,
-    historyFlow: Flow<List<GlucosePoint>>,
+    /** The readings; a StateFlow, so a new composition starts from the loaded ones. */
+    historyFlow: StateFlow<List<GlucosePoint>>,
+    /** The reading to show, resolved by the service. */
+    readingFlow: StateFlow<FloatingPillReading>,
+    /** Each item asks for a frame of the pill's recomposer, as a tap does; see FloatingPillWatchdog. */
+    frameRequests: Flow<Unit> = emptyFlow(),
+    /** Called with the [FloatingPillReading.revision] the pill draws, each time it draws. */
+    onReadingDrawn: (Long) -> Unit = {},
+    /**
+     * Called with the [FloatingPillReading.revision] the pill composed, after each of its
+     * recompositions is applied; the service puts its window back at screen on only once
+     * the handed one is, see FloatingPillPresence.
+     */
+    onReadingComposed: (Long) -> Unit = {},
     onUpdatePosition: (Int, Int) -> Unit,
     onDragFinished: () -> Unit,
-    cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>
+    cutoutDataFlow: Flow<tk.glucodata.service.FloatingGlucoseService.CutoutData>,
+    /** Opens or closes the details card on a tap ("Details on tap"); otherwise a tap opens the app. */
+    onToggleDetails: ((FloatingDetailsRequest) -> Unit)? = null,
+    /** With "Details on tap" on: called, with why, for a tap that does not reach [onToggleDetails]. */
+    onTapNotOpened: (String) -> Unit = {},
+    /** Opens the app (a tap with "Details on tap" off, or a long press on the island). */
+    onOpenApp: () -> Unit,
 ) {
     val context = LocalContext.current
 
     // Settings State
+    val tapShowsDetails by repository.tapShowsDetails.collectAsState(initial = true)
     val isTransparent by repository.isTransparent.collectAsState(initial = false)
     val showSecondary by repository.showSecondary.collectAsState(initial = false)
     val fontSource by repository.fontSource.collectAsState(initial = "APP")
@@ -76,10 +165,14 @@ fun FloatingGlucoseOverlay(
     val showArrow by repository.showArrow.collectAsState(initial = true)
     val cornerRadius by repository.cornerRadius.collectAsState(initial = 28f)
     val opacity by repository.backgroundOpacity.collectAsState(initial = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
+    val valueRangeColors by repository.valueRangeColors.collectAsState(initial = false)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsState(initial = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsState(initial = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
+    val isMirrored by repository.isMirrored.collectAsState(initial = false)
+    val showNextReading by repository.showNextReading.collectAsState(initial = true)
+    val nextReadingStyle by repository.nextReadingStyle.collectAsState(initial = FloatingNextReadingStyle.CURRENT.name)
 
     // Metrics State (from Service WindowInsets)
     val cutoutData by cutoutDataFlow.collectAsState(initial = CutoutData(0.dp, CutoutEdge.NONE))
@@ -87,20 +180,33 @@ fun FloatingGlucoseOverlay(
     val cutoutSize = cutoutData.size
 
     // Data State: History List
-    val history by historyFlow.collectAsState(initial = emptyList())
+    val history by historyFlow.collectAsState()
+    val reading by readingFlow.collectAsState()
     val refreshRevision by UiRefreshBus.revision.collectAsState(initial = 0L)
-    
+
     // Derived Data
-    val glucosePoint = history.lastOrNull()
-    val currentSensorId = SensorIdentity.resolveMainSensor()
-    val currentSnapshot = remember(refreshRevision, currentSensorId, glucosePoint?.timestamp, history.size) {
-        CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, currentSensorId)
+    val glucosePoint = reading.point
+    val currentSensorId = reading.sensorId
+    val currentSnapshot = reading.snapshot
+
+    // A frame on request, as a tap's ripple asks for one: the recomposer applies any
+    // pending state changes and recomposes in it. The service asks when the pill drew
+    // another reading than it was handed.
+    LaunchedEffect(frameRequests) {
+        frameRequests.collect { withFrameNanos { } }
     }
+    // Reports what was drawn, not just composed: the frame on screen is the last link.
+    val drawnRevision = reading.revision
+    val reportDrawn = Modifier.drawBehind { onReadingDrawn(drawnRevision) }
+    // And what was composed, once applied: with no window (the screen just came on) it
+    // is what the next window's first frame will draw.
+    SideEffect { onReadingComposed(drawnRevision) }
 
     // The overlay only recomposes on new data, so once readings stop nothing would
     // ever notice the last one aging out. Re-read the clock until it crosses the
-    // same timeout the widget and dashboard use, then show the no-data state.
-    val latestReadingMillis = maxOf(currentSnapshot?.timeMillis ?: 0L, glucosePoint?.timestamp ?: 0L)
+    // same timeout the widget and dashboard use; the reading then stays, dimmed.
+    // This is the pill's only freshness clock.
+    val latestReadingMillis = reading.readingTime
     val freshnessNow by produceState(System.currentTimeMillis(), latestReadingMillis) {
         while (true) {
             value = System.currentTimeMillis()
@@ -108,9 +214,10 @@ fun FloatingGlucoseOverlay(
             delay(wait)
         }
     }
-    // Every layout (pill, side and top island) reads value and arrow from this.
-    val displayPoint = overlayDisplayPoint(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
-    
+    // Every layout (pill, side and top island) dims value and arrow by this; the range
+    // colours and the time to the next reading follow it too.
+    val isStale = !overlayReadingIsFresh(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
+
     // View Mode & Calibration
     val viewData = remember(currentSnapshot, glucosePoint, currentSensorId) {
         val resolvedViewMode = currentSnapshot?.viewMode
@@ -130,10 +237,13 @@ fun FloatingGlucoseOverlay(
     // Same estimator, window and raw/smoothed choice as every other arrow; the
     // overlay used to omit useRaw, so in raw view modes it regressed over the
     // smoothed series and tilted differently from the hero it floats next to.
-    val trendResult = remember(history, viewMode, unitInt) {
+    // Over the same points too: the stored history plus the live reading Room
+    // may not hold yet, newest-anchored, as the dashboard and notification use.
+    val trendResult = remember(history, viewMode, unitInt, currentSnapshot, currentSensorId) {
         if (history.isNotEmpty()) {
+            val stored = history.map { tk.glucodata.GlucosePoint(it.timestamp, it.value, it.rawValue) }
             TrendEngine.calculateTrend(
-                history,
+                tk.glucodata.DisplayTrendSource.resolveTrendPoints(stored, currentSnapshot, currentSensorId),
                 useRaw = (viewMode == 1 || viewMode == 3),
                 isMmol = (unitInt == 1)
             )
@@ -188,16 +298,33 @@ fun FloatingGlucoseOverlay(
     )
     var pendingDragX by remember { mutableFloatStateOf(0f) }
     var pendingDragY by remember { mutableFloatStateOf(0f) }
-    
+    var dragging by remember { mutableStateOf(false) }
+
+    // A press that ends in no click (the finger left the pill, or the system took the
+    // touch) showed its press and opened nothing: said, for the trace. The free pill's
+    // drags end so too, and are not taps.
+    val currentTapShowsDetails by rememberUpdatedState(tapShowsDetails)
+    val currentOnTapNotOpened by rememberUpdatedState(onTapNotOpened)
+    LaunchedEffect(overlayInteractionSource) {
+        overlayInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Cancel && !dragging && currentTapShowsDetails) {
+                currentOnTapNotOpened("press cancelled")
+            }
+        }
+    }
+
     // Drag Modifier
     val dragModifier = if (isDynamicIsland) Modifier else Modifier.pointerInput(Unit) {
         detectDragGestures(
+            onDragStart = { dragging = true },
             onDragEnd = {
+                dragging = false
                 pendingDragX = 0f
                 pendingDragY = 0f
                 onDragFinished()
             },
             onDragCancel = {
+                dragging = false
                 pendingDragX = 0f
                 pendingDragY = 0f
                 onDragFinished()
@@ -253,31 +380,111 @@ fun FloatingGlucoseOverlay(
     val sideIslandVerticalPadding = (fontSize * 0.32f).coerceIn(3f, 8f).dp
     val sideIslandSplitPadding = (fontSize * 0.18f).coerceIn(2f, 6f).dp
     val sideIslandArrowSize = (fontSize * 0.78f).coerceIn(10f, 34f).dp
+    val shownArrowSize = if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize
     val sideSecondarySpacing = (fontSize * 0.08f).coerceIn(1f, 4f).dp
     val sideSecondaryFontSize = fontSize * 0.58f
 
-    val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+    val onPillTap: () -> Unit = {
+        val toggle = onToggleDetails?.takeIf { tapShowsDetails }
+        if (toggle != null && glucosePoint != null) {
+            toggle(
+                FloatingDetailsRequest(
+                    point = glucosePoint,
+                    sensorId = currentSensorId,
+                    isMmol = unitInt == 1,
+                    viewMode = viewMode,
+                    displayGlucose = currentSnapshot?.displayValues?.primaryValue ?: glucosePoint.value,
+                )
+            )
+        } else {
+            if (toggle != null) onTapNotOpened("no reading, opening the app")
+            onOpenApp()
+        }
+    }
+    val onPillLongPress: () -> Unit = {
+        if (tapShowsDetails) onTapNotOpened("held, opening the app")
+        onOpenApp()
     }
 
+    // A stale reading keeps its value (dimmed below); "---" is only for no reading at all.
+    val displayValues = glucosePoint?.let { point ->
+        val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
+        currentSnapshot?.displayValues ?: run {
+            val isRawModeForCal = viewMode == 1 || viewMode == 3
+            val hasCalibration = !CalibrationManager.shouldOverwriteSensorValues() &&
+                CalibrationManager.hasActiveCalibration(isRawModeForCal)
+            val calibratedValue = if (hasCalibration) {
+                val baseValue = if (isRawModeForCal) point.rawValue else point.value
+                if (baseValue.isFinite() && baseValue > 0.1f) {
+                    CalibrationManager.getCalibratedValue(baseValue, point.timestamp, isRawModeForCal)
+                } else {
+                    null
+                }
+            } else null
+            getDisplayValues(point, viewMode, unit, calibratedValue)
+        }
+    }
+
+    // Range colours (the app-wide setting) only while the reading is current.
+    // A filled pill is dark in either theme, so it takes the dark-theme shades.
+    val paletteRevision = GlucosePaletteState.revision
+    val primaryValue = displayValues?.primaryValue
+    // The value's range colour, whether or not the value is drawn in it: the time to the
+    // next reading fills in it too (in all its styles but the thin bar).
+    val rangeColor = remember(
+        primaryValue, isTransparent, isDarkTheme, unitInt, finalTextColor, refreshRevision, paletteRevision,
+    ) {
+        if (primaryValue == null) {
+            finalTextColor
+        } else {
+            Color(
+                GlucoseValueTone.valueColorArgb(
+                    value = primaryValue,
+                    isDark = !isTransparent || isDarkTheme,
+                    isMmol = unitInt == 1,
+                    targetLow = Natives.targetlow(),
+                    targetHigh = Natives.targethigh(),
+                    veryLowThreshold = Natives.alarmverylow(),
+                    veryHighThreshold = Natives.alarmveryhigh(),
+                    fallbackArgb = finalTextColor.toArgb(),
+                    enabled = true,
+                )
+            )
+        }
+    }
+    val valueColor = if (isStale || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
+
+    // Time to the next reading: a bar along the pill's bottom edge (its long inner side on
+    // an upright island) or its outline, drawn on its clipped background, or a ring around
+    // the arrow. Late in the range colours' amber, and late too while the pill is stale.
+    val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
+        Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
+    }
+    val hasArrow = showArrow && glucosePoint != null
+    val nextReading = nextReadingIndicator(
+        enabled = showNextReading,
+        style = FloatingNextReadingStyle.fromKey(nextReadingStyle),
+        side = FloatingNextReading.barSide(if (isDynamicIsland) cutoutEdge else null),
+        readingTime = reading.readingTime,
+        intervalMillis = reading.intervalMillis,
+        stale = isStale,
+        color = finalTextColor,
+        rangeColor = rangeColor,
+        lateColor = nextReadingLateColor,
+        cornerRadius = cornerRadius.dp,
+        arrowSize = if (hasArrow) shownArrowSize else null,
+    )
+
+    // A stale value is drawn dimmed: the value, its arrow and its secondary value in
+    // their own colours at reduced opacity, by the same stale flag as the bar's late
+    // state. Their outline or shadow stays as it is, for legibility on any background.
+    val valueAlpha = FloatingStaleValue.alpha(hasValue = glucosePoint != null, stale = isStale)
+    val shownValueColor = valueColor.copy(alpha = valueColor.alpha * valueAlpha)
+    val secondaryValueColor = finalTextColor.copy(alpha = 0.7f * valueAlpha)
+
     val valueContent: @Composable () -> Unit = {
-        if (displayPoint != null) {
-            val point = displayPoint
-            val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
-            val dvs = currentSnapshot?.displayValues ?: run {
-                val isRawModeForCal = viewMode == 1 || viewMode == 3
-                val hasCalibration = !CalibrationManager.shouldOverwriteSensorValues() &&
-                    CalibrationManager.hasActiveCalibration(isRawModeForCal)
-                val calibratedValue = if (hasCalibration) {
-                    val baseValue = if (isRawModeForCal) point.rawValue else point.value
-                    if (baseValue.isFinite() && baseValue > 0.1f) {
-                        CalibrationManager.getCalibratedValue(baseValue, point.timestamp, isRawModeForCal)
-                    } else {
-                        null
-                    }
-                } else null
-                getDisplayValues(point, viewMode, unit, calibratedValue)
-            }
+        if (displayValues != null) {
+            val dvs = displayValues
 
             if (isDynamicIsland && isVerticalIsland) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -286,7 +493,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = finalTextColor,
+                        textColor = shownValueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -299,7 +506,7 @@ fun FloatingGlucoseOverlay(
                             fontSize = sideSecondaryFontSize,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
-                            textColor = finalTextColor.copy(alpha = 0.7f),
+                            textColor = secondaryValueColor,
                             outlineColor = textOutlineColor,
                             shadow = textShadow,
                             useOutline = useSubtleOutline,
@@ -314,7 +521,7 @@ fun FloatingGlucoseOverlay(
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
-                        textColor = finalTextColor,
+                        textColor = shownValueColor,
                         outlineColor = textOutlineColor,
                         shadow = textShadow,
                         useOutline = useSubtleOutline,
@@ -327,7 +534,7 @@ fun FloatingGlucoseOverlay(
                             fontSize = fontSize * 0.7f,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
-                            textColor = finalTextColor.copy(alpha = 0.7f),
+                            textColor = secondaryValueColor,
                             outlineColor = textOutlineColor,
                             shadow = textShadow,
                             useOutline = useSubtleOutline
@@ -350,19 +557,37 @@ fun FloatingGlucoseOverlay(
     }
 
     val arrowContent: @Composable () -> Unit = {
-        if (showArrow && displayPoint != null) {
-            TrendIndicator(
-                trendResult = trendResult,
-                modifier = Modifier.size(if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize),
-                color = finalTextColor,
-                outlineColor = arrowOutlineColor,
-                shadowColor = arrowShadowColor
-            )
+        if (hasArrow) {
+            val arrow: @Composable () -> Unit = {
+                TrendIndicator(
+                    trendResult = trendResult,
+                    modifier = Modifier.size(shownArrowSize),
+                    color = shownValueColor,
+                    outlineColor = arrowOutlineColor,
+                    shadowColor = arrowShadowColor
+                )
+            }
+            val ringSlot = nextReading.arrowSlot
+            if (ringSlot != null) {
+                // The ring around the arrow: a slot just larger than the arrow, which stays in its middle.
+                Box(
+                    modifier = Modifier.size(ringSlot).then(nextReading.arrowRing),
+                    contentAlignment = Alignment.Center
+                ) {
+                    arrow()
+                }
+            } else {
+                arrow()
+            }
         } else {
             Spacer(Modifier.size(1.dp))
         }
     }
     
+    // Mirrored: arrow first, then the value (beside the camera on an island).
+    val firstContent = if (isMirrored) arrowContent else valueContent
+    val secondContent = if (isMirrored) valueContent else arrowContent
+
     // ROOT LAYOUT CHANGE: Use Column just for Vertical Offset Spacer if Island
     // We don't use 'Surface' as root for Island anymore, because we want split layout.
     
@@ -373,14 +598,16 @@ fun FloatingGlucoseOverlay(
         // from the pill's own Surface and its arc cut into the bottom corners.
         val pillModifier = Modifier
             .clip(finalShape)
-            .clickable(
+            .combinedClickable(
                 interactionSource = overlayInteractionSource,
-                indication = overlayIndication
-            ) { launchIntent?.let { context.startActivity(it) } }
+                indication = null,
+                onLongClick = onPillLongPress,
+                onClick = onPillTap,
+            )
         CutoutOffsetLayout(
             edge = cutoutEdge,
             offset = verticalOffset.dp,
-            modifier = Modifier
+            modifier = reportDrawn
                 .wrapContentSize()
                 .then(dragModifier)
         ) {
@@ -393,7 +620,11 @@ fun FloatingGlucoseOverlay(
                         Surface(
                             color = finalBgColor,
                             shape = finalShape,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(finalShape)
+                                .then(nextReading.background)
+                                .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
                 ) {
@@ -405,7 +636,7 @@ fun FloatingGlucoseOverlay(
                             bottom = sideIslandSplitPadding
                         )
                     ) {
-                        valueContent()
+                        firstContent()
                     }
                     Box(
                         modifier = Modifier.padding(
@@ -415,7 +646,7 @@ fun FloatingGlucoseOverlay(
                             bottom = sideIslandVerticalPadding + sideIslandSplitPadding
                         )
                     ) {
-                        arrowContent()
+                        secondContent()
                     }
                 }
             } else {
@@ -427,7 +658,11 @@ fun FloatingGlucoseOverlay(
                         Surface(
                             color = finalBgColor,
                             shape = finalShape,
-                            modifier = Modifier.fillMaxSize()
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(finalShape)
+                                .then(nextReading.background)
+                                .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
                 ) {
@@ -438,7 +673,7 @@ fun FloatingGlucoseOverlay(
                             bottom = pillVerticalPadding
                         )
                     ) {
-                        valueContent()
+                        firstContent()
                     }
                     Box(
                         modifier = Modifier.padding(
@@ -447,7 +682,7 @@ fun FloatingGlucoseOverlay(
                             bottom = pillVerticalPadding
                         )
                     ) {
-                        arrowContent()
+                        secondContent()
                     }
                 }
             }
@@ -457,31 +692,98 @@ fun FloatingGlucoseOverlay(
         Surface(
             color = finalBgColor,
             shape = finalShape,
-            modifier = Modifier
+            modifier = reportDrawn
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
-                .clickable(
+                .then(nextReading.background)
+                .combinedClickable(
                     interactionSource = overlayInteractionSource,
-                    indication = overlayIndication
-                ) { launchIntent?.let { context.startActivity(it) } }
+                    indication = overlayIndication,
+                    // No long press: holding the free pill is how a drag starts.
+                    onClick = onPillTap,
+                )
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = pillHorizontalPadding, vertical = pillVerticalPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(inlineSpacing)
             ) {
+                // No placeholder for a hidden arrow here: spacedBy would add a gap for it.
+                if (isMirrored && hasArrow) arrowContent()
                 valueContent()
-                if (showArrow && displayPoint != null) {
-                    TrendIndicator(
-                        trendResult,
-                        Modifier.size(arrowSize),
-                        finalTextColor,
-                        outlineColor = arrowOutlineColor,
-                        shadowColor = arrowShadowColor
-                    )
-                }
+                if (!isMirrored && hasArrow) arrowContent()
             }
+        }
+    }
+}
+
+/**
+ * What the glucose notification shows, for the reading on the pill: its time
+ * and age, the Δ, the chart and the IOB/COB line (when the notification shows
+ * one). Tapping it opens the app. Its background is [backgroundOpacity] opaque.
+ */
+@Composable
+fun FloatingDetailsCard(
+    request: FloatingDetailsRequest,
+    isDark: Boolean,
+    onOpenApp: () -> Unit,
+    backgroundOpacity: Float = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY,
+) {
+    val point = request.point
+    val sensorId = request.sensorId
+    val isMmol = request.isMmol
+    val viewMode = request.viewMode
+    val displayGlucose = request.displayGlucose
+    val context = LocalContext.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val cardWidth = FloatingDetailsCardWidth
+    val chartHeight = 110.dp
+    val chartWidthPx = with(density) { (cardWidth - 24.dp).roundToPx() }
+    val chartHeightPx = with(density) { chartHeight.roundToPx() }
+    val details by produceState<tk.glucodata.FloatingDetailsSource.Details?>(null, point.timestamp, sensorId, viewMode, isDark) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            tk.glucodata.FloatingDetailsSource.load(
+                context, sensorId, isMmol, viewMode, chartWidthPx, chartHeightPx, isDark, displayGlucose,
+            )
+        }
+    }
+    val background = (if (isDark) Color(0xFF202124) else Color(0xFFF6F4F1)).copy(alpha = backgroundOpacity)
+    val textColor = if (isDark) Color.White else Color(0xFF27231F)
+    val minutes = ((System.currentTimeMillis() - point.timestamp) / 60_000L).coerceAtLeast(0L)
+    val time = remember(point.timestamp) {
+        android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(point.timestamp))
+    }
+    val header = buildList {
+        add(time)
+        add(context.getString(tk.glucodata.R.string.minutes_short_format, minutes.toInt()))
+        details?.delta?.takeIf { it.isNotEmpty() }?.let { add("Δ $it") }
+    }.joinToString(" · ")
+
+    Surface(
+        color = background,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier
+            .width(cardWidth)
+            .clip(RoundedCornerShape(20.dp))
+            .clickable(onClick = onOpenApp),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(header, color = textColor, fontSize = 14.sp)
+            val chart = details?.chart
+            if (chart != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = chart.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().height(chartHeight),
+                )
+            } else {
+                Spacer(Modifier.fillMaxWidth().height(chartHeight))
+            }
+            details?.iobLine?.let { Text(it, color = textColor.copy(alpha = 0.8f), fontSize = 13.sp) }
         }
     }
 }
@@ -720,21 +1022,23 @@ internal fun nextOverlayFreshnessCheckDelay(
 }
 
 /**
- * The point the overlay may show at [nowMillis]: the latest one while it is within
- * the widget/dashboard freshness window, null (the no-data state) once it is not.
+ * Whether the overlay's reading is current at [nowMillis]: within the widget/dashboard
+ * freshness window, counted from the newer of [latestPoint] and the current value's
+ * [snapshotMillis]. False without a reading. A reading that is not current stays on
+ * the pill, dimmed (FloatingStaleValue), with a late next-reading indicator.
  */
-internal fun overlayDisplayPoint(
+internal fun overlayReadingIsFresh(
     latestPoint: GlucosePoint?,
     snapshotMillis: Long,
     nowMillis: Long,
     freshnessWindowMillis: Long = Notify.glucosetimeout
-): GlucosePoint? {
-    val isFresh = DisplayDataState.resolve(
+): Boolean {
+    if (latestPoint == null) return false
+    return DisplayDataState.resolve(
         sensorPresent = true,
         currentTimestampMillis = snapshotMillis,
-        latestHistoryTimestampMillis = latestPoint?.timestamp ?: 0L,
+        latestHistoryTimestampMillis = latestPoint.timestamp,
         freshnessWindowMillis = freshnessWindowMillis,
         nowMillis = nowMillis
     ).isFresh
-    return latestPoint?.takeIf { isFresh }
 }

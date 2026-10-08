@@ -3078,4 +3078,21 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="one">%d qoraal</item>
         <item quantity="other">%d qoraal</item>
     </plurals>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta</string>
+    <string name="floating_details_opacity_percent">Muuqda asalka faahfaahinta: %1$d%%</string>
+    <string name="floating_next_reading">Waqtiga akhriska xiga</string>
+    <string name="floating_next_reading_desc">Xarig hoose ayaa buuxsama ilaa akhriska xiga</string>
+    <string name="floating_next_reading_style">Qaabka tilmaamaha</string>
+    <string name="floating_next_reading_style_bar">Xarig khafiif ah</string>
+    <string name="floating_next_reading_style_colored_bar">Xarig midab leh</string>
+    <string name="floating_next_reading_style_outline">Xuduud</string>
+    <string name="floating_next_reading_style_arrow_ring">Giraan fallaarta ku wareegsan</string>
+    <string name="floating_above_status_bar">Korka baararka xaaladda</string>
+    <string name="floating_above_status_bar_desc">Weli waa la taaban karaa korka baararka xaaladda</string>
+    <string name="floating_accessibility_service_off">Shid “%1$s” ee goobaha gelitaanka</string>
+    <string name="floating_accessibility_service_label">JugglucoNG gulukoos sabaynaya</string>
+    <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Ma akhriyo shaashadda.</string>
+    <string name="floating_mirrored">Rog qaabka</string>
+    <string name="floating_mirrored_desc">Fallaarta marka hore, kadibna qiimaha</string>
 </resources>

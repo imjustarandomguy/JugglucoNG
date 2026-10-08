@@ -3145,4 +3145,21 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entry</item>
         <item quantity="other">%d entries</item>
     </plurals>
+    <string name="floating_tap_details">Details on tap</string>
+    <string name="floating_tap_details_desc">Tap for the chart and details</string>
+    <string name="floating_details_opacity_percent">Details background opacity: %1$d%%</string>
+    <string name="floating_next_reading">Time to next reading</string>
+    <string name="floating_next_reading_desc">A bar along the bottom fills until the next reading</string>
+    <string name="floating_next_reading_style">Next reading style</string>
+    <string name="floating_next_reading_style_bar">Thin bar</string>
+    <string name="floating_next_reading_style_colored_bar">Colored bar</string>
+    <string name="floating_next_reading_style_outline">Outline</string>
+    <string name="floating_next_reading_style_arrow_ring">Ring around arrow</string>
+    <string name="floating_above_status_bar">Over the status bar</string>
+    <string name="floating_above_status_bar_desc">Stays tappable over the status bar</string>
+    <string name="floating_accessibility_service_off">Turn on “%1$s” in Accessibility settings</string>
+    <string name="floating_accessibility_service_label">JugglucoNG floating glucose</string>
+    <string name="floating_accessibility_service_desc">Lets the floating glucose be tapped over the status bar. Does not read the screen.</string>
+    <string name="floating_mirrored">Mirror layout</string>
+    <string name="floating_mirrored_desc">Arrow first, then the value</string>
 </resources>

@@ -3009,4 +3009,21 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
         <item quantity="one">%d Eintrag</item>
         <item quantity="other">%d Einträge</item>
     </plurals>
+    <string name="floating_tap_details">Details beim Antippen</string>
+    <string name="floating_tap_details_desc">Antippen zeigt Diagramm und Details</string>
+    <string name="floating_details_opacity_percent">Hintergrunddeckkraft der Details: %1$d%%</string>
+    <string name="floating_next_reading">Zeit bis zum nächsten Messwert</string>
+    <string name="floating_next_reading_desc">Ein Balken unten füllt sich bis zum nächsten Messwert</string>
+    <string name="floating_next_reading_style">Stil der Anzeige</string>
+    <string name="floating_next_reading_style_bar">Schmaler Balken</string>
+    <string name="floating_next_reading_style_colored_bar">Farbiger Balken</string>
+    <string name="floating_next_reading_style_outline">Umriss</string>
+    <string name="floating_next_reading_style_arrow_ring">Ring um den Pfeil</string>
+    <string name="floating_above_status_bar">Über der Statusleiste</string>
+    <string name="floating_above_status_bar_desc">Bleibt über der Statusleiste antippbar</string>
+    <string name="floating_accessibility_service_off">Aktivieren Sie „%1$s“ in den Bedienungshilfen</string>
+    <string name="floating_accessibility_service_label">JugglucoNG schwebender Glukosewert</string>
+    <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest den Bildschirm nicht.</string>
+    <string name="floating_mirrored">Layout spiegeln</string>
+    <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert</string>
 </resources>

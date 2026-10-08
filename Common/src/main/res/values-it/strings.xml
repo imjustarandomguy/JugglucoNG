@@ -2883,4 +2883,21 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d voce</item>
         <item quantity="other">%d voci</item>
     </plurals>
+    <string name="floating_tap_details">Dettagli al tocco</string>
+    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli</string>
+    <string name="floating_details_opacity_percent">Opacità dello sfondo dei dettagli: %1$d%%</string>
+    <string name="floating_next_reading">Tempo alla prossima lettura</string>
+    <string name="floating_next_reading_desc">Una barra in basso si riempie fino alla prossima lettura</string>
+    <string name="floating_next_reading_style">Stile dell\'indicatore</string>
+    <string name="floating_next_reading_style_bar">Barra sottile</string>
+    <string name="floating_next_reading_style_colored_bar">Barra colorata</string>
+    <string name="floating_next_reading_style_outline">Contorno</string>
+    <string name="floating_next_reading_style_arrow_ring">Anello attorno alla freccia</string>
+    <string name="floating_above_status_bar">Sopra la barra di stato</string>
+    <string name="floating_above_status_bar_desc">Resta toccabile sopra la barra di stato</string>
+    <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glicemia fluttuante</string>
+    <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
+    <string name="floating_mirrored">Layout speculare</string>
+    <string name="floating_mirrored_desc">Prima la freccia, poi il valore</string>
 </resources>

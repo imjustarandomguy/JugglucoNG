@@ -12,6 +12,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -75,9 +78,11 @@ import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.components.CardPosition
 import tk.glucodata.ui.components.MasterSwitchCard
 import tk.glucodata.ui.components.SectionLabel
+import tk.glucodata.ui.overlay.FloatingNextReadingStyle
 import tk.glucodata.ui.components.SettingsSwitchItem
 import tk.glucodata.ui.components.SettingsItem
 import tk.glucodata.ui.viewmodel.DashboardViewModel
+import kotlin.math.roundToInt
 
 private val legacySettingsHorizontalPadding = 16.dp
 private val aodPositionOptions = listOf(
@@ -485,12 +490,19 @@ fun FloatingGlucoseSettingsScreen(
     val fontSize by repository.fontSize.collectAsState(initial = FloatingSettingsRepository.DEFAULT_FONT_SIZE)
     val fontWeight by repository.fontWeight.collectAsState(initial = "REGULAR")
     val showArrow by repository.showArrow.collectAsState(initial = true)
+    val tapShowsDetails by repository.tapShowsDetails.collectAsState(initial = true)
+    val detailsOpacity by repository.detailsOpacity.collectAsState(initial = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
     val cornerRadius by repository.cornerRadius.collectAsState(initial = 28f)
     val opacity by repository.backgroundOpacity.collectAsState(initial = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsState(initial = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsState(initial = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
+    val aboveStatusBar by repository.isAboveStatusBar.collectAsState(initial = false)
+    val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsState().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
+    val isMirrored by repository.isMirrored.collectAsState(initial = false)
+    val showNextReading by repository.showNextReading.collectAsState(initial = true)
+    val nextReadingStyle by repository.nextReadingStyle.collectAsState(initial = FloatingNextReadingStyle.CURRENT.name)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -629,6 +641,74 @@ fun FloatingGlucoseSettingsScreen(
             )
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        // The two go as a pair, with the details card's opacity between them while the card is on.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_tap_details),
+            subtitle = stringResource(R.string.floating_tap_details_desc),
+            checked = tapShowsDetails,
+            onCheckedChange = {
+                repository.setTapShowsDetails(it)
+                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && aboveStatusBar)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.TOP,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+        if (tapShowsDetails) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LegacySliderControl(
+                label = stringResource(R.string.floating_details_opacity_percent, (detailsOpacity * 100).roundToInt()),
+                value = detailsOpacity,
+                onValueChange = { repository.setDetailsOpacity(it) },
+                range = 0.1f..1.0f,
+                steps = 18
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        } else {
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+        // Drawn over the status bar so the details can be opened from there.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_above_status_bar),
+            subtitle = stringResource(R.string.floating_above_status_bar_desc),
+            checked = aboveStatusBar && tapShowsDetails,
+            enabled = tapShowsDetails,
+            onCheckedChange = {
+                repository.setAboveStatusBar(it)
+                tk.glucodata.service.FloatingAccessibilityService.setAvailable(context, it && tapShowsDetails)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.BOTTOM,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+        if (tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
+            Spacer(modifier = Modifier.height(8.dp))
+            WarningPanel(
+                text = stringResource(
+                    R.string.floating_accessibility_service_off,
+                    stringResource(R.string.floating_accessibility_service_label),
+                ),
+                modifier = Modifier
+                    .padding(horizontal = legacySettingsHorizontalPadding)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_mirrored),
+            subtitle = stringResource(R.string.floating_mirrored_desc),
+            checked = isMirrored,
+            onCheckedChange = { repository.setMirrored(it) },
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel(
             stringResource(R.string.metrics),
@@ -652,8 +732,47 @@ fun FloatingGlucoseSettingsScreen(
                 title = stringResource(R.string.show_trend_arrow),
                 checked = showArrow,
                 onCheckedChange = { repository.setShowArrow(it) },
+                position = CardPosition.MIDDLE
+            )
+            SettingsSwitchItem(
+                title = stringResource(R.string.floating_next_reading),
+                subtitle = stringResource(R.string.floating_next_reading_desc),
+                checked = showNextReading,
+                onCheckedChange = { repository.setShowNextReading(it) },
                 position = CardPosition.BOTTOM
             )
+        }
+
+        // Temporary, while the styles are tried on the pill: goes with FloatingNextReadingStyle
+        // once one is chosen.
+        if (showNextReading) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                stringResource(R.string.floating_next_reading_style),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            val selectedStyle = FloatingNextReadingStyle.fromKey(nextReadingStyle)
+            FlowRow(
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FloatingNextReadingStyle.entries.forEach { style ->
+                    val labelRes = when (style) {
+                        FloatingNextReadingStyle.CURRENT -> R.string.floating_next_reading_style_bar
+                        FloatingNextReadingStyle.COLOURED_BAR -> R.string.floating_next_reading_style_colored_bar
+                        FloatingNextReadingStyle.OUTLINE -> R.string.floating_next_reading_style_outline
+                        FloatingNextReadingStyle.ARROW_RING -> R.string.floating_next_reading_style_arrow_ring
+                    }
+                    FilterChip(
+                        selected = selectedStyle == style,
+                        onClick = { repository.setNextReadingStyle(style.name) },
+                        label = { Text(stringResource(labelRes)) }
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))
