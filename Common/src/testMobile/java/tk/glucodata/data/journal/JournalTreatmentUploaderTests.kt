@@ -196,8 +196,30 @@ class JournalTreatmentUploaderTests {
         // A document the server fails on every time no longer holds the queue for good; it is
         // retried on its own, and past the cap kept here, never dropped.
         assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
-        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0, answeredByNightscout = false))
         assertEquals(TombstoneAction.KEEP_LOCAL, tombstoneAction(code = 500, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+    }
+
+    @Test
+    fun anAnswerThatIsNotNightscoutsNeverUsesUpADeletesAttempts() {
+        // A proxy's or a captive portal's page, or a 500 with no body, says nothing about the
+        // document: whatever its status, the pass waits and the delete is not counted, so it is
+        // never "failed too often" for it.
+        fun action(code: Int, body: String, attemptsSoFar: Int) =
+            tombstoneAction(code, attemptsSoFar, JournalTreatmentUploader.answeredByNightscout(code, body))
+        val html500 = "<html><body><h1>500 Internal Server Error</h1></body></html>"
+        val html403 = "<html><head><title>403 Forbidden</title></head><body>nginx</body></html>"
+        val json500 = """{"status":500,"message":"MongoServerError: write failed"}"""
+        val json403 = """{"status":403,"message":"Missing permission api:treatments:delete"}"""
+
+        for (attemptsSoFar in listOf(0, MAX_DELETE_ATTEMPTS - 1)) {
+            assertEquals(TombstoneAction.WAIT, action(500, html500, attemptsSoFar))
+            assertEquals(TombstoneAction.WAIT, action(500, "", attemptsSoFar))
+            assertEquals(TombstoneAction.WAIT, action(403, html403, attemptsSoFar))
+        }
+        assertEquals(TombstoneAction.RETRY, action(500, json500, 0))
+        assertEquals(TombstoneAction.KEEP_LOCAL, action(500, json500, MAX_DELETE_ATTEMPTS - 1))
+        assertEquals(TombstoneAction.RETRY, action(403, json403, 0))
+        assertEquals(TombstoneAction.KEEP_LOCAL, action(403, json403, MAX_DELETE_ATTEMPTS - 1))
     }
 
     @Test
@@ -206,7 +228,10 @@ class JournalTreatmentUploaderTests {
         for (code in listOf(-1, 401, 408, 429, 502, 503, 504)) {
             assertEquals("$code", wait, JournalTreatmentUploader.operationFailure(code, answeredByNightscout = true))
         }
-        assertEquals(wait, JournalTreatmentUploader.operationFailure(403, answeredByNightscout = false))
+        // Not Nightscout's answer: the status is not Nightscout's either.
+        for (code in listOf(400, 403, 422, 500, 501, 507)) {
+            assertEquals("$code", wait, JournalTreatmentUploader.operationFailure(code, answeredByNightscout = false))
+        }
         assertEquals(
             JournalTreatmentUploader.OperationFailure.RETRY,
             JournalTreatmentUploader.operationFailure(500, answeredByNightscout = true)

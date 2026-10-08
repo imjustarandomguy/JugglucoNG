@@ -11,6 +11,7 @@ import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedEditAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedEditHold
 import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedEditPlan
+import tk.glucodata.data.journal.JournalTreatmentUploader.answeredByNightscout
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentUrl
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditHold
@@ -602,8 +603,27 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun aServerErrorOnTheEditIsRetriedOnItsOwn() {
         assertEquals(ReceivedEditAction.RETRY, receivedEditWriteAction(500, answeredByNightscout = true))
-        // A server error page that is not JSON is still the server failing on this request.
-        assertEquals(ReceivedEditAction.RETRY, receivedEditWriteAction(500, answeredByNightscout = false))
+        // A 500 that is not Nightscout's (a proxy's page, no body) says nothing about this edit:
+        // the pass waits, and none of the edit's attempts is used up.
+        assertEquals(ReceivedEditAction.WAIT, receivedEditWriteAction(500, answeredByNightscout = false))
+    }
+
+    @Test
+    fun onlyAnAnswerInNightscoutsJsonCountsAgainstTheEdit() {
+        fun written(code: Int, body: String) = receivedEditWriteAction(code, answeredByNightscout(code, body))
+        fun read(code: Int, body: String) = receivedEditFailureAction(code, answeredByNightscout(code, body))
+        val html500 = "<html><body><h1>500 Internal Server Error</h1></body></html>"
+        val html403 = "<html><head><title>403 Forbidden</title></head><body>nginx</body></html>"
+        val json500 = """{"status":500,"message":"MongoServerError: write failed"}"""
+        val json403 = """{"status":403,"message":"Missing permission api:treatments:update"}"""
+
+        for (answer in listOf(::written, ::read)) {
+            assertEquals(ReceivedEditAction.WAIT, answer(500, html500))
+            assertEquals(ReceivedEditAction.WAIT, answer(500, ""))
+            assertEquals(ReceivedEditAction.WAIT, answer(403, html403))
+            assertEquals(ReceivedEditAction.RETRY, answer(500, json500))
+            assertEquals(ReceivedEditAction.KEEP_LOCAL, answer(403, json403))
+        }
     }
 
     @Test
