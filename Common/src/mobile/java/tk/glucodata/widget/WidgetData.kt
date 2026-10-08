@@ -38,6 +38,8 @@ class WidgetData(
     val targetHigh: Float = Float.NaN,
     val veryLow: Float = Float.NaN,
     val veryHigh: Float = Float.NaN,
+    /** The settings the chart is drawn with, for its cache key. */
+    val chartStyle: WidgetChartStyle = WidgetChartStyle(),
 ) {
     val isFresh: Boolean
         get() = reading != null && nowMillis - reading.timeMillis <= freshnessMillis
@@ -85,6 +87,10 @@ object WidgetDataLoader {
         } else {
             Float.NaN
         }
+        val targetLow = threshold { Natives.targetlow() }
+        val targetHigh = threshold { Natives.targethigh() }
+        val veryLow = threshold { Natives.alarmverylow() }
+        val veryHigh = threshold { Natives.alarmveryhigh() }
         return WidgetData(
             reading = display?.let { WidgetReading(it.primaryStr, it.primaryValue, it.timeMillis, rate) },
             history = history,
@@ -96,10 +102,11 @@ object WidgetDataLoader {
             iobUnits = iob,
             nowMillis = now,
             freshnessMillis = Notify.glucosetimeout,
-            targetLow = threshold { Natives.targetlow() },
-            targetHigh = threshold { Natives.targethigh() },
-            veryLow = threshold { Natives.alarmverylow() },
-            veryHigh = threshold { Natives.alarmveryhigh() },
+            targetLow = targetLow,
+            targetHigh = targetHigh,
+            veryLow = veryLow,
+            veryHigh = veryHigh,
+            chartStyle = WidgetChartStyle.read(context, serial, targetLow, targetHigh, veryLow, veryHigh),
         )
     }
 
