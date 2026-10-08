@@ -49,15 +49,18 @@ object InsulinReminderPolicy {
         reminderAtMillis - windowMinutesBefore(minuteOfDay, times) * 60_000L
 
     /**
-     * Whether [entry] is a dose of [preset]: an insulin entry with an amount, either filed under
-     * the preset or named after it. The name matters for a dose received from Nightscout or AAPS,
-     * which is filed under whatever insulin the import guessed but keeps the insulin's name.
+     * Whether [entry] is a dose of [preset]: an insulin entry with an amount, filed under the
+     * preset. A row received from another system (Nightscout, AAPS, the API, Clone) also counts
+     * by the insulin's name: the import files it under whatever insulin it matched, but keeps the
+     * name. A row of this phone's own (typed, from the watch, a pen, a meter) is filed under the
+     * insulin chosen for it, so another preset of the same name is another insulin.
      */
     fun isDoseOf(entry: JournalEntry, preset: JournalInsulinPreset): Boolean {
         if (entry.type != JournalEntryType.INSULIN) return false
         val amount = entry.amount ?: return false
         if (!amount.isFinite() || amount <= 0f) return false
         if (entry.insulinPresetId == preset.id) return true
+        if (!isExternalJournalMirrorSource(entry.source)) return false
         val name = preset.displayName.trim()
         return name.isNotEmpty() && entry.title.trim().equals(name, ignoreCase = true)
     }
