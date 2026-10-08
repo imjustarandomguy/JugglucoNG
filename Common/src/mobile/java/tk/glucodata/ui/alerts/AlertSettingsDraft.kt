@@ -303,6 +303,7 @@ internal fun mergeFields(base: AlertConfig, draft: AlertConfig, current: AlertCo
             rearmMinIntervalMinutes = pick { it.rearmMinIntervalMinutes },
             iobCoverageFactor = pick { it.iobCoverageFactor },
             fallRateSuppress = pick { it.fallRateSuppress },
+            riseRateSuppress = pick { it.riseRateSuppress },
             deltaThreshold = pick { it.deltaThreshold },
             deltaCount = pick { it.deltaCount },
             deltaBorder = pick { it.deltaBorder },
@@ -335,8 +336,10 @@ internal fun mergeFields(base: AlertConfig, draft: AlertConfig, current: AlertCo
 internal fun mergeFields(base: GlobalAlertSettings, draft: GlobalAlertSettings, current: GlobalAlertSettings) =
     mergeNamed(base, draft, current) { start, pick ->
         start.copy(
+            alarmRouting = pick { it.alarmRouting },
             sameDirectionSuppressionMinutes = pick { it.sameDirectionSuppressionMinutes },
             acknowledgedHighCoverage = pick { it.acknowledgedHighCoverage },
+            watchAlarmStyle = pick { it.watchAlarmStyle },
         )
     }
 

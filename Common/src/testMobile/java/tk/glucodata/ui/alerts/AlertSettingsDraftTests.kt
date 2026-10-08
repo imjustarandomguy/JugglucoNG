@@ -302,6 +302,22 @@ class AlertSettingsDraftTests {
     }
 
     @Test
+    fun whereAlarmsRingAndTheWatchStyleMergeFieldByField() {
+        val base = GlobalAlertSettings()
+        val routedHere = base.copy(alarmRouting = AlarmRoutingMode.PHONE_ONLY)
+        val styledElsewhere = base.copy(watchAlarmStyle = WatchAlarmStyle.VIBRATE_ONLY)
+
+        assertEquals(
+            base.copy(alarmRouting = AlarmRoutingMode.PHONE_ONLY, watchAlarmStyle = WatchAlarmStyle.VIBRATE_ONLY),
+            mergeFields(base, routedHere, styledElsewhere),
+        )
+        assertEquals(
+            base.copy(alarmRouting = AlarmRoutingMode.PHONE_ONLY, watchAlarmStyle = WatchAlarmStyle.VIBRATE_ONLY),
+            mergeFields(base, styledElsewhere, routedHere),
+        )
+    }
+
+    @Test
     fun theQuietWindowSettingsMergeFieldByField() {
         val start = AlertSettingsDraft(stored())
         val edited = start.withQuietWindow(quiet.copy(breakthroughMinutes = 20))
@@ -365,6 +381,7 @@ class AlertSettingsDraftTests {
         "rearmMinIntervalMinutes" to { c -> c.copy(rearmMinIntervalMinutes = 30) },
         "iobCoverageFactor" to { c -> c.copy(iobCoverageFactor = 0.5f) },
         "fallRateSuppress" to { c -> c.copy(fallRateSuppress = 2f) },
+        "riseRateSuppress" to { c -> c.copy(riseRateSuppress = 1.5f) },
         "deltaThreshold" to { c -> c.copy(deltaThreshold = 0.3f) },
         "deltaCount" to { c -> c.copy(deltaCount = 2) },
         "deltaBorder" to { c -> c.copy(deltaBorder = 5f) },
