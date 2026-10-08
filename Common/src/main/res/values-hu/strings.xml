@@ -3235,4 +3235,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
         <item quantity="one">%d tervezett naplóbejegyzés beszámítva</item>
         <item quantity="other">%d tervezett naplóbejegyzés beszámítva</item>
     </plurals>
+    <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
+    <string name="floating_open_app_info">Alkalmazásinformáció</string>
 </resources>

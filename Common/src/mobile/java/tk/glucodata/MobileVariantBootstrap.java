@@ -26,6 +26,13 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         ScheduledBackupWorker.initialize(application);
         // AAPS reports its temp basal only in the status line it broadcasts for xDrip.
         tk.glucodata.receivers.AapsStatusLineReceiver.register(application);
+        // Offered only while floating glucose and its options want it, whatever an
+        // earlier version left.
+        try {
+            tk.glucodata.service.FloatingAccessibilityService.syncAvailability(application);
+        } catch (Throwable th) {
+            Log.stack("MobileVariantBootstrap", "floating accessibility", th);
+        }
     }
 
     @Override
