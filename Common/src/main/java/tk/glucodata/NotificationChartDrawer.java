@@ -72,6 +72,10 @@ public class NotificationChartDrawer {
     // prefs at each drawChartInternal entry (single funnel for all charts).
     private static volatile boolean sTrafficLineColors = false;
     private static volatile boolean sTrafficLineDark = false;
+    // How the readings are drawn (ChartReadingsStyle): line, dots, or both.
+    // Resolved the same way, so the notification, AOD overlay, widget and
+    // floating card all follow the one setting.
+    private static volatile int sReadingsStyle = ChartReadingsStyle.LINE;
 
     private static int resolveThresholdPointColor(
             float value,
@@ -144,7 +148,8 @@ public class NotificationChartDrawer {
                 true,
                 0,
                 1f,
-                1f);
+                1f,
+                sReadingsStyle);
     }
 
     private static boolean showsAuto(int viewMode) {
@@ -338,11 +343,20 @@ public class NotificationChartDrawer {
             return;
         }
 
+        int readingsStyle = sReadingsStyle;
+        boolean drawLines = ChartReadingsStyle.drawsLine(readingsStyle);
+        boolean drawDots = ChartReadingsStyle.drawsDots(readingsStyle);
+        float baseStrokeWidth = linePaint.getStrokeWidth();
+        float lineFade = drawDots ? ChartReadingsStyle.LINE_WITH_DOTS_ALPHA : 1f;
+        if (drawDots) {
+            linePaint.setStrokeWidth(baseStrokeWidth * ChartReadingsStyle.LINE_WITH_DOTS_WIDTH);
+        }
+
         long previousTimestamp = 0L;
         float previousValue = 0f;
         boolean hasPrevious = false;
 
-        for (int index = 0; index < size; index++) {
+        for (int index = 0; index < size && drawLines; index++) {
             float currentValue = values.get(index);
             long currentTimestamp = timestamps.get(index);
             boolean valid = Float.isFinite(currentValue) && currentValue > 0.1f;
@@ -356,7 +370,7 @@ public class NotificationChartDrawer {
                 float startY = chartBottom - ((previousValue - minY) / yRange) * chartHeight;
                 float endX = chartLeft + ((currentTimestamp - startTime) / (float) duration) * chartWidth;
                 float endY = chartBottom - ((currentValue - minY) / yRange) * chartHeight;
-                int startColor = resolveSubtlePeerPointColor(
+                int startColor = scaleAlpha(resolveSubtlePeerPointColor(
                         previousValue,
                         targetLow,
                         targetHigh,
@@ -365,8 +379,8 @@ public class NotificationChartDrawer {
                         sensorColor,
                         isMmol,
                         isDark,
-                        passAlpha);
-                int endColor = resolveSubtlePeerPointColor(
+                        passAlpha), lineFade);
+                int endColor = scaleAlpha(resolveSubtlePeerPointColor(
                         currentValue,
                         targetLow,
                         targetHigh,
@@ -375,7 +389,7 @@ public class NotificationChartDrawer {
                         sensorColor,
                         isMmol,
                         isDark,
-                        passAlpha);
+                        passAlpha), lineFade);
                 if (startColor == endColor) {
                     linePaint.setShader(null);
                     linePaint.setColor(startColor);
@@ -396,6 +410,27 @@ public class NotificationChartDrawer {
             previousTimestamp = currentTimestamp;
             previousValue = currentValue;
             hasPrevious = true;
+        }
+        linePaint.setStrokeWidth(baseStrokeWidth);
+
+        if (drawDots) {
+            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration);
+            for (int index = 0; index < size; index++) {
+                float value = values.get(index);
+                if (!Float.isFinite(value) || value <= 0.1f) continue;
+                float x = chartLeft + ((timestamps.get(index) - startTime) / (float) duration) * chartWidth;
+                float y = chartBottom - ((value - minY) / yRange) * chartHeight;
+                drawReadingDot(canvas, linePaint, x, y, radius, resolveSubtlePeerPointColor(
+                        value,
+                        targetLow,
+                        targetHigh,
+                        veryLowThreshold,
+                        veryHighThreshold,
+                        sensorColor,
+                        isMmol,
+                        isDark,
+                        passAlpha));
+            }
         }
     }
 
@@ -421,10 +456,21 @@ public class NotificationChartDrawer {
             boolean useThresholdColors,
             int thresholdTintColor,
             float lineAlpha,
-            float thresholdAlpha) {
+            float thresholdAlpha,
+            int readingsStyle) {
         int size = Math.min(timestamps.size(), values.size());
         if (size < 1) {
             return;
+        }
+
+        // The style decides what is drawn: the line (with a dot only where a reading has no
+        // neighbour to join), every reading as a dot, or a thinner, fainter line under the dots.
+        boolean drawLines = ChartReadingsStyle.drawsLine(readingsStyle);
+        boolean drawDots = ChartReadingsStyle.drawsDots(readingsStyle);
+        float baseStrokeWidth = linePaint.getStrokeWidth();
+        float lineFade = drawDots ? ChartReadingsStyle.LINE_WITH_DOTS_ALPHA : 1f;
+        if (drawDots) {
+            linePaint.setStrokeWidth(baseStrokeWidth * ChartReadingsStyle.LINE_WITH_DOTS_WIDTH);
         }
 
         long previousTimestamp = 0L;
@@ -441,7 +487,7 @@ public class NotificationChartDrawer {
             long currentTimestamp = timestamps.get(index);
             boolean valid = Float.isFinite(currentValue) && currentValue > 0.1f;
             if (!valid) {
-                if (hasPrevious && !previousConnected) {
+                if (!drawDots && hasPrevious && !previousConnected) {
                     drawIsolatedPoint(canvas, linePaint, previousTimestamp, previousValue, startTime, duration,
                             chartLeft, chartBottom, chartWidth, chartHeight, minY, yRange, targetLow, targetHigh,
                             veryLowThreshold, veryHighThreshold, isMmol, inRangeColor, useThresholdColors,
@@ -459,7 +505,7 @@ public class NotificationChartDrawer {
             // chart's ChartGap, so the two cannot drift apart again.
             boolean joins = hasPrevious && joinsAcross(previousTimestamp, currentTimestamp);
             if (hasPrevious && !joins) {
-                if (!previousConnected) {
+                if (!drawDots && !previousConnected) {
                     drawIsolatedPoint(canvas, linePaint, previousTimestamp, previousValue, startTime, duration,
                             chartLeft, chartBottom, chartWidth, chartHeight, minY, yRange, targetLow, targetHigh,
                             veryLowThreshold, veryHighThreshold, isMmol, inRangeColor, useThresholdColors,
@@ -469,18 +515,18 @@ public class NotificationChartDrawer {
                 previousConnected = false;
             }
 
-            if (joins) {
+            if (joins && drawLines) {
                 float startX = chartLeft + ((previousTimestamp - startTime) / (float) duration) * chartWidth;
                 float startY = chartBottom - ((previousValue - minY) / yRange) * chartHeight;
                 float endX = chartLeft + ((currentTimestamp - startTime) / (float) duration) * chartWidth;
                 float endY = chartBottom - ((currentValue - minY) / yRange) * chartHeight;
                 if (useThresholdColors) {
-                    int startColor = pointColor(previousValue, targetLow, targetHigh, veryLowThreshold,
+                    int startColor = scaleAlpha(pointColor(previousValue, targetLow, targetHigh, veryLowThreshold,
                             veryHighThreshold, isMmol, inRangeColor, true, thresholdTintColor,
-                            lineAlpha, thresholdAlpha);
-                    int endColor = pointColor(currentValue, targetLow, targetHigh, veryLowThreshold,
+                            lineAlpha, thresholdAlpha), lineFade);
+                    int endColor = scaleAlpha(pointColor(currentValue, targetLow, targetHigh, veryLowThreshold,
                             veryHighThreshold, isMmol, inRangeColor, true, thresholdTintColor,
-                            lineAlpha, thresholdAlpha);
+                            lineAlpha, thresholdAlpha), lineFade);
                     if (startColor == endColor) {
                         linePaint.setShader(null);
                         linePaint.setColor(startColor);
@@ -496,7 +542,8 @@ public class NotificationChartDrawer {
                     }
                 } else {
                     linePaint.setShader(null);
-                    linePaint.setColor(lineAlpha < 1f ? withAlpha(inRangeColor, lineAlpha) : inRangeColor);
+                    linePaint.setColor(scaleAlpha(
+                            lineAlpha < 1f ? withAlpha(inRangeColor, lineAlpha) : inRangeColor, lineFade));
                 }
                 canvas.drawLine(startX, startY, endX, endY, linePaint);
                 linePaint.setShader(null);
@@ -508,11 +555,26 @@ public class NotificationChartDrawer {
             hasPrevious = true;
         }
 
-        if (hasPrevious && !previousConnected) {
+        if (!drawDots && hasPrevious && !previousConnected) {
             drawIsolatedPoint(canvas, linePaint, previousTimestamp, previousValue, startTime, duration,
                     chartLeft, chartBottom, chartWidth, chartHeight, minY, yRange, targetLow, targetHigh,
                     veryLowThreshold, veryHighThreshold, isMmol, inRangeColor, useThresholdColors,
                     thresholdTintColor, lineAlpha, thresholdAlpha);
+        }
+        linePaint.setStrokeWidth(baseStrokeWidth);
+
+        if (drawDots) {
+            // After every line, so the dots sit on top; each in the colour the line has there.
+            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration);
+            for (int index = 0; index < size; index++) {
+                float value = values.get(index);
+                if (!Float.isFinite(value) || value <= 0.1f) continue;
+                float x = chartLeft + ((timestamps.get(index) - startTime) / (float) duration) * chartWidth;
+                float y = chartBottom - ((value - minY) / yRange) * chartHeight;
+                drawReadingDot(canvas, linePaint, x, y, radius, pointColor(value, targetLow, targetHigh,
+                        veryLowThreshold, veryHighThreshold, isMmol, inRangeColor, useThresholdColors,
+                        thresholdTintColor, lineAlpha, thresholdAlpha));
+            }
         }
     }
 
@@ -607,6 +669,24 @@ public class NotificationChartDrawer {
         linePaint.setStyle(style);
     }
 
+    /** One reading of the dot styles, filled; the paint is handed back as it was found. */
+    private static void drawReadingDot(Canvas canvas, Paint linePaint, float x, float y, float radius, int color) {
+        if (!Float.isFinite(x) || !Float.isFinite(y)) return;
+        linePaint.setShader(null);
+        linePaint.setColor(color);
+        Paint.Style style = linePaint.getStyle();
+        linePaint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(x, y, radius, linePaint);
+        linePaint.setStyle(style);
+    }
+
+    /** {@code color} with its own alpha scaled by {@code factor}; unchanged at 1. */
+    private static int scaleAlpha(int color, float factor) {
+        if (factor >= 1f) return color;
+        int alpha = Math.round(((color >>> 24) & 0xFF) * Math.max(0f, factor));
+        return (color & 0x00FFFFFF) | (alpha << 24);
+    }
+
     private static void drawNotificationSourceSeries(
             Canvas canvas,
             Paint linePaint,
@@ -631,6 +711,37 @@ public class NotificationChartDrawer {
             float lineAlpha,
             float thresholdAlpha,
             float strokeScale) {
+        drawNotificationSourceSeries(canvas, linePaint, timestamps, values, startTime, duration, chartLeft,
+                chartBottom, chartWidth, chartHeight, minY, yRange, targetLow, targetHigh, veryLowThreshold,
+                veryHighThreshold, isMmol, inRangeColor, useThresholdColors, thresholdTintColor, lineAlpha,
+                thresholdAlpha, strokeScale, sReadingsStyle);
+    }
+
+    private static void drawNotificationSourceSeries(
+            Canvas canvas,
+            Paint linePaint,
+            List<Long> timestamps,
+            List<Float> values,
+            long startTime,
+            long duration,
+            float chartLeft,
+            float chartBottom,
+            float chartWidth,
+            float chartHeight,
+            float minY,
+            float yRange,
+            float targetLow,
+            float targetHigh,
+            float veryLowThreshold,
+            float veryHighThreshold,
+            boolean isMmol,
+            int inRangeColor,
+            boolean useThresholdColors,
+            int thresholdTintColor,
+            float lineAlpha,
+            float thresholdAlpha,
+            float strokeScale,
+            int readingsStyle) {
         float baseStrokeWidth = linePaint.getStrokeWidth();
         linePaint.setStrokeWidth(baseStrokeWidth * strokeScale);
         drawSeries(
@@ -655,7 +766,8 @@ public class NotificationChartDrawer {
                 useThresholdColors,
                 thresholdTintColor,
                 lineAlpha,
-                thresholdAlpha);
+                thresholdAlpha,
+                readingsStyle);
         linePaint.setStrokeWidth(baseStrokeWidth);
     }
 
@@ -1766,6 +1878,7 @@ public class NotificationChartDrawer {
         sTrafficLineColors = context.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
                 .getBoolean("glucose_chart_range_colors_enabled", false);
         sTrafficLineDark = useLightOnTransparentPalette(context);
+        sReadingsStyle = ChartReadingsStyle.read(context);
         // Get display metrics for proper sizing
         DisplayMetrics dm = context.getResources().getDisplayMetrics();
         int width = (widthHint > 0) ? widthHint : dm.widthPixels;
@@ -2493,7 +2606,9 @@ public class NotificationChartDrawer {
                             canvas, linePaint, ts, vs, startTime, chartDuration, chartLeft, chartBottom,
                             chartWidth, chartHeight, minY, yRange, targetLow, targetHigh, veryLowThreshold,
                             veryHighThreshold, isMmol, lineColor, false, primaryIdentityColor,
-                            0.45f, 0.45f, 0.5f);
+                            0.45f, 0.45f, 0.5f,
+                            // A question about the readings, not readings: a line in every style.
+                            ChartReadingsStyle.LINE);
                 }
                 linePaint.setStrokeWidth(baseStroke);
             }

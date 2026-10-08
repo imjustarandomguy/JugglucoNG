@@ -908,6 +908,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="preview_window_expanded_only">Expanded view (default)</string>
     <string name="preview_window_always">Always</string>
     <string name="preview_window_never">Never</string>
+    <string name="chart_readings_style_title">Readings shown as</string>
+    <string name="chart_readings_style_desc">How readings are drawn on the charts: in the app, the notification, the widget and on the watch</string>
+    <string name="chart_readings_style_line">Line</string>
+    <string name="chart_readings_style_dots">Dots</string>
+    <string name="chart_readings_style_line_and_dots">Line and dots</string>
     <string name="debug_logs_desc">View trace.log and logcat</string>
 
     

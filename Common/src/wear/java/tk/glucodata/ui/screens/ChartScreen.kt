@@ -35,6 +35,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.PointMode
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
@@ -58,6 +61,7 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlinx.coroutines.launch
 import tk.glucodata.Applic
+import tk.glucodata.ChartReadingsStyle
 import tk.glucodata.CalibrationAccess
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.GlucosePoint
@@ -222,6 +226,10 @@ internal fun InteractiveWearChartPanel(
     val requester = remember { FocusRequester() }
     val context = LocalContext.current
     val timeFormat = remember(context) { DateFormat.getTimeFormat(context) }
+    // Mirrored from the phone. Applying the phone's settings bumps the refresh revision,
+    // so a change shows without waiting for the next reading.
+    val refreshRevision by UiRefreshBus.revision.collectAsState()
+    val readingsStyle = remember(refreshRevision) { ChartReadingsStyle.read(context) }
 
     fun resetViewport(nextData: WearChartData = data) {
         viewportStart = nextData.start
@@ -314,6 +322,7 @@ internal fun InteractiveWearChartPanel(
                 rawColor = labelColor.copy(alpha = 0.52f),
                 primaryRaw = primaryRaw,
                 showSecondary = showSecondary,
+                readingsStyle = readingsStyle,
                 peerNeutralColor = labelColor,
                 targetColor = targetColor,
                 alarmColor = alarmColor,
@@ -570,6 +579,8 @@ internal fun WearChart(
     rawColor: Color = Color.Transparent,
     primaryRaw: Boolean = false,
     showSecondary: Boolean = false,
+    /** Line, dots, or line and dots, as the phone draws its readings ([ChartReadingsStyle]). */
+    readingsStyle: Int = ChartReadingsStyle.LINE,
     /** What peer colours are toned down toward, as the phone tones its peers. */
     peerNeutralColor: Color = Color.Gray,
     targetColor: Color,
@@ -736,7 +747,18 @@ internal fun WearChart(
             fun x(time: Long) = ((time - viewportStart).toFloat() / timeRange) * size.width
             fun y(value: Float) = plotBottom - ((value - minValue) / valueRange) * plotHeight
 
-            fun buildCurve(raw: Boolean, series: List<GlucosePoint> = viewportPoints): Path {
+            // The phone's readings style: the line, a dot per reading, or both.
+            val readingLines = ChartReadingsStyle.drawsLine(readingsStyle)
+            val readingDots = ChartReadingsStyle.drawsDots(readingsStyle)
+            val readingLineWidth = if (readingDots) ChartReadingsStyle.LINE_WITH_DOTS_WIDTH else 1f
+            val readingLineAlpha = if (readingDots) ChartReadingsStyle.LINE_WITH_DOTS_ALPHA else 1f
+            val visibleDurationMs = viewportEnd - viewportStart
+
+            fun buildCurve(
+                raw: Boolean,
+                series: List<GlucosePoint> = viewportPoints,
+                dots: MutableList<Offset>? = null,
+            ): Path {
                 val curve = Path()
                 var previous: Offset? = null
                 series.forEach { point ->
@@ -752,21 +774,28 @@ internal fun WearChart(
                             val controlX = (last.x + current.x) / 2f
                             curve.cubicTo(controlX, last.y, controlX, current.y, current.x, current.y)
                         }
+                        dots?.add(current)
                         previous = current
                     }
                 }
                 return curve
             }
 
-            val curve = buildCurve(primaryRaw)
-            val secondaryCurve = if (showSecondary) buildCurve(!primaryRaw) else null
+            val curveDots = if (readingDots) ArrayList<Offset>() else null
+            val curve = buildCurve(primaryRaw, dots = curveDots)
+            val secondaryDots = if (readingDots && showSecondary) ArrayList<Offset>() else null
+            val secondaryCurve = if (showSecondary) buildCurve(!primaryRaw, dots = secondaryDots) else null
             // Peers are toned toward neutral and drawn thinner, under the
             // primary, the way the phone's chart keeps its peers legible
             // without competing with the main trace.
+            val peerDots = ArrayList<Pair<List<Offset>, Color>>()
             val peerCurves = viewportPeers.mapNotNull { peer ->
                 if (peer.points.size < 2) return@mapNotNull null
                 val tone = androidx.compose.ui.graphics.lerp(peer.color, peerNeutralColor, 0.46f).copy(alpha = 0.76f)
-                buildCurve(peer.useRaw, peer.points) to tone
+                val dots = if (readingDots) ArrayList<Offset>() else null
+                val path = buildCurve(peer.useRaw, peer.points, dots)
+                dots?.let { peerDots += it to tone }
+                path to tone
             }
             // The trace is banded by height, as the phone's is: the stretch that
             // sits below target comes out low-coloured wherever it is in the
@@ -882,13 +911,36 @@ internal fun WearChart(
                         style = Stroke(1.8.dp.toPx(), pathEffect = predictionDash),
                     )
                 }
-                secondaryCurve?.let { drawPath(it, rawColor, style = Stroke(1.35.dp.toPx())) }
-                peerCurves.forEach { (path, tone) -> drawPath(path, tone, style = Stroke(1.8.dp.toPx())) }
-                if (viewportPoints.size >= 2) {
-                    val stroke = Stroke(2.6.dp.toPx())
-                    if (curveBrush != null) drawPath(curve, curveBrush, style = stroke)
-                    else drawPath(curve, lineColor, style = stroke)
+                fun drawReadingDots(dots: List<Offset>?, brush: Brush, lineWidth: Float) {
+                    if (dots.isNullOrEmpty()) return
+                    drawPoints(
+                        dots,
+                        PointMode.Points,
+                        brush,
+                        strokeWidth = ChartReadingsStyle.dotRadius(lineWidth, visibleDurationMs) * 2f,
+                        cap = StrokeCap.Round,
+                    )
                 }
+                val secondaryWidth = 1.35.dp.toPx()
+                val peerWidth = 1.8.dp.toPx()
+                val primaryWidth = 2.6.dp.toPx()
+                if (readingLines) {
+                    secondaryCurve?.let {
+                        drawPath(it, rawColor, alpha = readingLineAlpha, style = Stroke(secondaryWidth * readingLineWidth))
+                    }
+                    peerCurves.forEach { (path, tone) ->
+                        drawPath(path, tone, alpha = readingLineAlpha, style = Stroke(peerWidth * readingLineWidth))
+                    }
+                }
+                drawReadingDots(secondaryDots, SolidColor(rawColor), secondaryWidth)
+                peerDots.forEach { (dots, tone) -> drawReadingDots(dots, SolidColor(tone), peerWidth) }
+                if (readingLines && viewportPoints.size >= 2) {
+                    val stroke = Stroke(primaryWidth * readingLineWidth)
+                    if (curveBrush != null) drawPath(curve, curveBrush, alpha = readingLineAlpha, style = stroke)
+                    else drawPath(curve, lineColor, alpha = readingLineAlpha, style = stroke)
+                }
+                // The dots take the line's own height bands, so each reading has its range colour.
+                drawReadingDots(curveDots, curveBrush ?: SolidColor(lineColor), primaryWidth)
                 calibrationDrops.forEach { drawPath(it, selectionColor) }
                 selectedState.value?.takeIf { it.timestamp in viewportStart..viewportEnd }?.let {
                     val sx = x(it.timestamp)

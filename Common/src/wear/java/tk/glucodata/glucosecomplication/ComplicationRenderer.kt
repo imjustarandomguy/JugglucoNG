@@ -729,13 +729,36 @@ internal object ComplicationRenderer {
             null
         }
 
-        val trace = Path()
-        points.forEachIndexed { index, point ->
-            val px = x(point.timestamp)
-            val py = y(point.value)
-            if (index == 0) trace.moveTo(px, py) else trace.lineTo(px, py)
+        // The phone's readings style: the line, a dot per reading, or both. The
+        // dots keep the gradient, so each has its range colour.
+        val readingsStyle = tk.glucodata.ChartReadingsStyle.read(Applic.app)
+        val lineWidth = paint.strokeWidth
+        val lineAlpha = paint.alpha
+        if (tk.glucodata.ChartReadingsStyle.drawsLine(readingsStyle)) {
+            val trace = Path()
+            points.forEachIndexed { index, point ->
+                val px = x(point.timestamp)
+                val py = y(point.value)
+                if (index == 0) trace.moveTo(px, py) else trace.lineTo(px, py)
+            }
+            if (tk.glucodata.ChartReadingsStyle.drawsDots(readingsStyle)) {
+                paint.strokeWidth = lineWidth * tk.glucodata.ChartReadingsStyle.LINE_WITH_DOTS_WIDTH
+                paint.alpha = (lineAlpha * tk.glucodata.ChartReadingsStyle.LINE_WITH_DOTS_ALPHA).toInt()
+            }
+            canvas.drawPath(trace, paint)
+            paint.strokeWidth = lineWidth
+            paint.alpha = lineAlpha
         }
-        canvas.drawPath(trace, paint)
+        if (tk.glucodata.ChartReadingsStyle.drawsDots(readingsStyle)) {
+            val dots = FloatArray(points.size * 2)
+            points.forEachIndexed { index, point ->
+                dots[index * 2] = x(point.timestamp)
+                dots[index * 2 + 1] = y(point.value)
+            }
+            paint.strokeWidth = tk.glucodata.ChartReadingsStyle.dotRadius(lineWidth, to - from) * 2f
+            canvas.drawPoints(dots, paint)
+            paint.strokeWidth = lineWidth
+        }
 
         // The newest reading gets a dot, as the app's charts do. It keeps the
         // gradient, so it agrees with the line it sits on.

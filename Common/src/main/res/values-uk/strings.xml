@@ -527,6 +527,11 @@
     <string name="preview_window_expanded_only">Лише в розширеному вигляді (типово)</string>
     <string name="preview_window_always">Завжди</string>
     <string name="preview_window_never">Ніколи</string>
+    <string name="chart_readings_style_title">Показувати показники як</string>
+    <string name="chart_readings_style_desc">Як показники малюються на графіках: у застосунку, у сповіщенні, у віджеті та на годиннику</string>
+    <string name="chart_readings_style_line">Лінія</string>
+    <string name="chart_readings_style_dots">Точки</string>
+    <string name="chart_readings_style_line_and_dots">Лінія і точки</string>
     <string name="debug_logs_desc">Перегляд trace.log та logcat</string>
     <string name="data_management">Управління Даними</string>
     <string name="export_data">Експорт Історії</string>

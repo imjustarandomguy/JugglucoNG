@@ -462,6 +462,11 @@
     <string name="preview_window_expanded_only">Vue étendue uniquement (par défaut)</string>
     <string name="preview_window_always">Toujours</string>
     <string name="preview_window_never">Jamais</string>
+    <string name="chart_readings_style_title">Afficher les mesures en</string>
+    <string name="chart_readings_style_desc">Comment les mesures sont tracées sur les graphiques : dans l’application, la notification, le widget et sur la montre</string>
+    <string name="chart_readings_style_line">Ligne</string>
+    <string name="chart_readings_style_dots">Points</string>
+    <string name="chart_readings_style_line_and_dots">Ligne et points</string>
     <string name="debug_logs_desc">Voir traces et logcat</string>
     <string name="data_management">Gestion des Données</string>
     <string name="export_data">Exporter Historique</string>

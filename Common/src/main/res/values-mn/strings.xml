@@ -815,6 +815,11 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="preview_window_expanded_only">Дэлгэсэн харагдац (үндсэн)</string>
     <string name="preview_window_always">Үргэлж</string>
     <string name="preview_window_never">Хэзээ ч үгүй</string>
+    <string name="chart_readings_style_title">Хэмжилтийг харуулах</string>
+    <string name="chart_readings_style_desc">Графикт хэмжилтийг хэрхэн зурах: апп, мэдэгдэл, виджет болон цаг дээр</string>
+    <string name="chart_readings_style_line">Шугам</string>
+    <string name="chart_readings_style_dots">Цэгүүд</string>
+    <string name="chart_readings_style_line_and_dots">Шугам ба цэгүүд</string>
     <string name="debug_logs_desc">trace.log болон logcat харах</string>
     <string name="unit_mg">мг/дл</string>
     <string name="unit_mmol">ммоль/л</string>

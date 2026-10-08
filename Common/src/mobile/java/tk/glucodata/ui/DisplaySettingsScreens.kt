@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CropSquare
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ScatterPlot
 import androidx.compose.material.icons.filled.SettingsAccessibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -411,6 +412,13 @@ fun DisplayAndColorSettingsScreen(
         2 -> stringResource(R.string.preview_window_never)
         else -> stringResource(R.string.preview_window_expanded_only)
     }
+    val chartReadingsStyle by viewModel.chartReadingsStyle.collectAsState()
+    var showChartReadingsStyleDialog by rememberSaveable { mutableStateOf(false) }
+    val chartReadingsStyleLabel = when (chartReadingsStyle) {
+        tk.glucodata.ChartReadingsStyle.DOTS -> stringResource(R.string.chart_readings_style_dots)
+        tk.glucodata.ChartReadingsStyle.LINE_AND_DOTS -> stringResource(R.string.chart_readings_style_line_and_dots)
+        else -> stringResource(R.string.chart_readings_style_line)
+    }
 
     LegacySettingsScaffold(
         navController = navController,
@@ -472,6 +480,14 @@ fun DisplayAndColorSettingsScreen(
                 position = CardPosition.TOP,
                 onClick = { showPreviewWindowDialog = true }
             )
+            SettingsItem(
+                title = stringResource(R.string.chart_readings_style_title),
+                subtitle = chartReadingsStyleLabel,
+                icon = Icons.Default.ScatterPlot,
+                iconTint = MaterialTheme.colorScheme.primary,
+                position = CardPosition.MIDDLE,
+                onClick = { showChartReadingsStyleDialog = true }
+            )
             SettingsSwitchItem(
                 title = stringResource(R.string.dashboard_show_delta_title),
                 subtitle = stringResource(R.string.dashboard_show_delta_desc),
@@ -505,6 +521,17 @@ fun DisplayAndColorSettingsScreen(
                 showPreviewWindowDialog = false
             },
             onDismiss = { showPreviewWindowDialog = false }
+        )
+    }
+
+    if (showChartReadingsStyleDialog) {
+        ChartReadingsStylePickerDialog(
+            currentStyle = chartReadingsStyle,
+            onSelect = {
+                viewModel.setChartReadingsStyle(it)
+                showChartReadingsStyleDialog = false
+            },
+            onDismiss = { showChartReadingsStyleDialog = false }
         )
     }
 }

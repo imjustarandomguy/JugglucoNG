@@ -590,6 +590,11 @@
     <string name="preview_window_expanded_only">Tylko w widoku rozszerzonym (domyślnie)</string>
     <string name="preview_window_always">Zawsze</string>
     <string name="preview_window_never">Nigdy</string>
+    <string name="chart_readings_style_title">Pokazuj odczyty jako</string>
+    <string name="chart_readings_style_desc">Jak odczyty są rysowane na wykresach: w aplikacji, w powiadomieniu, w widżecie i na zegarku</string>
+    <string name="chart_readings_style_line">Linia</string>
+    <string name="chart_readings_style_dots">Punkty</string>
+    <string name="chart_readings_style_line_and_dots">Linia i punkty</string>
     <string name="debug_logs_desc">Zobacz trace.log i logcat</string>
     <string name="data_management">Zarządzanie Danymi</string>
     <string name="export_data">Eksportuj Historię</string>
