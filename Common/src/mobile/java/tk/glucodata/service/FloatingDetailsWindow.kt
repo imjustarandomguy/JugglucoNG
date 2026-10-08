@@ -28,4 +28,16 @@ internal object FloatingDetailsWindow {
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
         WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+
+    /**
+     * Whether a tap on the pill is the touch that closed the card: a touch on the pill is one
+     * outside the card, which closes it, so that tap only closes it and does not open it
+     * again. Told by event time: the card gets the pill's touch down as ACTION_OUTSIDE, with
+     * the same time. [closedByTouchAt] is the time of the touch outside the card that last
+     * closed it, [tapDownAt] that of the tap's own touch down.
+     *
+     * It used to be any tap within the long-press timeout of a touch outside: a tap on the
+     * pill that soon after one elsewhere closed the card showed its press and opened nothing.
+     */
+    fun closedByThisTap(closedByTouchAt: Long, tapDownAt: Long): Boolean = closedByTouchAt >= tapDownAt
 }
