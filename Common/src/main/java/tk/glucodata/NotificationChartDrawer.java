@@ -414,7 +414,8 @@ public class NotificationChartDrawer {
         linePaint.setStrokeWidth(baseStrokeWidth);
 
         if (drawDots) {
-            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration);
+            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration, chartWidth,
+                    readingSpacing(timestamps, values, size, startTime, duration, chartWidth));
             for (int index = 0; index < size; index++) {
                 float value = values.get(index);
                 if (!Float.isFinite(value) || value <= 0.1f) continue;
@@ -565,7 +566,8 @@ public class NotificationChartDrawer {
 
         if (drawDots) {
             // After every line, so the dots sit on top; each in the colour the line has there.
-            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration);
+            float radius = ChartReadingsStyle.dotRadius(baseStrokeWidth, duration, chartWidth,
+                    readingSpacing(timestamps, values, size, startTime, duration, chartWidth));
             for (int index = 0; index < size; index++) {
                 float value = values.get(index);
                 if (!Float.isFinite(value) || value <= 0.1f) continue;
@@ -576,6 +578,19 @@ public class NotificationChartDrawer {
                         thresholdTintColor, lineAlpha, thresholdAlpha));
             }
         }
+    }
+
+    /** The usual x distance between the newest readings drawn as dots ({@link ChartReadingsStyle#typicalSpacing}). */
+    private static float readingSpacing(List<Long> timestamps, List<Float> values, int size,
+            long startTime, long duration, float chartWidth) {
+        float[] xs = new float[16];
+        int count = 0;
+        for (int index = size - 1; index >= 0 && count < xs.length; index--) {
+            float value = values.get(index);
+            if (!Float.isFinite(value) || value <= 0.1f) continue;
+            xs[count++] = ((timestamps.get(index) - startTime) / (float) duration) * chartWidth;
+        }
+        return ChartReadingsStyle.typicalSpacing(xs, count, 1);
     }
 
     /**

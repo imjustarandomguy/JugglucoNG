@@ -29,6 +29,11 @@ internal class ChartDotBuffer {
         coordinates[size++] = x
         coordinates[size++] = y
     }
+
+    /** The usual x distance between consecutive dots ([tk.glucodata.ChartReadingsStyle.typicalSpacing]). */
+    fun spacing(): Float = tk.glucodata.ChartReadingsStyle.typicalSpacing(coordinates, size, 2, gapScratch)
+
+    private val gapScratch = FloatArray(16)
 }
 
 /**
