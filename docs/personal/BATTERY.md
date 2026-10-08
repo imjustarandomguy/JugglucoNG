@@ -34,7 +34,11 @@ After, before charging:
    The watch's `batterystats` prints "Computed drain: 0" (runs 3 and 4) although it
    measures its discharge (`Discharge:` line): its per-app model comes out empty. There
    is no `batteryusagestats` service on these devices; compare the watch by CPU time
-   and wake locks instead.
+   and wake locks instead. Runs 1–2 (per-app numbers present) reset the watch at 86 % and
+   94 %; runs 3–4 (empty) reset it right after a full charge (100 %, 98 %). Next run: after
+   unplugging the watch from a full charge, do NOT reset it (the unplug already reset its
+   stats), or reset only once it has dropped a few percent, and see whether the numbers
+   come back.
 3. Read:
    - `Estimated power use (mAh)` and the `UID …` lines under it: totals and the
      per-app ranking. Map uids with the package list (`u0a462` = uid 10462).
