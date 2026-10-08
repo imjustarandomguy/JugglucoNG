@@ -108,6 +108,106 @@ object HealthActivityImportPolicy {
         overlapsAny(interval, sessions)
     }.map { it.id }
 
+    /** What an activity row says, as far as the import writes it. */
+    data class ActivityContent(
+        val timestampMillis: Long,
+        val title: String,
+        val note: String?,
+        val amount: Float?,
+        val durationMinutes: Int?,
+        val intensity: String?,
+    ) {
+        companion object {
+            /** As the journal stores it: title and note trimmed, a blank note none. */
+            fun of(
+                timestampMillis: Long,
+                title: String,
+                note: String?,
+                amount: Float?,
+                durationMinutes: Int?,
+                intensity: String?,
+            ) = ActivityContent(
+                timestampMillis,
+                title.trim(),
+                note?.trim()?.takeIf { it.isNotEmpty() },
+                amount,
+                durationMinutes,
+                intensity,
+            )
+        }
+    }
+
+    /** The row a record was imported to: [byImport] while it is still the import's, not the user's edit. */
+    data class ExistingRow(val byImport: Boolean, val content: ActivityContent)
+
+    enum class ImportAction {
+        /** New, or changed in Health Connect since it was imported: written. */
+        WRITE,
+        /** Says what the row says already: not written again. */
+        UNCHANGED,
+        /** The user edited the row: the edit stays. */
+        EDITED_HERE,
+        /** The user deleted the row: it stays deleted. */
+        DELETED_HERE,
+    }
+
+    /**
+     * What becomes of one Health Connect record. Writing a record unchanged is not free: the
+     * write marks the row changed, which sends it to Nightscout and LibreView again, and every
+     * import reads two weeks of records. A row the user edited is theirs; one they deleted
+     * ([importedBefore], but [existing] gone) is not brought back.
+     */
+    fun importAction(existing: ExistingRow?, incoming: ActivityContent, importedBefore: Boolean): ImportAction = when {
+        existing == null -> if (importedBefore) ImportAction.DELETED_HERE else ImportAction.WRITE
+        !existing.byImport -> ImportAction.EDITED_HERE
+        existing.content == incoming -> ImportAction.UNCHANGED
+        else -> ImportAction.WRITE
+    }
+
+    /** What the import keeps between runs, and between process starts. */
+    interface Store {
+        fun getLong(key: String): Long
+        fun putLong(key: String, value: Long)
+        fun getString(key: String): String?
+        fun putString(key: String, value: String)
+    }
+
+    /**
+     * When the import last finished, and the records it has imported: a record imported before
+     * whose row is gone was deleted here. A record is remembered while an import can still read
+     * it (the longest import reaches back 30 days), so the list stays bounded.
+     */
+    class Memory(private val store: Store) {
+        var lastRunMillis: Long
+            get() = store.getLong(LAST_RUN_KEY)
+            set(value) = store.putLong(LAST_RUN_KEY, value)
+
+        /** Each record imported, by its row's name, with when the record ended. */
+        fun imported(): Map<String, Long> {
+            val text = store.getString(IMPORTED_KEY) ?: return emptyMap()
+            val imported = HashMap<String, Long>()
+            for (line in text.lineSequence()) {
+                val tab = line.lastIndexOf('\t')
+                if (tab <= 0) continue
+                val endMillis = line.substring(tab + 1).toLongOrNull() ?: continue
+                imported[line.substring(0, tab)] = endMillis
+            }
+            return imported
+        }
+
+        /** Adds [records] (name to end time) and forgets those no import can read any more. */
+        fun remember(records: Map<String, Long>, nowMillis: Long) {
+            val kept = (imported() + records).filterValues { it >= nowMillis - REMEMBER_MILLIS }
+            store.putString(IMPORTED_KEY, kept.entries.joinToString("\n") { (name, end) -> "$name\t$end" })
+        }
+
+        private companion object {
+            const val LAST_RUN_KEY = "health_connect_activity_last_import"
+            const val IMPORTED_KEY = "health_connect_activity_imported"
+            const val REMEMBER_MILLIS = 31L * 24 * 60 * 60 * 1000
+        }
+    }
+
     /** Reads every page: [read] gets the page token (null first) and returns the page and the next token. */
     suspend fun <T> readAllPages(read: suspend (pageToken: String?) -> Pair<List<T>, String?>): List<T> {
         val all = ArrayList<T>()
