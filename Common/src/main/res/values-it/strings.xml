@@ -3031,4 +3031,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_background_none">Nessuno</string>
     <string name="floating_restricted_settings_hint">Se Android indica «Impostazione con limitazioni»: in Informazioni app tocca ⋮ → Consenti impostazioni con limitazioni, poi attiva il servizio.</string>
     <string name="floating_open_app_info">Informazioni app</string>
+    <string name="alert_settings_unsaved_title">Modifiche agli allarmi non salvate</string>
+    <string name="alert_settings_unsaved_text">Apri la pagina degli allarmi per salvarle o scartarle.</string>
 </resources>

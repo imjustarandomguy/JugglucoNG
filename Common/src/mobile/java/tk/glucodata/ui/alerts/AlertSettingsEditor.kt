@@ -68,10 +68,20 @@ internal object AlertSettingsEditor {
 
     fun discard() = edit { it.discard() }
 
+    /**
+     * Whether a draft holds edits: the one in memory, or, before the page made
+     * one in this process, the edits kept on disk.
+     */
+    fun hasUnsavedEdits(): Boolean = UnsavedAlarmChangesNotice.wanted(
+        draftDirty = state?.isDirty,
+        editsOnDisk = prefs.all.keys.any { it != KEY_UNIT_MMOL },
+    )
+
     private fun set(next: AlertSettingsDraft) {
         if (next == state) return
         state = next
         writePending(next.pendingEdits())
+        if (!next.isDirty) UnsavedAlarmChangesNotice.cancel(Applic.app)
     }
 
     private fun loadStored(): AlertSettingsValues = AlertSettingsValues(
@@ -137,5 +147,7 @@ internal object AlertSettingsEditor {
         }
 
         override fun together(block: () -> Unit) = AlertRepository.saveTogether(block)
+
+        override fun load(): AlertSettingsValues = AlertSettingsEditor.loadStored()
     }
 }

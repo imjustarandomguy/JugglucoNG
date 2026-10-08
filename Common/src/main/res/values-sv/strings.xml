@@ -3041,4 +3041,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_background_none">Ingen</string>
     <string name="floating_restricted_settings_hint">Säger Android ”Begränsad inställning”: tryck på ⋮ → Tillåt begränsade inställningar i Appinfo och slå sedan på tjänsten.</string>
     <string name="floating_open_app_info">Appinfo</string>
+    <string name="alert_settings_unsaved_title">Osparade larmändringar</string>
+    <string name="alert_settings_unsaved_text">Öppna larmsidan för att spara eller förkasta dem.</string>
 </resources>

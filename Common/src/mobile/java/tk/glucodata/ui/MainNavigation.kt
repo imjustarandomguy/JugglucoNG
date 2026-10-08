@@ -757,6 +757,14 @@ fun MainApp(themeMode: ThemeMode, onThemeChanged: (ThemeMode) -> Unit) {
         dashboardViewModel.onResume()
     }
 
+    // Leaving the app with an alarm draft not saved leaves a notice of it; turning
+    // the phone is no leaving.
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) {
+        if ((context as? Activity)?.isChangingConfigurations != true) {
+            tk.glucodata.ui.alerts.UnsavedAlarmChangesNotice.onAppStopped(context)
+        }
+    }
+
     // A screen asked for from outside Compose — a notification's tap — is parked in
     // PendingNavigation by MainActivity and taken here, so it works from a cold start.
     // It is placed directly above the dashboard, as a tab tap would place it, so the

@@ -3087,4 +3087,6 @@
     <string name="widget_background_none">Brak</string>
     <string name="floating_restricted_settings_hint">Jeśli Android pokazuje „Ustawienie z ograniczonym dostępem”: w informacjach o aplikacji dotknij ⋮ → Zezwól na ustawienia z ograniczonym dostępem, a potem włącz usługę.</string>
     <string name="floating_open_app_info">Informacje o aplikacji</string>
+    <string name="alert_settings_unsaved_title">Niezapisane zmiany alarmów</string>
+    <string name="alert_settings_unsaved_text">Otwórz stronę alarmów, aby je zapisać lub odrzucić.</string>
 </resources>

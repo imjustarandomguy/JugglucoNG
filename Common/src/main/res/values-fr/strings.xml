@@ -3047,4 +3047,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_background_none">Aucun</string>
     <string name="floating_restricted_settings_hint">Si Android indique « Paramètre restreint » : dans Infos sur l\'appli, touchez ⋮ → Autoriser les paramètres restreints, puis activez le service.</string>
     <string name="floating_open_app_info">Infos sur l\'appli</string>
+    <string name="alert_settings_unsaved_title">Modifications des alarmes non enregistrées</string>
+    <string name="alert_settings_unsaved_text">Ouvrez la page des alarmes pour les enregistrer ou les abandonner.</string>
 </resources>

@@ -3293,4 +3293,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_background_none">None</string>
     <string name="floating_restricted_settings_hint">If Android says “Restricted setting”: in App info, tap ⋮ → Allow restricted settings, then turn the service on.</string>
     <string name="floating_open_app_info">App info</string>
+    <string name="alert_settings_unsaved_title">Unsaved alarm changes</string>
+    <string name="alert_settings_unsaved_text">Open the alarm page to save or discard them.</string>
 </resources>

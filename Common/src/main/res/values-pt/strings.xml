@@ -3042,4 +3042,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_background_none">Nenhum</string>
     <string name="floating_restricted_settings_hint">Se o Android indicar «Definição restrita»: em Informações da app, toque em ⋮ → Permitir definições restritas e depois ative o serviço.</string>
     <string name="floating_open_app_info">Informações da app</string>
+    <string name="alert_settings_unsaved_title">Alterações de alarmes não guardadas</string>
+    <string name="alert_settings_unsaved_text">Abra a página de alarmes para as guardar ou descartar.</string>
 </resources>

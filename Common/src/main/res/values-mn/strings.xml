@@ -3142,4 +3142,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="widget_background_none">Байхгүй</string>
     <string name="floating_restricted_settings_hint">Android «Хязгаарлагдсан тохиргоо» гэж мэдэгдвэл: Аппын мэдээлэл дотор ⋮ → Хязгаарлагдсан тохиргоог зөвшөөрөх-ийг дарж, дараа нь үйлчилгээг асаана уу.</string>
     <string name="floating_open_app_info">Аппын мэдээлэл</string>
+    <string name="alert_settings_unsaved_title">Хадгалаагүй дохионы өөрчлөлт</string>
+    <string name="alert_settings_unsaved_text">Хадгалах эсвэл хаяхын тулд дохионы хуудсыг нээнэ үү.</string>
 </resources>

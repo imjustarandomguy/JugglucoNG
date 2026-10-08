@@ -2972,4 +2972,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="journal_save_failed_kept">Nincs mentve. A bejegyzés megmaradt; próbálja újra.</string>
     <string name="journal_reminders_not_shown">Az inzulinemlékeztetők értesítései ki vannak kapcsolva: az emlékeztetők nem jelennek meg.</string>
     <string name="journal_reminders_late">A pontos ébresztések nincsenek engedélyezve: az emlékeztetők néhány percet késhetnek.</string>
+    <string name="alert_settings_unsaved_title">Mentetlen riasztásmódosítások</string>
+    <string name="alert_settings_unsaved_text">Nyissa meg a riasztások oldalát a mentéshez vagy az elvetéshez.</string>
 </resources>
