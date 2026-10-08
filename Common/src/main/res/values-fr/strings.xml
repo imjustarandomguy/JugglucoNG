@@ -2935,6 +2935,27 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%1$d heure</item>
         <item quantity="other">%1$d heures</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d modification non enregistrée</item>
+        <item quantity="other">%1$d modifications non enregistrées</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">et %1$d autre</item>
+        <item quantity="other">et %1$d autres</item>
+    </plurals>
+    <string name="alert_settings_discard">Abandonner</string>
+    <string name="alert_settings_changed">Modifié</string>
+    <string name="alert_settings_saved">Enregistré</string>
+    <string name="alert_settings_leave_title">Enregistrer les modifications ?</string>
+    <string name="alert_settings_keep_editing">Continuer à modifier</string>
+    <string name="alert_settings_change_line">%1$s : %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Autres réglages</string>
+    <string name="alert_settings_added">Ajoutée</string>
+    <string name="alert_settings_removed">Supprimée</string>
+    <string name="alert_settings_test_uses_saved">Le test utilise les réglages enregistrés — enregistrez d\'abord pour tester vos modifications</string>
+    <string name="alert_settings_delivery">Type d\'alerte</string>
+    <string name="alert_settings_on">Activé</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Pair à pair</string>
     <string name="clone_transport_connected">Connecté</string>

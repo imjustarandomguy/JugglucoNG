@@ -27,7 +27,7 @@ data class GlobalAlertSettings(
     val acknowledgedHighCoverage: Boolean = AlertDefaults.ACKNOWLEDGED_HIGH_COVERAGE_ENABLED,
     /** "On the watch": how the watch rings the alarms it rings ([WatchAlarmStyle]). */
     val watchAlarmStyle: WatchAlarmStyle = WatchAlarmStyle.SAME_AS_PHONE,
-)
+) : java.io.Serializable
 
 /**
  * Which device sounds a glucose alarm.

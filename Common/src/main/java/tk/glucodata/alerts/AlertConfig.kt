@@ -188,7 +188,11 @@ data class AlertConfig(
     // Sensor-expiry only: warn this many minutes before the sensor ends. Each
     // selected threshold fires once per sensor. Empty = no pre-warning.
     val expiryWarningMinutes: Set<Int> = emptySet()
-) {
+) : java.io.Serializable {
+    // Serializable so the alert screen can keep an unsaved edit on disk whole
+    // (ui.alerts.PendingAlertEditsCodec). No serialVersionUID on purpose: one
+    // written by a build with other fields must fail to read, not read half.
+
     /**
      * Whether this alert should use the old system alarm path (AlarmActivity).
      */

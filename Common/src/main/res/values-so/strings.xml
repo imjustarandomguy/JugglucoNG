@@ -3114,6 +3114,27 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="one">%1$d saac</item>
         <item quantity="other">%1$d saacadood</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d isbeddel aan la keydin</item>
+        <item quantity="other">%1$d isbeddel oo aan la keydin</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">iyo %1$d kale</item>
+        <item quantity="other">iyo %1$d kale</item>
+    </plurals>
+    <string name="alert_settings_discard">Iska tuur</string>
+    <string name="alert_settings_changed">La beddelay</string>
+    <string name="alert_settings_saved">Waa la keydiyay</string>
+    <string name="alert_settings_leave_title">Ma keydinaysaa isbeddelada?</string>
+    <string name="alert_settings_keep_editing">Sii wad wax ka beddelka</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Dejimo kale</string>
+    <string name="alert_settings_added">La daray</string>
+    <string name="alert_settings_removed">La saaray</string>
+    <string name="alert_settings_test_uses_saved">Tijaabadu waxay isticmaashaa dejimaha la keydiyay — marka hore keydi si aad u tijaabiso isbeddeladaada</string>
+    <string name="alert_settings_delivery">Habka digniinta</string>
+    <string name="alert_settings_on">Shid</string>
     <string name="clone_source_label">Clone</string>
     <string name="clone_transport_local_ice">Qalab ilaa qalab</string>
     <string name="clone_transport_connected">Isku xiran</string>

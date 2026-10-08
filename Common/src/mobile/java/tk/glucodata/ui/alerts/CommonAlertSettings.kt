@@ -41,6 +41,9 @@ import tk.glucodata.ui.util.ConnectedButtonGroup
  * one collapsed "Advanced" row: silent-mode override, delayed sound, active
  * hours, retries, the default snooze, and whatever the alert adds through
  * [advancedContent].
+ *
+ * On the alert screen [config] is a draft: given [savedConfig], what is stored,
+ * each control whose value differs from it carries a [ChangedMarker].
  */
 @Composable
 fun CommonAlertSettings(
@@ -56,10 +59,14 @@ fun CommonAlertSettings(
     // What the alert is about: thresholds, durations, look-ahead.
     headerContent: (@Composable () -> Unit)? = null,
     // The alert's own power-user options, rendered inside the Advanced section.
-    advancedContent: (@Composable () -> Unit)? = null
+    advancedContent: (@Composable () -> Unit)? = null,
+    savedConfig: AlertConfig? = null,
+    // One line under the Test button, e.g. that the test rings what is saved.
+    testNote: String? = null
 ) {
     val sectionHorizontalPadding = 16.dp
     var advancedExpanded by LocalAlertsAdvancedOpen.current
+    fun changed(read: (AlertConfig) -> Any?): Boolean = savedConfig != null && read(savedConfig) != read(config)
 
     Column(
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -75,16 +82,26 @@ fun CommonAlertSettings(
         }
 
         if (showTestButton) {
-            OutlinedButton(
-                onClick = onTest,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = sectionHorizontalPadding),
-                contentPadding = PaddingValues(vertical = 8.dp)
+            Column(
+                modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.test_alert))
+                OutlinedButton(
+                    onClick = onTest,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.test_alert))
+                }
+                testNote?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
@@ -94,6 +111,9 @@ fun CommonAlertSettings(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(horizontal = sectionHorizontalPadding)
         ) {
+            if (changed { Triple(it.soundEnabled, it.vibrationEnabled, it.flashEnabled) }) {
+                ChangedMarker(Modifier.align(Alignment.End))
+            }
             val modes = listOf("Sound", "Vibrate", "Flash")
             val selectedModes = mutableListOf<String>().apply {
                 if (config.soundEnabled) add("Sound")
@@ -169,11 +189,14 @@ fun CommonAlertSettings(
                         )
                         Spacer(Modifier.width(16.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.alert_sound),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            LabelWithChange(changed = changed { it.customSoundUri }) { labelModifier ->
+                                Text(
+                                    stringResource(R.string.alert_sound),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = labelModifier
+                                )
+                            }
                             Text(
                                 getSoundDisplayText(config.customSoundUri, config.type.id),
                                 style = MaterialTheme.typography.bodySmall,
@@ -192,7 +215,8 @@ fun CommonAlertSettings(
                     title = stringResource(R.string.override_silent_mode),
                     subtitle = stringResource(R.string.override_silent_mode_desc),
                     checked = config.overrideDND,
-                    onCheckedChange = { onConfigChange(config.copy(overrideDND = it)) }
+                    onCheckedChange = { onConfigChange(config.copy(overrideDND = it)) },
+                    changed = changed { it.overrideDND }
                 )
             }
             TimeRangeSettings(
@@ -203,13 +227,17 @@ fun CommonAlertSettings(
                 endMinute = config.activeEndMinute,
                 onEnabledChange = { onConfigChange(config.copy(timeRangeEnabled = it)) },
                 onStartChange = { hour, minute -> onConfigChange(config.copy(activeStartHour = hour, activeStartMinute = minute)) },
-                onEndChange = { hour, minute -> onConfigChange(config.copy(activeEndHour = hour, activeEndMinute = minute)) }
+                onEndChange = { hour, minute -> onConfigChange(config.copy(activeEndHour = hour, activeEndMinute = minute)) },
+                changed = changed {
+                    listOf(it.timeRangeEnabled, it.activeStartHour, it.activeStartMinute, it.activeEndHour, it.activeEndMinute)
+                }
             )
 
             // === Advanced: collapsed, one row, everything set once and left alone ===
             AdvancedSectionHeader(
                 expanded = advancedExpanded,
-                onToggle = { advancedExpanded = !advancedExpanded }
+                onToggle = { advancedExpanded = !advancedExpanded },
+                changed = savedConfig != null && config.differsUnderAdvanced(savedConfig)
             )
             // The expanded body and the reset button stay inside this unspaced
             // column: a hidden AnimatedVisibility in the spaced parent would
@@ -218,7 +246,11 @@ fun CommonAlertSettings(
                 Column(modifier = Modifier.padding(top = 16.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     // === Intensity: soft to escalating ===
                     AnimatedVisibility(visible = config.soundEnabled || config.vibrationEnabled) {
-                        Column(modifier = Modifier.padding(horizontal = sectionHorizontalPadding)) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            if (changed { it.hapticProfile }) ChangedMarker(Modifier.align(Alignment.End))
                             run {
                                 val hapticProfileLabels = HapticProfile.entries.associateWith { it.localizedName() }
                                 ConnectedButtonGroup(
@@ -244,7 +276,11 @@ fun CommonAlertSettings(
                     }
 
                     // === Notification / alarm / both ===
-                    Column(modifier = Modifier.padding(horizontal = sectionHorizontalPadding)) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (changed { it.deliveryMode }) ChangedMarker(Modifier.align(Alignment.End))
                         val deliveryModeLabels = AlertDeliveryMode.entries.associateWith { it.localizedName() }
                         ConnectedButtonGroup(
                             options = AlertDeliveryMode.entries,
@@ -269,7 +305,8 @@ fun CommonAlertSettings(
                             stepSize = 1,
                             onValueChange = { onConfigChange(config.copy(alarmDurationSeconds = it)) },
                             modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
-                            valueText = { seconds -> "$seconds ${stringResource(R.string.sec)}" }
+                            valueText = { seconds -> "$seconds ${stringResource(R.string.sec)}" },
+                            changed = changed { it.alarmDurationSeconds }
                         )
                     }
 
@@ -283,7 +320,8 @@ fun CommonAlertSettings(
                                 title = stringResource(R.string.sound_delay_title),
                                 subtitle = stringResource(R.string.sound_delay_desc),
                                 checked = config.soundDelayEnabled,
-                                onCheckedChange = { onConfigChange(config.copy(soundDelayEnabled = it)) }
+                                onCheckedChange = { onConfigChange(config.copy(soundDelayEnabled = it)) },
+                                changed = changed { it.soundDelayEnabled }
                             )
                             AnimatedVisibility(visible = config.soundDelayEnabled) {
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -295,7 +333,8 @@ fun CommonAlertSettings(
                                         stepSize = 5,
                                         onValueChange = { onConfigChange(config.copy(soundDelaySeconds = it)) },
                                         modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
-                                        valueText = { seconds -> "$seconds ${stringResource(R.string.sec)}" }
+                                        valueText = { seconds -> "$seconds ${stringResource(R.string.sec)}" },
+                                        changed = changed { it.soundDelaySeconds }
                                     )
                                     if (config.type == AlertType.LOW || config.type == AlertType.VERY_LOW ||
                                         config.type == AlertType.PERSISTENT_LOW
@@ -330,7 +369,10 @@ fun CommonAlertSettings(
                         retryCount = config.retryCount,
                         onEnabledChange = { onConfigChange(config.copy(retryEnabled = it)) },
                         onIntervalChange = { onConfigChange(config.copy(retryIntervalMinutes = it)) },
-                        onCountChange = { onConfigChange(config.copy(retryCount = it)) }
+                        onCountChange = { onConfigChange(config.copy(retryCount = it)) },
+                        enabledChanged = changed { it.retryEnabled },
+                        intervalChanged = changed { it.retryIntervalMinutes },
+                        countChanged = changed { it.retryCount }
                     )
                     }
 
@@ -341,7 +383,8 @@ fun CommonAlertSettings(
                         range = 5..60,
                         stepSize = 5,
                         onValueChange = { onConfigChange(config.copy(defaultSnoozeMinutes = it)) },
-                        modifier = Modifier.padding(horizontal = sectionHorizontalPadding)
+                        modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
+                        changed = changed { it.defaultSnoozeMinutes }
                     )
 
                     advancedContent?.invoke()
@@ -392,10 +435,16 @@ val LocalAlertsAdvancedOpen = compositionLocalOf<MutableState<Boolean>> { mutabl
  * setting. It is the last thing in a card unless a reset button follows, so
  * while collapsed it owns the card's bottom margin: the ripple runs to the
  * card edge instead of stopping short of it. Hosts pad their top only;
- * expanded content pads its own bottom.
+ * expanded content pads its own bottom. [changed]: something under it differs
+ * from what is saved, which says so even while it is closed.
  */
 @Composable
-internal fun AdvancedSectionHeader(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+internal fun AdvancedSectionHeader(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    changed: Boolean = false
+) {
     val rotation by animateFloatAsState(targetValue = if (expanded) 180f else 0f, label = "advancedChevron")
     Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
         HorizontalDivider(
@@ -410,13 +459,15 @@ internal fun AdvancedSectionHeader(expanded: Boolean, onToggle: () -> Unit, modi
                 .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                stringResource(R.string.advanced),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
+            LabelWithChange(changed = changed, modifier = Modifier.weight(1f)) { labelModifier ->
+                Text(
+                    stringResource(R.string.advanced),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = labelModifier
+                )
+            }
             Icon(
                 Icons.Default.ExpandMore,
                 contentDescription = null,

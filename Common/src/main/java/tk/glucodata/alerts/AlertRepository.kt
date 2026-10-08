@@ -243,7 +243,7 @@ object AlertRepository {
             putInt(KEY_SAME_DIRECTION_SUPPRESSION_MINUTES, sanitizeSameDirectionSuppressionMinutes(minutes))
         }
         // The watch evaluates with it too ([AlertConfigSync]'s global line).
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
     }
 
     /** Whether acknowledged rising-side alerts may cover HIGH during the quiet period. */
@@ -258,7 +258,7 @@ object AlertRepository {
         prefs.edit {
             putBoolean(KEY_ACKNOWLEDGED_HIGH_COVERAGE, enabled)
         }
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
     }
 
     private fun sanitizeSameDirectionSuppressionMinutes(minutes: Int): Int {
@@ -277,7 +277,7 @@ object AlertRepository {
         prefs.edit {
             putString(KEY_ALARM_ROUTING, mode.name)
         }
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
     }
 
     /**
@@ -293,7 +293,7 @@ object AlertRepository {
         prefs.edit {
             putString(KEY_WATCH_ALARM_STYLE, style.name)
         }
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
     }
 
     /** The shared settings the watch mirrors through [AlertConfigSync]'s global line. */
@@ -307,7 +307,7 @@ object AlertRepository {
     /** Stores all of [settings] at once: the watch, applying what the phone sent. */
     fun saveGlobalSettings(settings: GlobalAlertSettings) {
         prefs.edit { writeGlobalEntries(settings, this) }
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
     }
 
     /**
@@ -542,14 +542,47 @@ object AlertRepository {
         // them leaves the pair firing different sets. The phone reports the
         // change; on the watch this is a no-op, since a watch-side change has
         // already gone through the phone to get here.
-        runCatching { tk.glucodata.WearToggleSync.push() }
+        pushToWatch()
         // The very low/high thresholds are also where the colour bands are cut,
         // and the watch colours by the phone's.
         if (config.type == AlertType.VERY_LOW || config.type == AlertType.VERY_HIGH) {
             tk.glucodata.GlucoseColorSync.push()
         }
     }
-    
+
+    private val watchPushLock = Any()
+    private var watchPushHolds = 0
+    private var watchPushPending = false
+
+    /**
+     * Runs [block], holding back the watch update each save in it would send
+     * until it has finished, then sending one: the alert screen's Save stores
+     * several alerts at once.
+     */
+    fun saveTogether(block: () -> Unit) {
+        synchronized(watchPushLock) { watchPushHolds++ }
+        try {
+            block()
+        } finally {
+            val push = synchronized(watchPushLock) {
+                watchPushHolds--
+                (watchPushHolds == 0 && watchPushPending).also { if (it) watchPushPending = false }
+            }
+            if (push) runCatching { tk.glucodata.WearToggleSync.push() }
+        }
+    }
+
+    /** Tells the watch about a save, or leaves that to the [saveTogether] running. */
+    private fun pushToWatch() {
+        synchronized(watchPushLock) {
+            if (watchPushHolds > 0) {
+                watchPushPending = true
+                return
+            }
+        }
+        runCatching { tk.glucodata.WearToggleSync.push() }
+    }
+
     private fun saveToPrefs(config: AlertConfig) {
         if (config.type == AlertType.SENSOR_EXPIRY) {
             adoptOpenWindowsForNewExpiryThresholds(config)

@@ -3045,6 +3045,27 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
         <item quantity="one">%1$d Stunde</item>
         <item quantity="other">%1$d Stunden</item>
     </plurals>
+    <plurals name="alert_settings_unsaved_changes">
+        <item quantity="one">%1$d ungespeicherte Änderung</item>
+        <item quantity="other">%1$d ungespeicherte Änderungen</item>
+    </plurals>
+    <plurals name="alert_settings_more_changes">
+        <item quantity="one">und %1$d weitere</item>
+        <item quantity="other">und %1$d weitere</item>
+    </plurals>
+    <string name="alert_settings_discard">Verwerfen</string>
+    <string name="alert_settings_changed">Geändert</string>
+    <string name="alert_settings_saved">Gespeichert</string>
+    <string name="alert_settings_leave_title">Änderungen speichern?</string>
+    <string name="alert_settings_keep_editing">Weiter bearbeiten</string>
+    <string name="alert_settings_change_line">%1$s: %2$s → %3$s</string>
+    <string name="alert_settings_change_subject">%1$s · %2$s</string>
+    <string name="alert_settings_other_settings">Weitere Einstellungen</string>
+    <string name="alert_settings_added">Hinzugefügt</string>
+    <string name="alert_settings_removed">Entfernt</string>
+    <string name="alert_settings_test_uses_saved">Der Test nutzt die gespeicherten Einstellungen – erst speichern, um die Änderungen zu testen</string>
+    <string name="alert_settings_delivery">Zustellung</string>
+    <string name="alert_settings_on">Ein</string>
     <string name="clone_source_label">Klon</string>
     <string name="clone_transport_local_ice">Direktverbindung</string>
     <string name="clone_transport_connected">Verbunden</string>
