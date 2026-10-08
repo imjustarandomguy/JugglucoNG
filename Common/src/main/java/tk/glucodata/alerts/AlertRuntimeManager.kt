@@ -37,6 +37,7 @@ object AlertRuntimeManager {
     private var preHighIobSuppressed = false
     private var preHighCoverageSkipLogged: String? = null
     private var persistentHighLastReason: String? = null
+    private var persistentHighConfig: AlertConfig? = null
     private val standardEpisodes = AlertEpisodeState<AlertType>()
     private val sensorExpiryState = SensorExpiryAlertState(AlertRepository.sensorExpiryWarnedStore)
     private val fallingDeltaState = DeltaAlarmState(falling = true)
@@ -553,15 +554,51 @@ object AlertRuntimeManager {
     }
 
     /**
+     * Where the high at the current reading began, from the stored readings of
+     * the sensor this alert evaluates (see [EpisodeHistory]). 0 when they hold
+     * nothing earlier or cannot be read: the episode then starts at the current
+     * reading, as it did before history was consulted.
+     */
+    private fun persistentHighStartFromHistoryLocked(
+        config: AlertConfig,
+        value: Float,
+        readingTimeMs: Long
+    ): Long {
+        val start = try {
+            val readings = EpisodeHistory.load(lastDisplaySnapshot?.sensorId, readingTimeMs, value)
+            PersistentHighPolicy.startFromHistory(readings, config)
+        } catch (t: Throwable) {
+            Log.stack(LOG_ID, "persistentHighStartFromHistory", t)
+            null
+        } ?: return 0L
+        if (start.startedAtMs < readingTimeMs) {
+            Log.i(
+                LOG_ID,
+                "PERSISTENT_HIGH start from history: startedAt=${start.startedAtMs} reading=$readingTimeMs " +
+                    "walked=${start.readingsWalked}"
+            )
+        }
+        return start.startedAtMs
+    }
+
+    /**
      * The rules live in [PersistentHighPolicy]. The duration is measured between reading
      * times: [nowMs] is the wall clock on the 15 s tick, and a tick must not fire before
      * the reading that completes the duration, or phone and watch, each on its own tick,
      * ring at different times for the same G7 reading. [nowMs] is only the start time of
-     * last resort, when no reading time is known at all.
+     * last resort, when no reading time is known at all. An episode's start comes from
+     * the stored readings, so phone and watch count from the same reading.
      */
     private fun evaluatePersistentHighLocked(nowMs: Long) {
         val type = AlertType.PERSISTENT_HIGH
         val config = AlertRepository.loadConfig(type)
+        if (config != persistentHighConfig) {
+            // Changed here, or received from the phone: count the episode again
+            // under the new settings, from the stored readings rather than from now.
+            persistentHighConfig = config
+            persistentHighStartedAtMs = 0L
+            persistentHighLastReason = null
+        }
         val glucoseValue = currentGlucoseValueLocked()
         val readingTimeMs = lastDisplaySnapshot?.timeMillis?.takeIf { it > 0L }
             ?: lastReadingTimeMs.takeIf { it > 0L }
@@ -574,7 +611,10 @@ object AlertRuntimeManager {
             value = glucoseValue,
             readingTimeMs = readingTimeMs,
             rate = currentRateLocked(),
-            snoozed = SnoozeManager.isSnoozed(type)
+            snoozed = SnoozeManager.isSnoozed(type),
+            historyStartMs = {
+                glucoseValue?.let { persistentHighStartFromHistoryLocked(config, it, readingTimeMs) } ?: 0L
+            }
         )
         persistentHighStartedAtMs = decision.startedAtMs
         if (decision.reason != persistentHighLastReason &&
