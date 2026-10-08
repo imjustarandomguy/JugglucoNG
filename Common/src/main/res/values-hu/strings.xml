@@ -2964,4 +2964,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="clone_network_summary">Kiszolgálók és helyi felderítés</string>
     <string name="clone_connections_empty">Még nincs párosított eszköz.</string>
     <string name="clone_background_desc">Nagyobb akkumulátorfogyasztás</string>
+    <string name="alert_settings_unsaved_title">Mentetlen riasztásmódosítások</string>
+    <string name="alert_settings_unsaved_text">Nyissa meg a riasztások oldalát a mentéshez vagy az elvetéshez.</string>
 </resources>

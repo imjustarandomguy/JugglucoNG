@@ -2912,4 +2912,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d 条记录</item>
         <item quantity="other">%d 条记录</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">警报更改未保存</string>
+    <string name="alert_settings_unsaved_text">打开警报页面以保存或放弃更改。</string>
 </resources>

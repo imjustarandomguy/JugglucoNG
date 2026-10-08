@@ -2905,4 +2905,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entrée</item>
         <item quantity="other">%d entrées</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Modifications des alarmes non enregistrées</string>
+    <string name="alert_settings_unsaved_text">Ouvrez la page des alarmes pour les enregistrer ou les abandonner.</string>
 </resources>

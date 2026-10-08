@@ -2942,4 +2942,6 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
         <item quantity="one">%d item</item>
         <item quantity="other">%d items</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Niet-opgeslagen alarmwijzigingen</string>
+    <string name="alert_settings_unsaved_text">Open de alarmpagina om ze op te slaan of te verwerpen.</string>
 </resources>

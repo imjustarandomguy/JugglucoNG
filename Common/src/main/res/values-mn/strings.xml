@@ -3000,4 +3000,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">%d бичлэг</item>
         <item quantity="other">%d бичлэг</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Хадгалаагүй дохионы өөрчлөлт</string>
+    <string name="alert_settings_unsaved_text">Хадгалах эсвэл хаяхын тулд дохионы хуудсыг нээнэ үү.</string>
 </resources>

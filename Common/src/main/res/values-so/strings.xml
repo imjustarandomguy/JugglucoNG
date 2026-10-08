@@ -3084,4 +3084,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
         <item quantity="one">%d qoraal</item>
         <item quantity="other">%d qoraal</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Isbeddelada qaylodhaanka oo aan la keydin</string>
+    <string name="alert_settings_unsaved_text">Fur bogga qaylodhaanka si aad u keydiso ama iska tuurto.</string>
 </resources>

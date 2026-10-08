@@ -2889,4 +2889,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d voce</item>
         <item quantity="other">%d voci</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Modifiche agli allarmi non salvate</string>
+    <string name="alert_settings_unsaved_text">Apri la pagina degli allarmi per salvarle o scartarle.</string>
 </resources>

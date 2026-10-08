@@ -3151,4 +3151,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entry</item>
         <item quantity="other">%d entries</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Unsaved alarm changes</string>
+    <string name="alert_settings_unsaved_text">Open the alarm page to save or discard them.</string>
 </resources>

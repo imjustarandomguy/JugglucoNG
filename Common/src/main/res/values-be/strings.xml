@@ -2978,4 +2978,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d запісаў</item>
         <item quantity="other">%d запісу</item>
     </plurals>
+    <string name="alert_settings_unsaved_title">Незахаваныя змены трывог</string>
+    <string name="alert_settings_unsaved_text">Адкрыйце старонку трывог, каб захаваць або адкінуць іх.</string>
 </resources>
