@@ -286,6 +286,16 @@ class JournalRepository {
         return dao.getEntryBySourceRecordId(id) != null
     }
 
+    /** The rows an importer wrote under these names, by name, so it can tell what changed. */
+    suspend fun entriesBySourceRecordIds(sourceRecordIds: Collection<String>): Map<String, JournalEntry> {
+        val ids = sourceRecordIds.map(String::trim).filter(String::isNotBlank).distinct()
+        // In chunks, within the bound variables older SQLite takes in one statement.
+        return ids.chunked(500)
+            .flatMap { dao.getEntriesBySourceRecordIds(it) }
+            .mapNotNull { row -> row.sourceRecordId?.let { it to row.toModel() } }
+            .toMap()
+    }
+
     /** What one importer has already written in a stretch of time, so it can reconcile. */
     suspend fun entriesFromSourceBetween(
         source: JournalEntrySource,
@@ -851,7 +861,9 @@ internal fun preserveMirroredJournalIdentity(
     return if (storedSource != null && isExternalJournalMirrorSource(storedSource)) {
         JournalWriteIdentity(storedSource, existingSourceRecordId)
     } else {
-        JournalWriteIdentity(incomingSource, incomingSourceRecordId)
+        // The user's edit comes without a name and keeps the row's: an importer finds the row it
+        // wrote by that name, and must not write the record again beside the edit.
+        JournalWriteIdentity(incomingSource, incomingSourceRecordId ?: existingSourceRecordId)
     }
 }
 
