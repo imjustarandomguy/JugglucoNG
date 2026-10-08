@@ -2926,4 +2926,18 @@
     <string name="widget_chart_label">Wykres glukozy</string>
     <string name="widget_value_description">Bieżąca glukoza, strzałka trendu i czas pomiaru</string>
     <string name="widget_chart_description">Bieżąca glukoza z wykresem ostatnich odczytów</string>
+    <string name="widget_settings_title">Ustawienia widżetu</string>
+    <string name="widgets_title">Widżety</string>
+    <string name="widgets_subtitle">Widżety ekranu głównego i blokady</string>
+    <string name="widgets_empty">Nie dodano jeszcze widżetu. Dodaj „Glukoza” lub „Wykres glukozy” z listy widżetów ekranu głównego.</string>
+    <string name="widget_customize">Dostosuj</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Kolory zakresów</string>
+    <string name="widget_range_colors_desc">Koloruj wartość według jej zakresu</string>
+    <string name="widget_delta">Zmiana od ostatniego odczytu</string>
+    <string name="widget_reading_time">Czas pomiaru</string>
+    <string name="widget_chart_when_tall">Wykres, gdy wystarczy wysokości</string>
+    <string name="widget_chart_range">Zakres wykresu</string>
+    <string name="widget_hours">%1$d godz.</string>
+    <string name="widget_background_none">Brak</string>
 </resources>

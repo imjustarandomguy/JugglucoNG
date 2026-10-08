@@ -2,6 +2,7 @@
 <!-- "Glucose": fits one row; tall sizes just centre a bigger value. Readings drive
      the updates, so no periodic update (updatePeriodMillis="0"). -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:configure="tk.glucodata.widget.WidgetConfigActivity"
     android:description="@string/widget_value_description"
     android:initialKeyguardLayout="@layout/widget_glucose_loading"
     android:initialLayout="@layout/widget_glucose_loading"
@@ -17,4 +18,5 @@
     android:targetCellHeight="1"
     android:targetCellWidth="3"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen|keyguard" />
+    android:widgetCategory="home_screen|keyguard"
+    android:widgetFeatures="reconfigurable|configuration_optional" />

@@ -2985,4 +2985,18 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="widget_chart_label">Глюкозын график</string>
     <string name="widget_value_description">Одоогийн глюкоз, чиг хандлагын сум ба хэмжсэн цаг</string>
     <string name="widget_chart_description">Сүүлийн утгуудын графиктай одоогийн глюкоз</string>
+    <string name="widget_settings_title">Виджетийн тохиргоо</string>
+    <string name="widgets_title">Виджетүүд</string>
+    <string name="widgets_subtitle">Нүүр болон түгжээтэй дэлгэцийн виджетүүд</string>
+    <string name="widgets_empty">Виджет хараахан нэмээгүй байна. Нүүр дэлгэцийн виджетийн жагсаалтаас «Глюкоз» эсвэл «Глюкозын график»-ийг нэмнэ үү.</string>
+    <string name="widget_customize">Тохируулах</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Хүрээний өнгө</string>
+    <string name="widget_range_colors_desc">Утгыг хүрээнийх нь өнгөөр будах</string>
+    <string name="widget_delta">Сүүлийн хэмжилтээс хойших өөрчлөлт</string>
+    <string name="widget_reading_time">Хэмжсэн цаг</string>
+    <string name="widget_chart_when_tall">Өндөр хангалттай үед график</string>
+    <string name="widget_chart_range">Графикийн хугацаа</string>
+    <string name="widget_hours">%1$d ц</string>
+    <string name="widget_background_none">Байхгүй</string>
 </resources>

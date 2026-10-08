@@ -2890,4 +2890,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_label">Graphique du glucose</string>
     <string name="widget_value_description">Glucose actuel, flèche de tendance et heure de la mesure</string>
     <string name="widget_chart_description">Glucose actuel avec un graphique des dernières valeurs</string>
+    <string name="widget_settings_title">Réglages du widget</string>
+    <string name="widgets_title">Widgets</string>
+    <string name="widgets_subtitle">Widgets de l\'écran d\'accueil et de verrouillage</string>
+    <string name="widgets_empty">Aucun widget placé. Ajoutez « Glucose » ou « Graphique du glucose » depuis la liste des widgets de votre écran d\'accueil.</string>
+    <string name="widget_customize">Personnaliser</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Couleurs des plages</string>
+    <string name="widget_range_colors_desc">Colorer la valeur selon sa plage</string>
+    <string name="widget_delta">Variation depuis la dernière mesure</string>
+    <string name="widget_reading_time">Heure de la mesure</string>
+    <string name="widget_chart_when_tall">Graphique si la hauteur suffit</string>
+    <string name="widget_chart_range">Durée du graphique</string>
+    <string name="widget_hours">%1$d h</string>
+    <string name="widget_background_none">Aucun</string>
 </resources>

@@ -2935,4 +2935,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_label">График глюкозы</string>
     <string name="widget_value_description">Текущая глюкоза, стрелка тренда и время измерения</string>
     <string name="widget_chart_description">Текущая глюкоза с графиком последних значений</string>
+    <string name="widget_settings_title">Настройки виджета</string>
+    <string name="widgets_title">Виджеты</string>
+    <string name="widgets_subtitle">Виджеты главного экрана и экрана блокировки</string>
+    <string name="widgets_empty">Виджет ещё не добавлен. Добавьте «Глюкоза» или «График глюкозы» из списка виджетов главного экрана.</string>
+    <string name="widget_customize">Настроить</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Цвета диапазонов</string>
+    <string name="widget_range_colors_desc">Окрашивать значение в цвет его диапазона</string>
+    <string name="widget_delta">Изменение с последнего измерения</string>
+    <string name="widget_reading_time">Время измерения</string>
+    <string name="widget_chart_when_tall">График, если хватает высоты</string>
+    <string name="widget_chart_range">Период графика</string>
+    <string name="widget_hours">%1$d ч</string>
+    <string name="widget_background_none">Нет</string>
 </resources>

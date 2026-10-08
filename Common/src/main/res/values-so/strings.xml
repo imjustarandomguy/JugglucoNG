@@ -3069,4 +3069,18 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="widget_chart_label">Shaxda gulukooska</string>
     <string name="widget_value_description">Gulukooska hadda, falaarta isbeddelka iyo waqtiga akhriska</string>
     <string name="widget_chart_description">Gulukooska hadda oo leh shax akhrisyadii u dambeeyay</string>
+    <string name="widget_settings_title">Dejinta widget-ka</string>
+    <string name="widgets_title">Widgets</string>
+    <string name="widgets_subtitle">Widgets-ka shaashadda hore iyo shaashadda quful</string>
+    <string name="widgets_empty">Weli widget lama dhigin. Ku dar “Gulukoos” ama “Shaxda gulukooska” liiska widgets-ka ee shaashaddaada hore.</string>
+    <string name="widget_customize">Habee</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Midabada xadka</string>
+    <string name="widget_range_colors_desc">Qiimaha ku midabee xadkiisa</string>
+    <string name="widget_delta">Isbeddelka tan iyo akhriskii u dambeeyay</string>
+    <string name="widget_reading_time">Waqtiga akhriska</string>
+    <string name="widget_chart_when_tall">Shax marka dhererku ku filan yahay</string>
+    <string name="widget_chart_range">Muddada shaxda</string>
+    <string name="widget_hours">%1$d saac</string>
+    <string name="widget_background_none">Midna</string>
 </resources>

@@ -2899,4 +2899,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="widget_chart_label">血糖图表</string>
     <string name="widget_value_description">当前血糖、趋势箭头和读数时间</string>
     <string name="widget_chart_description">当前血糖及近期读数图表</string>
+    <string name="widget_settings_title">小部件设置</string>
+    <string name="widgets_title">小部件</string>
+    <string name="widgets_subtitle">主屏幕和锁屏小部件</string>
+    <string name="widgets_empty">尚未放置小部件。请从主屏幕的小部件列表中添加“血糖”或“血糖图表”。</string>
+    <string name="widget_customize">自定义</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">范围颜色</string>
+    <string name="widget_range_colors_desc">按所在范围为数值着色</string>
+    <string name="widget_delta">自上次读数以来的变化</string>
+    <string name="widget_reading_time">读数时间</string>
+    <string name="widget_chart_when_tall">高度足够时显示图表</string>
+    <string name="widget_chart_range">图表时长</string>
+    <string name="widget_hours">%1$d 小时</string>
+    <string name="widget_background_none">无</string>
 </resources>
