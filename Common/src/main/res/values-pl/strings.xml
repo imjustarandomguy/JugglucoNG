@@ -2920,4 +2920,9 @@
         <item quantity="many">%d wpisów</item>
         <item quantity="other">%d wpisu</item>
     </plurals>
+    <string name="live_notification_section">Powiadomienie na żywo</string>
+    <string name="live_notification_title">Glukoza na pasku Now Bar</string>
+    <string name="live_notification_desc">Pokazuje glukozę na pasku Now Bar i w chipie paska stanu. Niektóre telefony Samsung wymagają też Opcje programisty → Powiadomienia na żywo dla wszystkich aplikacji</string>
+    <string name="live_notification_promotion_off">Aktualizacje na żywo są wyłączone dla tej aplikacji w ustawieniach Androida. Dotknij, aby na nie zezwolić</string>
+    <string name="live_notification_metric_age">Wiek odczytu</string>
 </resources>

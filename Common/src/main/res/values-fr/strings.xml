@@ -2884,4 +2884,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entrée</item>
         <item quantity="other">%d entrées</item>
     </plurals>
+    <string name="live_notification_section">Notification en direct</string>
+    <string name="live_notification_title">Glucose dans la Now Bar</string>
+    <string name="live_notification_desc">Affiche le glucose dans la Now Bar et dans la puce de la barre d\'état. Certains téléphones Samsung demandent aussi Options pour les développeurs → Notifications en direct pour toutes les applis</string>
+    <string name="live_notification_promotion_off">Les mises à jour en direct sont désactivées pour cette appli dans les paramètres Android. Touchez pour les autoriser</string>
+    <string name="live_notification_metric_age">Âge de la mesure</string>
 </resources>

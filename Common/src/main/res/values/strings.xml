@@ -3130,4 +3130,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="one">%d entry</item>
         <item quantity="other">%d entries</item>
     </plurals>
+    <string name="live_notification_section">Live notification</string>
+    <string name="live_notification_title">Glucose in the Now Bar</string>
+    <string name="live_notification_desc">Shows your glucose in the Now Bar and status bar chip. On some Samsung phones it also needs Developer options → Live notifications for all apps</string>
+    <string name="live_notification_promotion_off">Live updates are off for this app in Android settings. Tap to allow them</string>
+    <string name="live_notification_metric_age">Reading age</string>
 </resources>

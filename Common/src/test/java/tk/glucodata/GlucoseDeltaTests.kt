@@ -102,6 +102,40 @@ class GlucoseDeltaTests {
         }
     }
 
+    @Test
+    fun latestWalksBackPastNearDuplicatesToAPointOldEnough() {
+        val points = listOf(
+            GlucosePoint(t0 - 10 * 60_000L, 110f),
+            GlucosePoint(t0 - 5 * 60_000L, 115f),
+            // Persisted and live copies of the newest reading, seconds apart.
+            GlucosePoint(t0 - 3_000L, 119f),
+            GlucosePoint(t0, 120f),
+        )
+        assertEquals(5f, GlucoseDelta.latest(points, false, 5), 0.001f)
+        // One-minute interval: the five-minute pair is scaled to a minute.
+        assertEquals(1f, GlucoseDelta.latest(points, false, 1), 0.001f)
+    }
+
+    @Test
+    fun latestUsesRawValuesWhenAsked() {
+        val points = listOf(
+            GlucosePoint(t0 - 5 * 60_000L, 100f, 90f),
+            GlucosePoint(t0, 104f, 99f),
+        )
+        assertEquals(4f, GlucoseDelta.latest(points, false, 5), 0.001f)
+        assertEquals(9f, GlucoseDelta.latest(points, true, 5), 0.001f)
+    }
+
+    @Test
+    fun latestIsNaNWithoutAUsablePair() {
+        assertTrue(GlucoseDelta.latest(null, false, 5).isNaN())
+        assertTrue(GlucoseDelta.latest(listOf(GlucosePoint(t0, 120f)), false, 5).isNaN())
+        // Too close, then too far, then not a value.
+        assertTrue(GlucoseDelta.latest(listOf(GlucosePoint(t0 - 60_000L, 119f), GlucosePoint(t0, 120f)), false, 5).isNaN())
+        assertTrue(GlucoseDelta.latest(listOf(GlucosePoint(t0 - 25 * 60_000L, 100f), GlucosePoint(t0, 120f)), false, 5).isNaN())
+        assertTrue(GlucoseDelta.latest(listOf(GlucosePoint(t0 - 5 * 60_000L, 0f), GlucosePoint(t0, 120f)), false, 5).isNaN())
+    }
+
     private inline fun withLocale(locale: Locale, block: () -> Unit) {
         val original = Locale.getDefault()
         try {

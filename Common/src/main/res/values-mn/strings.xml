@@ -2979,4 +2979,9 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
         <item quantity="one">%d бичлэг</item>
         <item quantity="other">%d бичлэг</item>
     </plurals>
+    <string name="live_notification_section">Шууд мэдэгдэл</string>
+    <string name="live_notification_title">Now Bar-д глюкоз</string>
+    <string name="live_notification_desc">Глюкозыг Now Bar болон төлөвийн мөрийн чипэд харуулна. Зарим Samsung утсанд мөн Хөгжүүлэгчийн сонголтууд → Бүх аппын шууд мэдэгдэл хэрэгтэй</string>
+    <string name="live_notification_promotion_off">Энэ аппын шууд шинэчлэлтийг Android-ийн тохиргоонд унтраасан байна. Зөвшөөрөхийн тулд товшино уу</string>
+    <string name="live_notification_metric_age">Хэмжилтийн нас</string>
 </resources>

@@ -2929,4 +2929,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
         <item quantity="many">%d записей</item>
         <item quantity="other">%d записи</item>
     </plurals>
+    <string name="live_notification_section">Живое уведомление</string>
+    <string name="live_notification_title">Глюкоза в Now Bar</string>
+    <string name="live_notification_desc">Показывает глюкозу в Now Bar и в чипе строки состояния. На некоторых телефонах Samsung также нужно Параметры разработчика → Живые уведомления для всех приложений</string>
+    <string name="live_notification_promotion_off">Живые обновления для этого приложения отключены в настройках Android. Нажмите, чтобы разрешить</string>
+    <string name="live_notification_metric_age">Возраст показания</string>
 </resources>
