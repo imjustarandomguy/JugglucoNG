@@ -3030,4 +3030,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="nightscout_api_help">A v1-hez API-titkot, a v3-hoz Nightscout-hozzáférési tokent használj.</string>
     <string name="nightscout_iob_help">Az eIOB és COB a devicestatus jugglucong mezőjében kerül elküldésre, a hagyományos IOB-tól külön.</string>
     <string name="insulin_reminder_changed">Nincs rögzítve: az inzulin megváltozott az emlékeztető óta. Koppintson az adag ellenőrzéséhez és rögzítéséhez.</string>
+    <string name="journal_save_failed">Nincs mentve: %1$s</string>
+    <string name="journal_save_try_again">Újra</string>
+    <string name="journal_save_failed_kept">Nincs mentve. A bejegyzés megmaradt; próbálja újra.</string>
 </resources>

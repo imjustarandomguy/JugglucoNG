@@ -119,8 +119,10 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -383,7 +385,11 @@ fun JournalEntrySheet(
     // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
     initialInsulinPresetId: Long? = null,
     // The dose a new insulin entry is filled in with, instead of the insulin's default.
-    initialInsulinAmount: Float? = null
+    initialInsulinAmount: Float? = null,
+    // For a host that keeps the sheet open until the save is stored: Save waits meanwhile, and
+    // a failed save is said above it, the entry kept.
+    saving: Boolean = false,
+    saveError: String? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val activeInsulinPresets = remember(insulinPresets) { insulinPresets.filter { !it.isArchived } }
@@ -491,6 +497,7 @@ fun JournalEntrySheet(
     val recentAmounts = recentAmountsLoad.second.takeIf { recentAmountsLoad.first == recentAmountsKey }.orEmpty()
     // The Save button and the keyboard's Done key both end here.
     fun saveDraft() {
+        if (saving) return
         if (!canSave) {
             focusManager.clearFocus()
             return
@@ -607,6 +614,8 @@ fun JournalEntrySheet(
             },
             recentAmounts = recentAmounts,
             canSave = canSave,
+            saving = saving,
+            saveError = saveError,
             onTypeSelected = { type ->
                 // The type's own fresh start, as if the sheet had opened on it: an amount or name
                 // typed for one type means nothing for another. The time and the note carry over.
@@ -652,6 +661,8 @@ private fun ColumnScope.JournalEntryForm(
     lastMealLine: String?,
     recentAmounts: List<Float>,
     canSave: Boolean,
+    saving: Boolean,
+    saveError: String?,
     onTypeSelected: (JournalEntryType) -> Unit,
     onSave: () -> Unit,
     onSaveFood: ((JournalFoodInput) -> Unit)?,
@@ -1020,11 +1031,22 @@ private fun ColumnScope.JournalEntryForm(
         }
     }
 
+    if (saveError != null) {
+        Text(
+            text = saveError,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 4.dp)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+        )
+    }
     // Outside the list, so it stays in reach whatever the type and however far the list
     // is scrolled.
     Button(
         onClick = { onSave() },
-        enabled = canSave,
+        enabled = canSave && !saving,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp)
@@ -1205,6 +1227,8 @@ private fun JournalEntrySizingForms(
                     },
                     recentAmounts = if (hasRecentAmounts) listOf(SIZING_AMOUNT) else emptyList(),
                     canSave = true,
+                    saving = false,
+                    saveError = null,
                     onTypeSelected = {},
                     onSave = {},
                     onSaveFood = null,
