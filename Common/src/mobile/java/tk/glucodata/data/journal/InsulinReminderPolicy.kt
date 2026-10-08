@@ -105,6 +105,37 @@ object InsulinReminderPolicy {
             .maxByOrNull { it.timestamp }
     }
 
+    /** What a tap on the reminder's one-tap "Log 25 U" does. */
+    sealed interface LogDecision {
+        /** Log [dose], the amount the button showed. */
+        data class Log(val dose: Float) : LogDecision
+
+        /**
+         * Log nothing: open the entry sheet to confirm, on [presetId] when that insulin is still
+         * in use, with [dose] filled in when there is one to show.
+         */
+        data class Review(val presetId: Long?, val dose: Float?) : LogDecision
+    }
+
+    /**
+     * The one-tap Log of a reminder posted for [labelledName] with the button "Log [labelledDose]",
+     * tapped when the insulin is [preset] (null once deleted). The dose logged is always the one
+     * the button showed, never the preset's default as it is now: a default changed meanwhile is
+     * not the dose the user confirmed. When the insulin is no longer the one named (renamed,
+     * archived, deleted), or the button's dose is unknown, nothing is logged and the user checks.
+     */
+    fun logDecision(labelledDose: Float?, labelledName: String?, preset: JournalInsulinPreset?): LogDecision {
+        val dose = JournalInsulinDosing.sanitizeDefaultDose(labelledDose)
+        val inUse = preset?.takeIf { !it.isArchived }
+        val sameInsulin = inUse != null && labelledName != null &&
+            inUse.displayName.trim() == labelledName.trim()
+        return if (sameInsulin && dose != null) {
+            LogDecision.Log(dose)
+        } else {
+            LogDecision.Review(inUse?.id, dose.takeIf { inUse != null })
+        }
+    }
+
     /** Whether an alarm meant for [scheduledForMillis] that fires at [nowMillis] still counts. */
     fun firesInTime(scheduledForMillis: Long, nowMillis: Long): Boolean =
         nowMillis - scheduledForMillis <= MAX_LATENESS_MILLIS

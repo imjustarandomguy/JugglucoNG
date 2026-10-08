@@ -75,6 +75,9 @@ object InsulinReminders {
     private const val EXTRA_DUE_AT = "due_at"
     /** When this alarm was set to ring: the reminder time, or the end of a snooze. */
     private const val EXTRA_SCHEDULED_FOR = "scheduled_for"
+    /** The dose and insulin name the Log button showed: what a tap on it logs. */
+    private const val EXTRA_LABELLED_DOSE = "labelled_dose"
+    private const val EXTRA_LABELLED_NAME = "labelled_name"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val observing = AtomicBoolean(false)
@@ -205,18 +208,26 @@ object InsulinReminders {
         }
     }
 
-    /** "Log 25 U": the default dose, now, through the repository like any entry (so it uploads). */
+    /**
+     * "Log 25 U": the dose the button showed, now, through the repository like any entry (so it
+     * uploads). If the insulin is no longer the one the reminder named, nothing is logged: the
+     * reminder turns into one that opens the entry sheet to check ([InsulinReminderPolicy.logDecision]).
+     */
     private suspend fun onLog(context: Context, intent: Intent) {
         val slot = slotOf(intent) ?: return
         val repository = JournalRepository()
         val preset = repository.getInsulinPresetsSnapshot().firstOrNull { it.id == slot.presetId }
-        val dose = JournalInsulinDosing.sanitizeDefaultDose(preset?.defaultDose)
-        if (preset == null || dose == null) {
-            cancelNotification(context, slot.presetId)
-            return
-        }
+        val labelledName = intent.getStringExtra(EXTRA_LABELLED_NAME)
+        val labelledDose = intent.takeIf { it.hasExtra(EXTRA_LABELLED_DOSE) }?.getFloatExtra(EXTRA_LABELLED_DOSE, 0f)
         val now = System.currentTimeMillis()
         val dueAt = intent.getLongExtra(EXTRA_DUE_AT, now)
+        val decision = InsulinReminderPolicy.logDecision(labelledDose, labelledName, preset)
+        if (decision !is InsulinReminderPolicy.LogDecision.Log || preset == null) {
+            val review = decision as? InsulinReminderPolicy.LogDecision.Review
+            postReview(context, slot, labelledName ?: preset?.displayName.orEmpty(), dueAt, review?.presetId, review?.dose)
+            return
+        }
+        val dose = decision.dose
         val windowStart = InsulinReminderPolicy.windowStart(dueAt, slot.minuteOfDay, preset.reminderTimes)
         val alreadyLogged = InsulinReminderPolicy.loggedDose(
             preset,
@@ -305,7 +316,10 @@ object InsulinReminders {
                     R.string.insulin_reminder_log_dose,
                     context.getString(R.string.unit_insulin_value, formatFloatForEditor(dose))
                 ),
-                broadcast(context, ACTION_LOG, slot, dueAt)
+                broadcast(context, ACTION_LOG, slot, dueAt) {
+                    putExtra(EXTRA_LABELLED_DOSE, dose)
+                    putExtra(EXTRA_LABELLED_NAME, preset.displayName)
+                }
             )
         } else {
             // No default to log in one tap: the entry sheet, on this insulin.
@@ -321,6 +335,53 @@ object InsulinReminders {
             ).build()
         )
         manager.notify(NOTIFICATION_TAG, notificationId(preset.id), builder.build())
+    }
+
+    /**
+     * In place of the reminder whose Log could not be done as shown: "Tresiba due at 21:00" /
+     * "Not logged: the insulin changed since this reminder…". A tap opens the entry sheet on
+     * [presetId] with [dose] filled in, to check and save there. No one-tap action: the dose
+     * is the user's to confirm. (A notification action's broadcast may not open an activity
+     * itself, so the sheet is one tap on this notification away.)
+     */
+    private fun postReview(
+        context: Context,
+        slot: Slot,
+        name: String,
+        dueAt: Long,
+        presetId: Long?,
+        dose: Float?
+    ) {
+        val manager = notificationManager(context) ?: return
+        val title = context.getString(
+            R.string.insulin_reminder_due,
+            name,
+            DateFormat.getTimeFormat(context).format(Date(dueAt))
+        )
+        val openSheet = PendingIntent.getActivity(
+            context,
+            0,
+            JournalQuickEntryActivity.intent(context, JournalEntryType.INSULIN, presetId, dose)
+                .setData(uri("review", slot)),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val publicVersion = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.novalue)
+            .setContentTitle(context.getString(R.string.insulin_reminder_public_title))
+            .build()
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.novalue)
+            .setContentTitle(title)
+            .setContentText(context.getString(R.string.insulin_reminder_changed))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.insulin_reminder_changed)))
+            .setContentIntent(openSheet)
+            .setAutoCancel(true)
+            .setSilent(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(publicVersion)
+            .build()
+        manager.notify(NOTIFICATION_TAG, notificationId(slot.presetId), notification)
     }
 
     /** "today 08:02", "yesterday 21:04", else the weekday: the last dose is at most 6 days back. */
@@ -417,11 +478,17 @@ object InsulinReminders {
         pendingIntent.cancel()
     }
 
-    private fun broadcast(context: Context, action: String, slot: Slot, dueAt: Long): PendingIntent =
+    private fun broadcast(
+        context: Context,
+        action: String,
+        slot: Slot,
+        dueAt: Long,
+        extras: Intent.() -> Unit = {}
+    ): PendingIntent =
         PendingIntent.getBroadcast(
             context,
             0,
-            reminderIntent(context, action, slot).putExtra(EXTRA_DUE_AT, dueAt),
+            reminderIntent(context, action, slot).putExtra(EXTRA_DUE_AT, dueAt).apply(extras),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
