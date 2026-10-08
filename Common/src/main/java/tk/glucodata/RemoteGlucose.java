@@ -34,7 +34,6 @@ import static tk.glucodata.Notify.unitlabel;
 
 import android.annotation.SuppressLint;
 import android.app.PendingIntent;
-import android.content.Context;
 import android.content.Intent;
 import android.content.res.TypedArray;
 import android.graphics.Bitmap;
@@ -59,7 +58,6 @@ class RemoteGlucose {
    final private Bitmap glucoseBitmap;
    final private Canvas canvas;
    final private Paint glucosePaint;
-   final private int baseForegroundColor;
    final private float density;
    final private float glucosesize;
    final private int notglucosex;
@@ -128,137 +126,9 @@ class RemoteGlucose {
          }
       }
       ;
-      baseForegroundColor = glucosePaint.getColor();
    }
 
    static final String stopalarmAction = "StopAlarm";
-
-   int getBaseForegroundColor() {
-      return baseForegroundColor;
-   }
-
-   private void applyWidgetTypeface(Paint paint) {
-      try {
-         var prefs = Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE);
-         boolean useSystemFont = prefs.getInt("notification_font_family", 0) == 1;
-         int fontWeight = prefs.getInt("notification_font_weight", 400);
-
-         if (useSystemFont) {
-            String familyName = fontWeight >= 500 ? "google-sans-medium" : "google-sans";
-            android.graphics.Typeface tf = android.graphics.Typeface.create(familyName, android.graphics.Typeface.NORMAL);
-            if (android.os.Build.VERSION.SDK_INT >= 28) {
-               tf = android.graphics.Typeface.create(tf, fontWeight, false);
-            }
-            paint.setTypeface(tf);
-         } else {
-            android.graphics.Typeface tf = androidx.core.content.res.ResourcesCompat.getFont(Applic.app,
-                  R.font.ibm_plex_sans_var);
-            paint.setTypeface(tf);
-            if (android.os.Build.VERSION.SDK_INT >= 26) {
-               paint.setFontVariationSettings("'wght' " + fontWeight + ", 'wdth' 100");
-            }
-         }
-      } catch (Throwable t) {
-      }
-   }
-
-   final RemoteViews widgetRemote(CurrentDisplaySource.Snapshot snapshot) {
-      RemoteViews remoteViews = new RemoteViews(Applic.app.getPackageName(), R.layout.arrowandvalue);
-      if (snapshot == null) {
-         return remoteViews;
-      }
-
-      final boolean isMmol = Applic.unit == 1;
-      // Keep the legacy widget on its fixed legacy foreground instead of
-      // following notification/system light-dark theme flips.
-      final int glucoseColor = baseForegroundColor;
-      final float useglsize = glucosesize;
-      final float usedensity = density;
-      final int canvasWidth = canvas.getWidth();
-      final int canvasHeight = canvas.getHeight();
-      float rate = snapshot.getRate();
-
-      canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-      glucosePaint.setColor(glucoseColor);
-      applyWidgetTypeface(glucosePaint);
-
-      // Render the right-side cluster (arrow above small time) so we know its
-      // width before placing the value. The cluster is intentionally compact —
-      // small arrow paired with a small time label, both right-aligned with a
-      // generous offset from the canvas edge.
-      final float rightInset = usedensity * 18f;
-      final float reducedTimeSize = timesize * 0.95f;
-      Bitmap arrowBitmap = null;
-      if (!isNaN(rate)) {
-         try {
-            float displayDensity = Applic.app.getResources().getDisplayMetrics().density;
-            float arrowScale = Math.max(0.85f, Math.min(2.05f, useglsize / (30f * displayDensity)));
-            arrowBitmap = NotificationChartDrawer.drawArrow(Applic.app, rate, isMmol, glucoseColor, arrowScale);
-         } catch (Throwable t) {
-            arrowBitmap = null;
-         }
-      }
-
-      String timestr = minhourstr(snapshot.getTimeMillis());
-      glucosePaint.setTextSize(reducedTimeSize);
-      Rect timeBounds = new Rect();
-      glucosePaint.getTextBounds(timestr, 0, timestr.length(), timeBounds);
-      float timeWidth = timeBounds.width();
-
-      float arrowWidth = arrowBitmap != null ? arrowBitmap.getWidth() : 0f;
-      float arrowHeight = arrowBitmap != null ? arrowBitmap.getHeight() : 0f;
-      float clusterWidth = Math.max(arrowWidth, timeWidth);
-      float clusterCenterX = canvasWidth - rightInset - clusterWidth / 2f;
-
-      // Value text — left-anchored at a small inset (the original notglucosex
-      // offset reserved space for a left-side arrow that no longer exists).
-      // If the value is wide enough to collide with the cluster, shrink it
-      // down so the right cluster keeps its breathing room.
-      String valueStr = snapshot.getPrimaryStr();
-      final float leftInset = usedensity * 14f;
-      final float valueClusterGap = useglsize * 0.18f;
-      final float maxValueWidth = (canvasWidth - rightInset - clusterWidth - valueClusterGap) - leftInset;
-      glucosePaint.setTextSize(useglsize);
-      float effectiveSize = useglsize;
-      float valueWidth = glucosePaint.measureText(valueStr);
-      if (maxValueWidth > 0 && valueWidth > maxValueWidth) {
-         effectiveSize = useglsize * (maxValueWidth / valueWidth);
-         glucosePaint.setTextSize(effectiveSize);
-      }
-      Paint.FontMetrics valueMetrics = glucosePaint.getFontMetrics();
-      float valueTextHeight = valueMetrics.descent - valueMetrics.ascent;
-      // Vertically center the value in the canvas (less timeHeight reserve
-      // since we no longer use that bottom strip — time moved into the cluster).
-      float gety = (canvasHeight + valueTextHeight) / 2f - valueMetrics.descent;
-      canvas.drawText(valueStr, leftInset, gety, glucosePaint);
-
-      // Cluster vertical layout: arrow above, time directly below, with the
-      // arrow's vertical center aligned to the value's vertical center so the
-      // pair reads as a single unit beside the value.
-      float valueCenterY = gety + (valueMetrics.ascent + valueMetrics.descent) / 2f;
-      float clusterGap = reducedTimeSize * 0.65f;
-      float clusterHeight = arrowHeight + clusterGap + reducedTimeSize;
-      float clusterTop = valueCenterY - clusterHeight / 2f;
-
-      if (arrowBitmap != null) {
-         float arrowLeft = clusterCenterX - arrowWidth / 2f;
-         canvas.drawBitmap(arrowBitmap, arrowLeft, clusterTop, null);
-      } else if (!isNaN(rate)) {
-         drawarrow(canvas, glucosePaint, usedensity, rate, clusterCenterX, clusterTop + arrowHeight / 2f);
-      }
-
-      glucosePaint.setTextSize(reducedTimeSize);
-      glucosePaint.setTextAlign(Paint.Align.CENTER);
-      glucosePaint.setAlpha(200);
-      float timeBaseline = clusterTop + arrowHeight + clusterGap + reducedTimeSize * 0.65f;
-      canvas.drawText(timestr, clusterCenterX, timeBaseline, glucosePaint);
-      glucosePaint.setAlpha(255);
-      glucosePaint.setTextAlign(Paint.Align.LEFT);
-
-      canvas.setBitmap(glucoseBitmap);
-      remoteViews.setImageViewBitmap(arrowandvalue, glucoseBitmap);
-      return remoteViews;
-   }
 
    final RemoteViews arrowremote(int kind, notGlucose glucose, final boolean alarm) {
       RemoteViews remoteViews = new RemoteViews(Applic.app.getPackageName(),

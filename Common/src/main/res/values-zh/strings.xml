@@ -2971,4 +2971,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_iob_help">eIOB 和 COB 通过 devicestatus 的 jugglucong 字段发送，与标准 IOB 分开。</string>
     <string name="status_bar_icon_colored_title">彩色状态栏图标</string>
     <string name="status_bar_icon_colored_desc">以范围颜色绘制状态栏中的数值</string>
+    <string name="widget_value_label">血糖</string>
+    <string name="widget_chart_label">血糖图表</string>
+    <string name="widget_value_description">当前血糖、趋势箭头和读数时间</string>
+    <string name="widget_chart_description">当前血糖及近期读数图表</string>
 </resources>

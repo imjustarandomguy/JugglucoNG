@@ -2946,4 +2946,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_iob_help">eIOB e COB vengono inviati nel campo jugglucong di devicestatus, separatamente dall’IOB standard.</string>
     <string name="status_bar_icon_colored_title">Icona della barra di stato colorata</string>
     <string name="status_bar_icon_colored_desc">Disegna il valore nella barra di stato con il colore del suo intervallo</string>
+    <string name="widget_value_label">Glicemia</string>
+    <string name="widget_chart_label">Grafico glicemia</string>
+    <string name="widget_value_description">Glicemia attuale, freccia di tendenza e ora della lettura</string>
+    <string name="widget_chart_description">Glicemia attuale con un grafico delle ultime letture</string>
 </resources>
