@@ -14,8 +14,10 @@ import tk.glucodata.NightPost
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.data.HistoryDatabase
 import tk.glucodata.drivers.nightscout.NightscoutFollowerRegistry
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -27,6 +29,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * Sync state is tracked per-row on JournalEntryEntity (nsUploadedAt, nsRemoteId);
  * deletes are queued in journal_pending_deletes so they survive process death.
+ *
+ * Rows mirrored from elsewhere are not sent, with one exception: the user's edit of a treatment
+ * received from Nightscout goes back to the document it came from (see sendReceivedEdit).
  */
 @Keep
 object JournalTreatmentUploader : JournalTreatmentUploadBridge {
@@ -50,7 +55,17 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      */
     internal const val MAX_DELETE_ATTEMPTS = 20
 
-    internal enum class TombstoneAction { CLEAR, RETRY, GIVE_UP }
+    /**
+     * Lower date bound for a v1 delete by query. Without a date in the query Nightscout only
+     * looks at the last four days, so an older treatment would answer "nothing deleted" and stay.
+     */
+    private const val V1_QUERY_ALL_TIME = "2000-01-01"
+    private const val HTTP_TOO_MANY_REQUESTS = 429
+
+    internal enum class TombstoneAction { CLEAR, RETRY, WAIT, GIVE_UP }
+
+    /** What a pass does with a tombstone once it knows whether the server still serves it. */
+    internal enum class Settlement { DROP, KEEP, NOT_TAKEN }
 
     private data class UploadResult(
         val code: Int,
@@ -104,6 +119,23 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      */
     internal fun datedIdentifier(entryId: Long, timestampMillis: Long): String =
         ID_PREFIX + entryId.toString(16) + "-" + timestampMillis.toString(16)
+
+    /**
+     * The identifier a v1 write gives its document: the row id alone. v1 remembers the document
+     * by the _id it answers with, but v3 serves it under this identifier only (see
+     * [JournalTreatmentTransfer.isOwnV1Document]).
+     */
+    internal fun v1Identifier(entryId: Long): String = ID_PREFIX + entryId.toString(16)
+
+    /**
+     * Whether [remoteId] is a [v1Identifier]: this app's undated identifier, the bare row id.
+     * Another install, or this one after a reinstall, reuses it, so it may only name a document
+     * together with its _id. Not a [datedIdentifier], whose time follows a dash.
+     */
+    internal fun isUndatedOwnIdentifier(remoteId: String): Boolean =
+        remoteId.length > ID_PREFIX.length &&
+            remoteId.startsWith(ID_PREFIX, ignoreCase = true) &&
+            remoteId.substring(ID_PREFIX.length).all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
 
     /**
      * An update only where the server already holds this exact document; anything else is a
@@ -162,17 +194,113 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /**
      * What to do with a tombstone after a delete answered [code]. 404/410 count as done:
      * the document we wanted gone is gone, and the old code kept retrying those forever.
+     *
+     * Only a refusal counts toward [MAX_DELETE_ATTEMPTS]. No answer at all (a server reachable
+     * only at home, seen from elsewhere), a gateway or server error, or a page that is not
+     * Nightscout's says nothing about the document: counting those dropped the tombstone after
+     * a few days away, and the next read brought the deleted treatment back.
      */
-    internal fun tombstoneAction(code: Int, attemptsSoFar: Int): TombstoneAction = when (code) {
-        HttpURLConnection.HTTP_OK,
-        HttpURLConnection.HTTP_NO_CONTENT,
-        HttpURLConnection.HTTP_NOT_FOUND,
-        HttpURLConnection.HTTP_GONE -> TombstoneAction.CLEAR
-        else -> if (attemptsSoFar + 1 >= MAX_DELETE_ATTEMPTS) {
-            TombstoneAction.GIVE_UP
-        } else {
-            TombstoneAction.RETRY
+    internal fun tombstoneAction(
+        code: Int,
+        attemptsSoFar: Int,
+        answeredByNightscout: Boolean = true
+    ): TombstoneAction = when {
+        !answeredByNightscout || isTransientDeleteFailure(code) -> TombstoneAction.WAIT
+        code == HttpURLConnection.HTTP_OK ||
+            code == HttpURLConnection.HTTP_NO_CONTENT ||
+            code == HttpURLConnection.HTTP_NOT_FOUND ||
+            code == HttpURLConnection.HTTP_GONE -> TombstoneAction.CLEAR
+        else -> refusedDeleteAction(attemptsSoFar)
+    }
+
+    internal fun refusedDeleteAction(attemptsSoFar: Int): TombstoneAction =
+        if (attemptsSoFar + 1 >= MAX_DELETE_ATTEMPTS) TombstoneAction.GIVE_UP else TombstoneAction.RETRY
+
+    private fun isTransientDeleteFailure(code: Int): Boolean =
+        code < 0 ||
+            code >= HttpURLConnection.HTTP_INTERNAL_ERROR ||
+            code == HttpURLConnection.HTTP_CLIENT_TIMEOUT ||
+            code == HTTP_TOO_MANY_REQUESTS
+
+    /**
+     * Whether a delete was answered by Nightscout at all. Nightscout answers in JSON, refusals
+     * included, and a 204 has no body. Anything else, such as a captive portal's page or another
+     * device at the same LAN address away from home, must neither clear a tombstone nor count
+     * against it.
+     */
+    internal fun answeredByNightscout(code: Int, body: String): Boolean {
+        if (code < 0) return false
+        if (code == HttpURLConnection.HTTP_NO_CONTENT) return true
+        val trimmed = body.trimStart()
+        return trimmed.startsWith("{") || trimmed.startsWith("[")
+    }
+
+    /**
+     * What becomes of a tombstone after a pass that may have read treatments back.
+     *
+     * A tombstone outlives the delete: until a read made after it no longer serves the document,
+     * a read already under way, or a server that said "deleted" without deleting, would bring
+     * the treatment straight back. A tombstone that was never sent (sending is off) only stops
+     * the treatment from being received again, so it goes once reads no longer serve it.
+     *
+     * @param deleteConfirmed the server confirmed the delete in this pass
+     * @param readsBack whether this uploader reads treatments back at all
+     * @param served whether this pass's read, made after the deletes, still served the document;
+     *   null when no usable read was made
+     */
+    internal fun settlement(deleteConfirmed: Boolean, readsBack: Boolean, served: Boolean?): Settlement = when {
+        deleteConfirmed && !readsBack -> Settlement.DROP
+        // Sent again next pass, whose read settles it; the server answers "gone" meanwhile.
+        served == null -> Settlement.KEEP
+        !served -> Settlement.DROP
+        deleteConfirmed -> Settlement.NOT_TAKEN
+        else -> Settlement.KEEP
+    }
+
+    /**
+     * Which of [wanted] a treatments read still serves; null when the body is not a list of
+     * treatments, which says nothing either way. [v3Names] are the other names a v3 read serves
+     * some of them under ([v3NamesOfV1Documents]).
+     */
+    internal fun servedRemoteIds(
+        treatmentsBody: String,
+        wanted: Set<String>,
+        v3Names: Map<String, String> = emptyMap()
+    ): Set<String>? {
+        val array = runCatching { JSONArray(treatmentsBody.trim()) }.getOrNull() ?: return null
+        val served = HashSet<String>()
+        for (index in 0 until array.length()) {
+            val treatment = array.optJSONObject(index) ?: continue
+            JournalTreatmentTransfer.remoteIdentifiersOf(treatment).filterTo(served) { it in wanted }
+            v1DocumentServedByV3(treatment, v3Names)?.takeIf { it in wanted }?.let(served::add)
         }
+        return served
+    }
+
+    /** A Nightscout v1 document id (a Mongo ObjectId), as opposed to a client identifier. */
+    internal fun isObjectId(remoteId: String): Boolean =
+        remoteId.length == 24 && remoteId.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
+
+    /**
+     * The names a v3 read serves the documents of queued deletes under, where those are not the
+     * names the tombstones hold: identifier → the ObjectId it stands for.
+     *
+     * This app remembers a document it sent over v1 by the _id Nightscout answered with. A v3
+     * read leaves the _id out and serves such a document under the identifier the v1 path gave
+     * it ([v1Identifier]), made from the row id the tombstone keeps. Only these tombstones hold an
+     * ObjectId for a document that has an identifier: a received row holds the identifier when
+     * the document has one, and v3 serves a document without one under its _id.
+     */
+    internal fun v3NamesOfV1Documents(tombstones: Collection<JournalPendingDeleteEntity>): Map<String, String> =
+        tombstones.filter { isObjectId(it.nsRemoteId) }.associate { v1Identifier(it.entryId) to it.nsRemoteId }
+
+    /**
+     * The ObjectId [treatment] is, when a v3 read served it under one of [v3Names]; null otherwise.
+     * A document served with its _id is matched by that instead: only a v3 read leaves it out.
+     */
+    internal fun v1DocumentServedByV3(treatment: JSONObject, v3Names: Map<String, String>): String? {
+        if (v3Names.isEmpty() || treatment.optString("_id").isNotBlank()) return null
+        return v3Names[treatment.optString("identifier")]
     }
 
     /**
@@ -240,7 +368,10 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             return intervalMillis - elapsed
         }
 
-        /** Only a read that succeeded starts the interval; a failure is the native backoff's. */
+        /**
+         * A read that was answered starts the interval, a refusal included; one that got no
+         * answer is the native backoff's.
+         */
         fun recordRead(key: String, nowMillis: Long) {
             lastKey = key
             lastReadAt = nowMillis
@@ -322,52 +453,57 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val foodCache = HashMap<Long, JournalFoodEntity?>()
         var uploadOk = true
         var acceptedDocument = false
-        var deleteFailureCode: Int? = null
         var uploadFailureCode: Int? = null
 
         // Deletes and creates are independent, so a refused delete must not cost us the
         // pending entries: it used to break out of the whole run and, since the tombstone
         // was never cleared, wedge every later cycle at the same document (issue #191).
-        if (sendEnabled) {
-            for (tomb in dao.getPendingNightscoutDeletes()) {
-                val deleteRemoteId = resolveDeleteRemoteId(baseUrl, rawSecret, tomb.nsRemoteId, useV3)
-                val deleteUrl = treatmentDeleteUrl(baseUrl, deleteRemoteId, useV3)
-                val code = NightPost.deleteUrlCode(deleteUrl, secretHashed)
-                val attempts = tomb.attempts + 1
-                when (tombstoneAction(code, tomb.attempts)) {
-                    TombstoneAction.CLEAR -> {
-                        dao.clearPendingNightscoutDelete(tomb.entryId)
-                        // A 404 also clears the tombstone, but it is not proof that the
-                        // server took anything from us, so it must not move "last sent".
-                        if (isDeleteAccepted(code)) acceptedDocument = true
-                    }
-                    TombstoneAction.RETRY -> {
-                        Log.e(
-                            LOG_ID,
-                            "tombstone delete failed for entryId=${tomb.entryId} " +
-                                "remoteId=$deleteRemoteId code=$code attempt=$attempts"
-                        )
-                        dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
-                        deleteFailureCode = code
-                    }
-                    TombstoneAction.GIVE_UP -> {
-                        Log.e(
-                            LOG_ID,
-                            "giving up on tombstone entryId=${tomb.entryId} remoteId=$deleteRemoteId " +
-                                "after $attempts refused deletes (last code=$code); dropping it"
-                        )
-                        dao.clearPendingNightscoutDelete(tomb.entryId)
-                        deleteFailureCode = code
-                    }
-                }
-            }
+        val deletes = if (sendEnabled) {
+            sendPendingDeletes(dao, baseUrl, rawSecret, secretHashed, useV3)
+        } else {
+            null
         }
+        if (deletes?.acceptedDocument == true) acceptedDocument = true
 
         val sinceMillis = System.currentTimeMillis() - LOOKBACK_MILLIS
         if (sendEnabled) {
             val pending = dao.getEntriesNeedingNightscoutUpload(sinceMillis)
+            val receivedPrefix = NightscoutJournalFollowerImporter.sourcePrefix(
+                NightscoutFollowerRegistry.deriveSensorId(baseUrl)
+            )
             for (entry in pending) {
                 if (!isSendableType(entry.entryType)) continue
+                if (hasPendingNightscoutEdit(entry.source, entry.updatedAt, entry.nsUploadedAt)) {
+                    // The user edited a treatment received from Nightscout: the edit goes back to
+                    // that document. Not subject to "send long insulin", which keeps this app from
+                    // putting long-acting doses on the server; this one is there already.
+                    if (receivedEditHold(entry, receivedPrefix) != null) continue
+                    if (sendBackoff.shouldHold(entry.id, System.currentTimeMillis())) {
+                        uploadOk = false
+                        break
+                    }
+                    val result = sendReceivedEdit(entry, baseUrl, rawSecret, secretHashed, useV3)
+                    val now = System.currentTimeMillis()
+                    if (result.action == ReceivedEditAction.FAIL) {
+                        Log.e(
+                            LOG_ID,
+                            "edit of received entry id=${entry.id} remoteId=${entry.nsRemoteId} not taken " +
+                                "code=${failureText(result.code, result.message)}; kept pending"
+                        )
+                        sendBackoff.recordFailure(entry.id, now)
+                        uploadFailureCode = result.code
+                        uploadOk = false
+                        break
+                    }
+                    sendBackoff.reset()
+                    if (result.wrote) acceptedDocument = true
+                    dao.settleReceivedNightscoutEdit(
+                        id = entry.id,
+                        updatedAt = entry.updatedAt,
+                        nsUploadedAt = if (result.action == ReceivedEditAction.CONFIRM) maxOf(now, entry.updatedAt) else null
+                    )
+                    continue
+                }
                 if (isExternalMirrorSource(entry.source)) continue
 
                 val preset = entry.insulinPresetId?.let { id ->
@@ -381,7 +517,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                     break
                 }
 
-                val localIdentifier = ID_PREFIX + entry.id.toString(16)
+                val localIdentifier = v1Identifier(entry.id)
                 val remoteId = if (useV3) {
                     datedIdentifier(entry.id, entry.timestamp)
                 } else {
@@ -431,7 +567,13 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 acceptedDocument = true
                 if (oldCopyAction(entry.nsRemoteId, acceptedRemoteId) == OldCopyAction.DELETE) {
                     val oldRemoteId = entry.nsRemoteId!!
-                    if (!NightPost.deleteUrl(treatmentDeleteUrl(baseUrl, oldRemoteId, useV3), secretHashed)) {
+                    // An undated identifier is the queue's to name first: deleted as it is, v1
+                    // fails on it and v3 takes whichever document carries it.
+                    if (isUndatedOwnIdentifier(oldRemoteId)) {
+                        dao.enqueuePendingNightscoutDelete(
+                            JournalPendingDeleteEntity(entryId = entry.id, nsRemoteId = oldRemoteId, deletedAt = now)
+                        )
+                    } else if (!NightPost.deleteUrl(tombstoneDeleteUrl(baseUrl, oldRemoteId, useV3), secretHashed)) {
                         // The new document is on the server; the stale one is a duplicate, not a
                         // loss. It is queued with the deletes so the next cycle tries again.
                         Log.e(
@@ -448,18 +590,178 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         }
 
         if (sendEnabled) {
-            recordSendStatus(uploadFailureCode, deleteFailureCode, acceptedDocument)
+            recordSendStatus(uploadFailureCode, deletes?.failureCode, acceptedDocument)
         }
 
-        val receiveOk = if (receiveEnabled) {
+        val receive = if (receiveEnabled) {
             receiveRemoteTreatments(baseUrl, rawSecret, useV3)
         } else {
-            true
+            ReceiveOutcome(ReceiveResult.DONE)
         }
-        // A refused delete is deliberately not folded in here. Returning false makes the native
-        // loop back off and skip the IOB device status, which is exactly the collateral damage
-        // this path used to cause; the tombstone is retried on the next cycle either way.
-        return uploadOk && receiveOk
+        settleTombstones(dao, deletes, receiveEnabled, receive.readBody)
+        // A refused delete is deliberately not folded in here: returning false backs off the
+        // whole treatment path, and a token that may not delete would then hold every new entry
+        // back too. A delete nobody answered is folded in, so the native backoff tries again
+        // once the server may be reachable rather than waiting for the next journal change.
+        // The receive follows the same rule (see treatmentPassOk).
+        return treatmentPassOk(
+            sendsOk = uploadOk,
+            deletesUnanswered = deletes?.unanswered == true,
+            receive = receive.result,
+            wroteThisPass = acceptedDocument
+        )
+    }
+
+    /** A delete the server confirmed this pass, and the document id it was sent for. */
+    private class ConfirmedDelete(val tombstone: JournalPendingDeleteEntity, val documentId: String)
+
+    /** What one pass made of the queued deletes. */
+    private class DeletePass {
+        val confirmed = ArrayList<ConfirmedDelete>()
+        var acceptedDocument = false
+        var failureCode: Int? = null
+        /** Nightscout did not answer; the rest of the queue waits for the uploader's backoff. */
+        var unanswered = false
+    }
+
+    private suspend fun sendPendingDeletes(
+        dao: JournalDao,
+        baseUrl: String,
+        rawSecret: String,
+        secretHashed: String?,
+        useV3: Boolean
+    ): DeletePass {
+        val pass = DeletePass()
+        // One v1 read per pass names every document known only by an undated identifier. On v3
+        // too: a v3 read leaves the _id out, and a v3 delete by that identifier would take
+        // whichever document carries it, this install's own included.
+        var recentTreatments: JSONArray? = null
+        var ownRemoteIds: Set<String>? = null
+        for (tomb in dao.getPendingNightscoutDeletes()) {
+            // A Nightscout treatment can be several journal rows (a meal bolus is carbs and
+            // insulin). Deleting the document for one of them would take the others off the
+            // server too, so the delete waits for the last of them; until then the tombstone
+            // only keeps the deleted part from being received again.
+            if (dao.countOtherEntriesWithNightscoutRemoteId(tomb.nsRemoteId, tomb.entryId) > 0) continue
+
+            var documentId = tomb.nsRemoteId
+            if (isUndatedOwnIdentifier(documentId)) {
+                val read = recentTreatments ?: fetchTreatmentsWithIds(baseUrl, rawSecret, useV3)
+                if (read == null) {
+                    Log.e(LOG_ID, "tombstone entryId=${tomb.entryId}: treatments could not be read to name it; waiting")
+                    pass.failureCode = NightPost.ERROR_NO_RESPONSE
+                    pass.unanswered = true
+                    break
+                }
+                recentTreatments = read
+                // The documents this install still has rows for carry the same identifiers:
+                // an entry whose old copy is being removed, or this install's own entry that
+                // happens to share a row id with another install's.
+                val ownIds = ownRemoteIds
+                    ?: dao.getOwnUploadedNightscoutRemoteIds().mapTo(HashSet()) { it.trim() }
+                ownRemoteIds = ownIds
+                val found = soleDocumentIdForIdentifier(read, documentId, excludeRemoteIds = ownIds)
+                if (found == null) {
+                    // None served, so nothing read back can return it; or several, and deleting
+                    // a guess could take someone else's treatment.
+                    Log.i(LOG_ID, "tombstone entryId=${tomb.entryId} remoteId=$documentId names no single document; dropping it")
+                    dao.clearPendingNightscoutDelete(tomb.entryId)
+                    continue
+                }
+                documentId = found
+            }
+
+            val code = NightPost.deleteUrlCode(tombstoneDeleteUrl(baseUrl, documentId, useV3), secretHashed)
+            val answered = answeredByNightscout(code, NightPost.getLastPrimaryResponseBody())
+            val attempts = tomb.attempts + 1
+            when (tombstoneAction(code, tomb.attempts, answered)) {
+                TombstoneAction.CLEAR -> {
+                    pass.confirmed += ConfirmedDelete(tomb, documentId)
+                    // A 404 also clears the tombstone, but it is not proof that the
+                    // server took anything from us, so it must not move "last sent".
+                    if (isDeleteAccepted(code)) pass.acceptedDocument = true
+                }
+                TombstoneAction.WAIT -> {
+                    // The rest of the queue would only wait out the same timeouts.
+                    Log.e(
+                        LOG_ID,
+                        "tombstone delete for entryId=${tomb.entryId} remoteId=$documentId " +
+                            "not answered by Nightscout (code=$code); waiting"
+                    )
+                    pass.failureCode = code
+                    pass.unanswered = true
+                    break
+                }
+                TombstoneAction.RETRY -> {
+                    Log.e(
+                        LOG_ID,
+                        "tombstone delete failed for entryId=${tomb.entryId} " +
+                            "remoteId=$documentId code=$code attempt=$attempts"
+                    )
+                    dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
+                    pass.failureCode = code
+                }
+                TombstoneAction.GIVE_UP -> {
+                    Log.e(
+                        LOG_ID,
+                        "giving up on tombstone entryId=${tomb.entryId} remoteId=$documentId " +
+                            "after $attempts refused deletes (last code=$code); dropping it"
+                    )
+                    dao.clearPendingNightscoutDelete(tomb.entryId)
+                    pass.failureCode = code
+                }
+            }
+        }
+        return pass
+    }
+
+    /**
+     * Lets go of tombstones the server no longer serves (see [settlement]). With sending on, only
+     * the deletes confirmed this pass are looked at: an unsent tombstone still has a document to
+     * delete, whether or not this read reached it. With sending off, every tombstone is local
+     * only and goes as soon as a read no longer serves its document.
+     */
+    private suspend fun settleTombstones(
+        dao: JournalDao,
+        deletes: DeletePass?,
+        readsBack: Boolean,
+        readBody: String?
+    ) {
+        val candidates = deletes?.confirmed?.map { it.tombstone to it.documentId }
+            ?: dao.getPendingNightscoutDeletes().map { it to it.nsRemoteId }
+        if (candidates.isEmpty()) return
+        // A v3 read serves an own v1 upload without the _id its tombstone holds; were it not
+        // looked for under its identifier as well, it would read as gone and its tombstone go.
+        val v3Names = v3NamesOfV1Documents(candidates.map { it.first })
+        val served = readBody?.let { body ->
+            servedRemoteIds(body, candidates.mapTo(HashSet()) { it.second }, v3Names)
+        }
+        for ((tomb, documentId) in candidates) {
+            val action = settlement(
+                deleteConfirmed = deletes != null,
+                readsBack = readsBack,
+                served = served?.contains(documentId)
+            )
+            when (action) {
+                Settlement.DROP -> dao.clearPendingNightscoutDelete(tomb.entryId)
+                Settlement.KEEP -> Unit
+                Settlement.NOT_TAKEN -> {
+                    // Deleted by the server's own account, yet served again: the delete did not
+                    // take. Counted like a refusal, so a document that will not go is let go of.
+                    val attempts = tomb.attempts + 1
+                    Log.e(
+                        LOG_ID,
+                        "tombstone entryId=${tomb.entryId} remoteId=$documentId still served after its delete " +
+                            "(attempt=$attempts)"
+                    )
+                    if (refusedDeleteAction(tomb.attempts) == TombstoneAction.GIVE_UP) {
+                        dao.clearPendingNightscoutDelete(tomb.entryId)
+                    } else {
+                        dao.recordFailedNightscoutDelete(tomb.entryId, attempts, System.currentTimeMillis())
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -557,6 +859,25 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             "/api/v1/treatments/$remoteId"
         }
 
+    /**
+     * Where a queued delete goes. v3 finds a document by its identifier or its legacy _id alike.
+     * v1's document route takes an ObjectId only: given a client identifier (AAPS's, any v3
+     * uploader's, this app's dated one) it matches nothing, or fails, while the document stays
+     * and the next read brings it back. Those are deleted by query on the identifier instead.
+     * The undated own identifier is never sent as it is, on either version (see
+     * [isUndatedOwnIdentifier]): it is resolved to its _id before it gets here.
+     */
+    internal fun tombstoneDeleteUrl(baseUrl: String, documentId: String, useV3: Boolean): String {
+        if (useV3 || isObjectId(documentId) || isUndatedOwnIdentifier(documentId)) {
+            return treatmentDeleteUrl(baseUrl, documentId, useV3)
+        }
+        return "$baseUrl/api/v1/treatments?" +
+            urlEncoded("find[identifier]") + "=" + urlEncoded(documentId) + "&" +
+            urlEncoded("find[created_at][\$gte]") + "=" + V1_QUERY_ALL_TIME
+    }
+
+    private fun urlEncoded(value: String): String = URLEncoder.encode(value, Charsets.UTF_8.name())
+
     private fun uploadViaNightPost(
         baseUrl: String,
         json: JSONObject,
@@ -577,6 +898,292 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
 
     internal fun treatmentWriteUrl(baseUrl: String, remoteId: String, write: TreatmentWrite): String =
         if (write == TreatmentWrite.UPDATE) "$baseUrl/api/v3/treatments/$remoteId" else treatmentPostUrl(baseUrl, true)
+
+    // -- the user's edit of a treatment received from Nightscout ------------------------------
+    //
+    // Such a row stands for another app's document. Its edit is written back to that document,
+    // never as a new one: a PATCH of the fields that changed on v3, the whole document with them
+    // changed on v1 (whose PUT replaces what it stores). Until the server confirms it, the receive
+    // leaves the row alone (see receivedCopyMayReplace in JournalRepository.kt).
+
+    /** Why an edited received row cannot be sent, found without asking the server. */
+    internal enum class ReceivedEditHold {
+        /** No id the server knows the document by. */
+        NO_DOCUMENT,
+        /** Received from a server other than the one treatments go to. */
+        OTHER_SERVER,
+        /** Edited into another kind of treatment, which the document cannot become. */
+        TYPE_CHANGED
+    }
+
+    /**
+     * Why [entry]'s edit cannot be sent; null when it can. A held edit stays on the row, pending,
+     * and the receive does not write over it.
+     *
+     * @param sourcePrefix how the rows received from the upload server are named
+     *        ([NightscoutJournalFollowerImporter.sourcePrefix])
+     */
+    internal fun receivedEditHold(entry: JournalEntryEntity, sourcePrefix: String): ReceivedEditHold? {
+        if (entry.nsRemoteId.isNullOrBlank()) return ReceivedEditHold.NO_DOCUMENT
+        val sourceRecordId = entry.sourceRecordId ?: return ReceivedEditHold.OTHER_SERVER
+        // A follower can read another server than the one sent to, and its document ids mean
+        // nothing on this one.
+        if (!sourceRecordId.startsWith("$sourcePrefix:")) return ReceivedEditHold.OTHER_SERVER
+        // The row keeps the name it was received under, which ends in the kind it was.
+        if (sourceRecordId.substringAfterLast(':') != entry.entryType) return ReceivedEditHold.TYPE_CHANGED
+        return null
+    }
+
+    /** Where the document a received row stands for is read, to be changed. */
+    internal fun receivedDocumentUrl(baseUrl: String, remoteId: String, useV3: Boolean): String {
+        if (useV3) return "$baseUrl/api/v3/treatments/${pathSegment(remoteId)}"
+        // v1 turns find[_id] into an ObjectId (and then needs no date). An identifier needs the
+        // date, or only the last four days are looked at.
+        val find = if (isObjectId(remoteId)) {
+            urlEncoded("find[_id]") + "=" + urlEncoded(remoteId)
+        } else {
+            urlEncoded("find[identifier]") + "=" + urlEncoded(remoteId) + "&" +
+                urlEncoded("find[created_at][\$gte]") + "=" + V1_QUERY_ALL_TIME
+        }
+        // Two, to tell one document from an identifier several carry.
+        return "$baseUrl/api/v1/treatments.json?$find&count=2"
+    }
+
+    /** Where the edit goes: the document itself on v3; v1's PUT finds it by the _id in the body. */
+    internal fun receivedEditWriteUrl(baseUrl: String, remoteId: String, useV3: Boolean): String =
+        if (useV3) "$baseUrl/api/v3/treatments/${pathSegment(remoteId)}" else "$baseUrl/api/v1/treatments/"
+
+    private fun pathSegment(value: String): String = urlEncoded(value).replace("+", "%20")
+
+    /** A received document as read back to be changed. */
+    internal sealed class ReceivedDocumentRead {
+        class Found(val document: JSONObject) : ReceivedDocumentRead()
+        /** Not on the server any more (or marked deleted there). */
+        object Gone : ReceivedDocumentRead()
+        /** Several documents carry the identifier; changing a guess could change another's. */
+        object Ambiguous : ReceivedDocumentRead()
+        class Failed(val code: Int) : ReceivedDocumentRead()
+    }
+
+    /** What a read of one document answered: a v3 {status, result}, or a v1 array of matches. */
+    internal fun receivedDocumentRead(code: Int, body: String): ReceivedDocumentRead {
+        if (!answeredByNightscout(code, body)) return ReceivedDocumentRead.Failed(code)
+        if (code == HttpURLConnection.HTTP_NOT_FOUND || code == HttpURLConnection.HTTP_GONE) {
+            return ReceivedDocumentRead.Gone
+        }
+        if (code !in 200..299) return ReceivedDocumentRead.Failed(code)
+        val documents = runCatching {
+            val trimmed = body.trim()
+            val array = if (trimmed.startsWith("[")) {
+                JSONArray(trimmed)
+            } else {
+                val wrapper = JSONObject(trimmed)
+                wrapper.optJSONArray("result")
+                    ?: JSONArray().put(wrapper.optJSONObject("result") ?: wrapper)
+            }
+            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
+        }.getOrElse { return ReceivedDocumentRead.Failed(code) }
+        return when (documents.size) {
+            0 -> ReceivedDocumentRead.Gone
+            1 -> ReceivedDocumentRead.Found(documents.single())
+            else -> ReceivedDocumentRead.Ambiguous
+        }
+    }
+
+    /** What to do with an edit, given the document as the server holds it now. */
+    internal sealed class ReceivedEditPlan {
+        /** The server's copy stands, and the next receive brings it. */
+        class ServerWins(val reason: String) : ReceivedEditPlan()
+        /** Nothing the server would take differs from what it holds: the edit is settled. */
+        class Settled(val timeKeptByServer: Boolean) : ReceivedEditPlan()
+        class Send(val changes: JournalTreatmentTransfer.ReceivedEditChanges, val timeKeptByServer: Boolean) :
+            ReceivedEditPlan()
+    }
+
+    /**
+     * Decides what becomes of [entry]'s edit, given [document] as the server now holds it.
+     *
+     * The server wins where it changed the document after the edit was made, where the document
+     * no longer holds the row's part, and where it may not be changed. API v3 will not move a
+     * document's date (it answers 400), so on v3 an edited time is not sent: it is reported as
+     * kept by the server, and the next receive shows the server's time again.
+     */
+    internal fun receivedEditPlan(entry: JournalEntryEntity, document: JSONObject, useV3: Boolean): ReceivedEditPlan {
+        if (JournalTreatmentTransfer.isReadOnlyDocument(document)) {
+            return ReceivedEditPlan.ServerWins("the document is read-only")
+        }
+        val modifiedAt = JournalTreatmentTransfer.serverModifiedMillis(document)
+        if (modifiedAt != null && modifiedAt > entry.updatedAt) {
+            return ReceivedEditPlan.ServerWins("the server changed it after the edit")
+        }
+        val changes = JournalTreatmentTransfer.receivedEditChanges(entry, document)
+            ?: return ReceivedEditPlan.ServerWins("the document no longer holds this ${entry.entryType}")
+        // v1 finds the document by the _id in the body and makes it an ObjectId; anything else
+        // fails there (500) on every attempt.
+        if (!useV3 && !isObjectId(document.optString("_id"))) {
+            return ReceivedEditPlan.ServerWins("v1 cannot address a document whose _id is not an ObjectId")
+        }
+        val timeKeptByServer = useV3 && changes.timestampMillis != null
+        val sendable = if (useV3) changes.copy(timestampMillis = null) else changes
+        return if (sendable.fields.length() == 0 && sendable.timestampMillis == null) {
+            ReceivedEditPlan.Settled(timeKeptByServer)
+        } else {
+            ReceivedEditPlan.Send(sendable, timeKeptByServer)
+        }
+    }
+
+    internal enum class ReceivedEditAction {
+        /** The server has the edit, or there is nothing left on it to change: settled. */
+        CONFIRM,
+        /** The server's copy stands; the next receive writes it over the row. */
+        SERVER_WINS,
+        /** Not taken; the edit stays pending and is sent again, like any refused upload. */
+        FAIL
+    }
+
+    /**
+     * What a write of an edit answered. A document gone meanwhile (404, 410) has nothing left to
+     * change, and no read will bring it back over the row; it is settled rather than retried for
+     * good, which would hold every later entry back.
+     */
+    internal fun receivedEditWriteAction(code: Int, answeredByNightscout: Boolean): ReceivedEditAction = when {
+        !answeredByNightscout -> ReceivedEditAction.FAIL
+        code == HttpURLConnection.HTTP_OK ||
+            code == HttpURLConnection.HTTP_CREATED ||
+            code == HttpURLConnection.HTTP_NO_CONTENT ||
+            code == HttpURLConnection.HTTP_NOT_FOUND ||
+            code == HttpURLConnection.HTTP_GONE -> ReceivedEditAction.CONFIRM
+        else -> ReceivedEditAction.FAIL
+    }
+
+    /** One pass's outcome for one edit. */
+    private class ReceivedEditResult(
+        val action: ReceivedEditAction,
+        val code: Int = 0,
+        val message: String = "",
+        /** The server accepted a write for it. */
+        val wrote: Boolean = false
+    )
+
+    private fun sendReceivedEdit(
+        entry: JournalEntryEntity,
+        baseUrl: String,
+        rawSecret: String,
+        secretHashed: String?,
+        useV3: Boolean
+    ): ReceivedEditResult {
+        val remoteId = entry.nsRemoteId!!
+        val readUrl = receivedDocumentUrl(baseUrl, remoteId, useV3)
+        val read = httpRequest("GET", readUrl, rawSecret, tokenAuth = useV3)
+        val document = when (val found = receivedDocumentRead(read.code, read.body)) {
+            is ReceivedDocumentRead.Found -> found.document
+            ReceivedDocumentRead.Gone -> {
+                Log.i(LOG_ID, "edit of received entry id=${entry.id}: remoteId=$remoteId is gone from the server; kept as edited")
+                return ReceivedEditResult(ReceivedEditAction.CONFIRM)
+            }
+            ReceivedDocumentRead.Ambiguous -> {
+                Log.e(LOG_ID, "edit of received entry id=${entry.id}: several documents carry remoteId=$remoteId; not sent")
+                return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)
+            }
+            is ReceivedDocumentRead.Failed ->
+                return ReceivedEditResult(ReceivedEditAction.FAIL, found.code, serverMessage(read.body))
+        }
+        val changes = when (val plan = receivedEditPlan(entry, document, useV3)) {
+            is ReceivedEditPlan.ServerWins -> {
+                Log.i(LOG_ID, "edit of received entry id=${entry.id} remoteId=$remoteId not sent: ${plan.reason}")
+                return ReceivedEditResult(ReceivedEditAction.SERVER_WINS)
+            }
+            is ReceivedEditPlan.Settled -> {
+                if (plan.timeKeptByServer) logTimeKept(entry, remoteId)
+                return ReceivedEditResult(ReceivedEditAction.CONFIRM)
+            }
+            is ReceivedEditPlan.Send -> {
+                if (plan.timeKeptByServer) logTimeKept(entry, remoteId)
+                plan.changes
+            }
+        }
+        val writeUrl = receivedEditWriteUrl(baseUrl, remoteId, useV3)
+        val code: Int
+        val body: String
+        if (useV3) {
+            // Only what changed, none of it a field v3 holds immutable (date, utcOffset,
+            // eventType, app, device, isValid): the other app's document keeps its identity.
+            code = NightPost.uploadPatch(writeUrl, changes.fields.toString().toByteArray(Charsets.UTF_8), secretHashed)
+            body = NightPost.getLastPrimaryResponseBody()
+        } else {
+            val payload = JournalTreatmentTransfer.receivedEditV1Document(document, changes, System.currentTimeMillis())
+            val answer = httpRequest("PUT", writeUrl, rawSecret, tokenAuth = false, payload = payload.toString().toByteArray(Charsets.UTF_8))
+            code = answer.code
+            body = answer.body
+        }
+        val action = receivedEditWriteAction(code, answeredByNightscout(code, body))
+        if (action == ReceivedEditAction.CONFIRM) {
+            Log.i(LOG_ID, "edit of received entry id=${entry.id} sent to remoteId=$remoteId: ${changes.fields.names()} code=$code")
+        }
+        return ReceivedEditResult(
+            action = action,
+            code = code,
+            message = if (action == ReceivedEditAction.FAIL) serverMessage(body) else "",
+            wrote = action == ReceivedEditAction.CONFIRM && code in 200..299
+        )
+    }
+
+    private fun logTimeKept(entry: JournalEntryEntity, remoteId: String) {
+        Log.i(
+            LOG_ID,
+            "edit of received entry id=${entry.id}: API v3 does not let a client move remoteId=$remoteId in time; " +
+                "the server keeps its time"
+        )
+    }
+
+    private class HttpAnswer(val code: Int, val body: String)
+
+    /**
+     * One request with the uploader's credentials: the v3 token when [tokenAuth], the configured
+     * secret otherwise. Code -1 when nothing answered.
+     */
+    private fun httpRequest(
+        method: String,
+        endpoint: String,
+        secret: String,
+        tokenAuth: Boolean,
+        payload: ByteArray? = null
+    ): HttpAnswer {
+        val auth = if (tokenAuth) NightPost.getV3AuthorizationHeader() else ""
+        if (tokenAuth && auth.isEmpty()) return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "")
+        val connection = runCatching { URL(endpoint).openConnection() as HttpURLConnection }
+            .getOrElse { return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "") }
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.requestMethod = method
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("User-Agent", "JugglucoNG Nightscout journal sync")
+            if (tokenAuth) {
+                connection.setRequestProperty("Authorization", auth)
+            } else {
+                NightscoutFollowerRegistry.applyAuth(connection, secret)
+            }
+            if (payload != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.setRequestProperty("Content-Length", payload.size.toString())
+                connection.outputStream.use { it.write(payload) }
+            }
+            val code = connection.responseCode
+            val body = (if (code in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            if (code !in 200..299) Log.e(LOG_ID, "$method ${endpointPath(endpoint)} ResponseCode=$code\n${body.take(512)}")
+            return HttpAnswer(code, body)
+        } catch (th: Throwable) {
+            Log.e(LOG_ID, "$method ${endpointPath(endpoint)} failure:\n${Log.stackline(th)}")
+            return HttpAnswer(NightPost.ERROR_NO_RESPONSE, "")
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun postV1Treatment(
         baseUrl: String,
@@ -649,15 +1256,35 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         }.getOrNull()
     }
 
-    private fun resolveDeleteRemoteId(
-        baseUrl: String,
-        secret: String,
-        remoteId: String,
-        useV3: Boolean
-    ): String {
-        if (useV3 || !remoteId.startsWith(ID_PREFIX, ignoreCase = true)) return remoteId
-        return findRemoteIdByIdentifier(baseUrl, secret, remoteId, timestamp = null) ?: remoteId
+    /**
+     * The _id of the one document [treatments] carries under [identifier], leaving out
+     * [excludeRemoteIds]; null when there is none, or more than one and so no telling which.
+     */
+    internal fun soleDocumentIdForIdentifier(
+        treatments: JSONArray,
+        identifier: String,
+        excludeRemoteIds: Set<String>
+    ): String? {
+        var match: String? = null
+        for (index in 0 until treatments.length()) {
+            val treatment = treatments.optJSONObject(index) ?: continue
+            if (treatment.optString("identifier") != identifier) continue
+            val remoteId = treatment.optNightscoutDocumentId() ?: continue
+            if (remoteId in excludeRemoteIds) continue
+            if (match != null && match != remoteId) return null
+            match = remoteId
+        }
+        return match
     }
+
+    /**
+     * The treatments as v1 serves them, each with its _id; null when they could not be had. A v3
+     * setup reads them the same way, with its token: v3 leaves the _id out.
+     */
+    private fun fetchTreatmentsWithIds(baseUrl: String, secret: String, useV3: Boolean): JSONArray? =
+        runCatching {
+            fetchTreatmentsRead(baseUrl, secret, useV3 = false, tokenAuth = useV3)?.let(::JSONArray)
+        }.getOrNull()
 
     private fun findRemoteIdByIdentifier(
         baseUrl: String,
@@ -667,8 +1294,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         excludeRemoteId: String? = null
     ): String? =
         runCatching {
-            // Reached only from the v1 branches: postV1Treatment runs in the else of
-            // `if (useV3)`, and resolveDeleteRemoteId returns before this when v3 is on.
+            // Reached only from the v1 branch: postV1Treatment runs in the else of `if (useV3)`.
             val array = JSONArray(fetchTreatmentsJson(baseUrl, secret, useV3 = false))
             for (index in 0 until array.length()) {
                 val treatment = array.optJSONObject(index) ?: continue
@@ -689,17 +1315,45 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         optString("_id").trim().takeIf { it.isNotBlank() }
             ?: optString("id").trim().takeIf { it.isNotBlank() }
 
-    private fun receiveRemoteTreatments(baseUrl: String, secret: String, useV3: Boolean): Boolean {
+    /** How a receive went: done (or not due), refused by the server, or not answered at all. */
+    internal enum class ReceiveResult { DONE, REFUSED, UNANSWERED }
+
+    /**
+     * What a treatment pass tells the native uploader. False makes it back off, which holds the
+     * next journal changes back as well, up to four hours.
+     *
+     * A refused read is the receive's own failure (a token without api:treatments:read answers
+     * 403 every time): it is retried on the receive's interval, and folding it in held every new
+     * entry back for nothing. A read nobody answered is folded in like a delete nobody answered,
+     * as a server out of reach, unless this pass's own writes have just reached it.
+     */
+    internal fun treatmentPassOk(
+        sendsOk: Boolean,
+        deletesUnanswered: Boolean,
+        receive: ReceiveResult,
+        wroteThisPass: Boolean
+    ): Boolean = sendsOk && !deletesUnanswered && !(receive == ReceiveResult.UNANSWERED && !wroteThisPass)
+
+    /**
+     * How a receive went. [readBody] is the treatment list the server answered with, null when
+     * nothing was read (deferred, failed, or no such endpoint).
+     */
+    private class ReceiveOutcome(val result: ReceiveResult, val readBody: String? = null)
+
+    private fun receiveRemoteTreatments(baseUrl: String, secret: String, useV3: Boolean): ReceiveOutcome {
         val floorKey = "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
         val waitMillis = receiveFloor.waitMillis(floorKey, System.currentTimeMillis())
         if (waitMillis > 0L) {
             bookDeferredReceive(waitMillis)
-            return true
+            return ReceiveOutcome(ReceiveResult.DONE)
         }
-        return runCatching {
-            val body = fetchTreatmentsJson(baseUrl, secret, useV3)
+        var readBody: String? = null
+        val result = runCatching {
+            val read = fetchTreatmentsRead(baseUrl, secret, useV3)
             receiveFloor.recordRead(floorKey, System.currentTimeMillis())
-            if (body.isBlank() || body == "[]") return@runCatching true
+            readBody = read
+            val body = read ?: return@runCatching ReceiveResult.DONE
+            if (body.isBlank() || body == "[]") return@runCatching ReceiveResult.DONE
             val sensorId = NightscoutFollowerRegistry.deriveSensorId(baseUrl)
             val imported = NightscoutJournalFollowerImporter.importTreatments(sensorId, body)
             if (imported > 0) {
@@ -707,8 +1361,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 Log.i(LOG_ID, "received $imported Nightscout treatment journal items")
             }
             receiveErrorLog.reset()
-            true
-        }.onFailure { error ->
+            ReceiveResult.DONE
+        }.getOrElse { error ->
             // The uploader retries on its own cadence, so an unreachable or refusing server
             // used to write the same line every few seconds and bury the rest of the trace.
             val message = "receive treatments failed: ${error.message}"
@@ -716,12 +1370,35 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             if (repeats >= 0) {
                 Log.e(LOG_ID, if (repeats == 0) message else "$message (repeated ${repeats + 1}x)")
             }
-        }.getOrDefault(false)
+            // No answer is a failed connection or read; an error status is thrown as anything else.
+            if (error is IOException) {
+                ReceiveResult.UNANSWERED
+            } else {
+                // No backoff covers a refusal any more (see treatmentPassOk): the interval does.
+                receiveFloor.recordRead(floorKey, System.currentTimeMillis())
+                ReceiveResult.REFUSED
+            }
+        }
+        return ReceiveOutcome(result, readBody)
     }
 
-    private fun fetchTreatmentsJson(baseUrl: String, secret: String, useV3: Boolean): String {
+    private fun fetchTreatmentsJson(baseUrl: String, secret: String, useV3: Boolean): String =
+        fetchTreatmentsRead(baseUrl, secret, useV3) ?: "[]"
+
+    /**
+     * The treatment list the server answered with; null when there is nothing to read from
+     * (no URL, or no such endpoint). Throws when the read failed.
+     *
+     * @param tokenAuth authenticate with the v3 token, also for a v1 read made under a v3 setup
+     */
+    private fun fetchTreatmentsRead(
+        baseUrl: String,
+        secret: String,
+        useV3: Boolean,
+        tokenAuth: Boolean = useV3
+    ): String? {
         val normalized = NightscoutFollowerRegistry.normalizeUrl(baseUrl)
-        if (normalized.isBlank()) return "[]"
+        if (normalized.isBlank()) return null
         val endpoint = treatmentFetchUrl(normalized, useV3)
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
@@ -731,8 +1408,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             setRequestProperty("User-Agent", "JugglucoNG Nightscout journal sync")
             // v3 reads want the same bearer token the v3 upload path already obtains and
             // caches; the configured secret is an access token there, and hashing it into an
-            // api-secret header is what the 401 was.
-            val v3Auth = if (useV3) NightPost.getV3AuthorizationHeader() else ""
+            // api-secret header is what the 401 was. So does a v1 read made under a v3 setup.
+            val v3Auth = if (tokenAuth) NightPost.getV3AuthorizationHeader() else ""
             if (v3Auth.isNotEmpty()) {
                 setRequestProperty("Authorization", v3Auth)
             } else {
@@ -745,7 +1422,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 ?.bufferedReader()
                 ?.use { it.readText() }
                 .orEmpty()
-            if (code == HttpURLConnection.HTTP_NOT_FOUND) return "[]"
+            if (code == HttpURLConnection.HTTP_NOT_FOUND) return null
             if (code !in 200..299) {
                 throw IllegalStateException("HTTP $code ${endpointPath(endpoint)}: ${serverMessage(body)}")
             }

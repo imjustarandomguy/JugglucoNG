@@ -226,4 +226,218 @@ class NightscoutFollowerRegistryTests {
     fun matchesSensorId_mismatch_returnsFalse() {
         assertFalse(NightscoutFollowerRegistry.matchesSensorId("NSF-ABC123", "NSF-DEF456"))
     }
+
+    // ---------- native follower records ----------
+
+    // Native lists a 16-character record without its first five characters, so the follower's
+    // record shows up as a name that reads like a Libre serial.
+    private val nativeFullNames = mapOf(
+        "073E464C8CB" to "NSF-3073E464C8CB",
+        "0M00ABCDEF1" to "E007-0M00ABCDEF1",
+    )
+
+    private fun fullName(name: String): String? = nativeFullNames[name]
+
+    @Test
+    fun followerRecordName_resolvesNativeShortAlias() {
+        assertEquals("NSF-3073E464C8CB", NightscoutFollowerRegistry.followerRecordName("073E464C8CB", ::fullName))
+        assertEquals("NSF-3073E464C8CB", NightscoutFollowerRegistry.followerRecordName(" NSF-3073E464C8CB ") { null })
+    }
+
+    @Test
+    fun followerRecordName_ignoresOtherSensors() {
+        assertNull(NightscoutFollowerRegistry.followerRecordName("0M00ABCDEF1", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName("UNKNOWN0001", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName(" ", ::fullName))
+        assertNull(NightscoutFollowerRegistry.followerRecordName(null, ::fullName))
+    }
+
+    @Test
+    fun followerRecordName_findsEveryDerivedIdByItsShortAlias() {
+        val id = NightscoutFollowerRegistry.deriveSensorId("https://example.com")
+        val shortAlias = id.drop(5)
+        assertEquals(id, NightscoutFollowerRegistry.followerRecordName(shortAlias) { if (it == shortAlias) id else null })
+    }
+
+    @Test
+    fun inactiveFollowerRecords_endsTheRecordOfAStoppedFollower() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("0M00ABCDEF1", "073E464C8CB"),
+                enabledSensorId = null,
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_keepsTheEnabledFollower() {
+        assertTrue(
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("0M00ABCDEF1", "073E464C8CB"),
+                enabledSensorId = "nsf-3073e464c8cb",
+                fullName = ::fullName,
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_endsTheRecordOfAPreviousServer() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("073E464C8CB", "NSF-0123456789AB"),
+                enabledSensorId = "NSF-0123456789AB",
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_listsARecordOnceWhateverItIsCalled() {
+        assertEquals(
+            listOf("NSF-3073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerRecords(
+                arrayOf("073E464C8CB", null, "nsf-3073e464c8cb"),
+                enabledSensorId = null,
+                fullName = ::fullName,
+            ).map { it.uppercase() },
+        )
+    }
+
+    @Test
+    fun inactiveFollowerRecords_withoutActiveSensorsEndsNothing() {
+        assertTrue(NightscoutFollowerRegistry.inactiveFollowerRecords(null, null, ::fullName).isEmpty())
+        assertTrue(NightscoutFollowerRegistry.inactiveFollowerRecords(emptyArray<String>(), null, ::fullName).isEmpty())
+    }
+
+    // ---------- running followers ----------
+
+    @Test
+    fun inactiveFollowerCallbacks_stopsThePreviousServersFollowerOnly() {
+        val previous = NightscoutFollowerRegistry.deriveSensorId("https://old.example.com")
+        val current = NightscoutFollowerRegistry.deriveSensorId("https://new.example.com")
+        assertEquals(
+            listOf(previous),
+            NightscoutFollowerRegistry.inactiveFollowerCallbacks(
+                callbacks = listOf("0M00ABCDEF1", previous, current, null),
+                serialOf = { it },
+                enabledSensorId = current,
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerCallbacks_stopsEveryFollowerWhenNoneIsEnabled() {
+        val follower = NightscoutFollowerRegistry.deriveSensorId("https://example.com")
+        assertEquals(
+            listOf(follower, "073E464C8CB"),
+            NightscoutFollowerRegistry.inactiveFollowerCallbacks(
+                callbacks = listOf(follower, "0M00ABCDEF1", "073E464C8CB"),
+                serialOf = { it },
+                enabledSensorId = null,
+                fullName = ::fullName,
+            ),
+        )
+    }
+
+    @Test
+    fun inactiveFollowerCallbacks_keepsTheEnabledFollowerWhateverItsCase() {
+        assertTrue(
+            NightscoutFollowerRegistry.inactiveFollowerCallbacks(
+                callbacks = listOf("nsf-3073e464c8cb", "073E464C8CB"),
+                serialOf = { it },
+                enabledSensorId = "NSF-3073E464C8CB",
+                fullName = ::fullName,
+            ).isEmpty()
+        )
+    }
+
+    @Test
+    fun followerTakesOverCurrent_onlyFromAnotherServersFollower() {
+        val previous = NightscoutFollowerRegistry.deriveSensorId("https://old.example.com")
+        val current = NightscoutFollowerRegistry.deriveSensorId("https://new.example.com")
+        assertTrue(NightscoutFollowerRegistry.followerTakesOverCurrent(previous, current, ::fullName))
+        assertTrue(NightscoutFollowerRegistry.followerTakesOverCurrent("073E464C8CB", current, ::fullName))
+        assertFalse(NightscoutFollowerRegistry.followerTakesOverCurrent(current.lowercase(), current, ::fullName))
+        assertFalse(NightscoutFollowerRegistry.followerTakesOverCurrent("0M00ABCDEF1", current, ::fullName))
+        assertFalse(NightscoutFollowerRegistry.followerTakesOverCurrent(null, current, ::fullName))
+    }
+
+    // ---------- saving the settings ----------
+
+    private fun config(enabled: Boolean, url: String, secret: String = "") =
+        NightscoutFollowerRegistry.Config(enabled = enabled, url = url, secret = secret)
+
+    private fun action(follow: Boolean, url: String?, connect: Boolean, previous: NightscoutFollowerRegistry.Config) =
+        NightscoutFollowerRegistry.followerSettingsAction(follow, url, connect, previous)
+
+    @Test
+    fun followerSettingsAction_newUrlInFollowStartsTheNewServersFollower() {
+        val previous = config(enabled = true, url = "https://old.example.com")
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.START,
+            action(follow = true, url = "new.example.com", connect = true, previous = previous),
+        )
+        // Even a save that asks for no poll (the token refresh) switches the server.
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.START,
+            action(follow = true, url = "new.example.com", connect = false, previous = previous),
+        )
+    }
+
+    @Test
+    fun followerSettingsAction_sameServerWithoutAPollOnlyUpdatesTheRunningFollower() {
+        val previous = config(enabled = true, url = "https://example.com", secret = "old")
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.UPDATE,
+            action(follow = true, url = "example.com/", connect = false, previous = previous),
+        )
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.START,
+            action(follow = true, url = "example.com/", connect = true, previous = previous),
+        )
+    }
+
+    @Test
+    fun followerSettingsAction_urlChangedInUploadThenFollowStartsTheCurrentServer() {
+        // Upload mode stored the new URL with the follower off.
+        val stored = config(enabled = false, url = "https://new.example.com")
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.DISABLE,
+            action(follow = false, url = "https://new.example.com", connect = false, previous = config(true, "https://old.example.com")),
+        )
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.START,
+            action(follow = true, url = "https://new.example.com", connect = false, previous = stored),
+        )
+    }
+
+    @Test
+    fun followerSettingsAction_disablesWhetherOrNotTheFollowerWasEnabled() {
+        // The cleanup no longer depends on the stored flag: a follower left running while it
+        // reads disabled is the one that has to be stopped.
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.DISABLE,
+            action(follow = false, url = "https://example.com", connect = false, previous = config(false, "https://example.com")),
+        )
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.DISABLE,
+            action(follow = false, url = "", connect = true, previous = config(true, "https://example.com")),
+        )
+    }
+
+    @Test
+    fun followerSettingsAction_clearedUrlInFollowAwaitsOne() {
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.AWAIT_URL,
+            action(follow = true, url = "  ", connect = true, previous = config(true, "https://example.com")),
+        )
+        assertEquals(
+            NightscoutFollowerRegistry.FollowerSettingsAction.AWAIT_URL,
+            action(follow = true, url = null, connect = false, previous = config(true, "https://example.com")),
+        )
+    }
 }

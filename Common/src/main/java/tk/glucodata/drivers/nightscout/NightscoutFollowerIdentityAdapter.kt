@@ -2,6 +2,7 @@ package tk.glucodata.drivers.nightscout
 
 import android.content.Context
 import tk.glucodata.Applic
+import tk.glucodata.Natives
 import tk.glucodata.SensorBluetooth
 import tk.glucodata.SuperGattCallback
 import tk.glucodata.drivers.ManagedBluetoothSensorDriver
@@ -66,6 +67,9 @@ object NightscoutFollowerIdentityAdapter : ManagedSensorIdentityAdapter {
 
     override fun isExternallyManagedBleSensor(sensorId: String?): Boolean =
         resolveCanonicalSensorId(sensorId) != null
+
+    override fun isCloudNativeMirror(sensorId: String?): Boolean =
+        NightscoutFollowerRegistry.followerRecordName(sensorId, Natives::resolveFullSensorName) != null
 
     override fun hasNativeSensorBacking(sensorId: String?): Boolean? =
         resolveCanonicalSensorId(sensorId)?.let { false }

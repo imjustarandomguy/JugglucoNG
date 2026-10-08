@@ -4,6 +4,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JournalTreatmentTransferTests {
@@ -209,5 +210,74 @@ class JournalTreatmentTransferTests {
         val entry = parsed!!.inputs.single()
         assertEquals(JournalEntrySource.CLONE_TURN, entry.source)
         assertEquals(JournalEntrySource.PEN, entry.originSource)
+    }
+
+    private val rowTime = 1_786_794_604_000L
+
+    /** What the v1 path stored for row 0x1a, as a v3 read serves it: identifier, no _id. */
+    private fun ownV1DocumentServedByV3(time: Long = rowTime) = JSONObject()
+        .put("identifier", JournalTreatmentUploader.v1Identifier(0x1a))
+        .put("date", time)
+        .put("eventType", "Correction Bolus")
+        .put("insulin", 2.5)
+        .put("enteredBy", "JugglucoNG")
+
+    private val ownV1Rows = mapOf(JournalTreatmentUploader.v1Identifier(0x1a) to rowTime)
+
+    @Test
+    fun theV1PathNamesItsDocumentsAfterTheRowAlone() {
+        assertEquals("jng-j-1a", JournalTreatmentUploader.v1Identifier(0x1a))
+        assertTrue(
+            "a v3 name extends the v1 name with the time, so the two never coincide",
+            JournalTreatmentUploader.datedIdentifier(0x1a, rowTime).startsWith("jng-j-1a-"),
+        )
+    }
+
+    @Test
+    fun anOwnV1DocumentIsRecognisedWhenV3ServesItWithoutItsId() {
+        assertTrue(JournalTreatmentTransfer.isOwnV1Document(ownV1DocumentServedByV3(), ownV1Rows))
+        assertTrue(
+            "the v1 lookup of a document by identifier allows a minute either way",
+            JournalTreatmentTransfer.isOwnV1Document(ownV1DocumentServedByV3(rowTime + 30_000L), ownV1Rows),
+        )
+    }
+
+    @Test
+    fun theSameRowIdAtAnotherTimeIsSomeoneElsesDocument() {
+        // Another install, or this one before a reinstall, numbers its rows the same way.
+        assertFalse(
+            JournalTreatmentTransfer.isOwnV1Document(
+                ownV1DocumentServedByV3(rowTime - 3L * 24 * 60 * 60 * 1000),
+                ownV1Rows,
+            )
+        )
+    }
+
+    /** The importer removes copies received before the documents were recognised, by these ids. */
+    @Test
+    fun aCopyReceivedEarlierIsNamedByTheIdsTheImporterRemoves() {
+        val document = ownV1DocumentServedByV3()
+        val received = JournalTreatmentTransfer.parseTreatment(
+            treatment = document,
+            source = JournalEntrySource.NIGHTSCOUT,
+            sourcePrefix = "nightscout:NSF-TEST",
+            insulinPresets = emptyList(),
+            stringResource = { "Insulin" },
+        )!!.inputs.single()
+
+        assertTrue(
+            received.sourceRecordId in
+                JournalTreatmentTransfer.sourceRecordIdsForTreatment(document, "nightscout:NSF-TEST")
+        )
+    }
+
+    @Test
+    fun onlyTheV1IdentifierOfAnUploadedRowCounts() {
+        val dated = ownV1DocumentServedByV3()
+            .put("identifier", JournalTreatmentUploader.datedIdentifier(0x1a, rowTime))
+        assertFalse(JournalTreatmentTransfer.isOwnV1Document(dated, ownV1Rows))
+        assertFalse(JournalTreatmentTransfer.isOwnV1Document(ownV1DocumentServedByV3(), emptyMap()))
+        val withoutIdentifier = ownV1DocumentServedByV3().apply { remove("identifier") }
+        assertFalse(JournalTreatmentTransfer.isOwnV1Document(withoutIdentifier, ownV1Rows))
     }
 }

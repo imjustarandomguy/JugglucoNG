@@ -1073,6 +1073,12 @@ public class Natives {
         public static native void wakeuploader();
 
         /**
+         * "Send now": a full upload pass that also ends the treatment backoff, which otherwise
+         * holds treatments for up to four hours after the server last failed to take them.
+         */
+        public static native void wakeuploadernow();
+
+        /**
          * A journal entry was written, changed or deleted. Wakes the treatments branch of
          * the uploader on its own reason, so a dose no longer waits for a calibration or a
          * backup to come along and wake it by accident.

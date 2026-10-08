@@ -57,8 +57,26 @@ class JournalRepository {
         }
     }
 
-    suspend fun upsertEntry(input: JournalEntryInput): Long {
-        val (id, entity, existing) = database.withTransaction {
+    suspend fun upsertEntry(input: JournalEntryInput): Long =
+        checkNotNull(writeEntry(input, received = null)) { "only a received copy is ever held back" }
+
+    /**
+     * Writes a treatment as Nightscout serves it, unless the row it lands on holds an edit of the
+     * user's that the server has not confirmed yet ([receivedCopyMayReplace]). That edit is on its
+     * way to the server; writing the server's copy over it is what used to undo it before it was
+     * ever sent. A document the server changed after the edit still wins, as before.
+     *
+     * @param serverModifiedAt when the server last changed the document, if it says
+     *        ([JournalTreatmentTransfer.serverModifiedMillis])
+     * @return the row id, or null when the row's pending edit was kept
+     */
+    suspend fun upsertReceivedNightscoutEntry(input: JournalEntryInput, serverModifiedAt: Long?): Long? =
+        writeEntry(input, ReceivedCopy(serverModifiedAt))
+
+    private class ReceivedCopy(val serverModifiedAt: Long?)
+
+    private suspend fun writeEntry(input: JournalEntryInput, received: ReceivedCopy?): Long? {
+        val written = database.withTransaction {
             val sourceRecordId = input.sourceRecordId?.takeIf { it.isNotBlank() }
             val recoveryId = CloneJournalIdentity.normalizeRecoveryId(input.recoveryId)
             val nsRemoteId = input.nsRemoteId?.takeIf { it.isNotBlank() }
@@ -86,6 +104,17 @@ class JournalRepository {
                 sourceMatch = sourceMatch,
                 remoteMatch = remoteMatch,
             )
+            // The server's copy must not be written over an edit that has not reached the server yet.
+            if (received != null && existing != null &&
+                !receivedCopyMayReplace(
+                    source = existing.source,
+                    updatedAt = existing.updatedAt,
+                    nsUploadedAt = existing.nsUploadedAt,
+                    serverModifiedAt = received.serverModifiedAt,
+                )
+            ) {
+                return@withTransaction null
+            }
             val writeIdentity = preserveMirroredJournalIdentity(
                 existingSource = existing?.source,
                 existingSourceRecordId = existing?.sourceRecordId,
@@ -129,6 +158,10 @@ class JournalRepository {
             } else {
                 null
             }
+            // Clone and Nightscout can deliver the same treatment in either
+            // order. Preserve the first observed route and storage identity
+            // instead of changing icons or creating a duplicate later.
+            val storedSource = preservedIdentity?.source ?: writeIdentity.source.storageValue
             val entity = JournalEntryEntity(
                 id = existing?.id ?: (input.id ?: 0L),
                 timestamp = input.timestamp,
@@ -141,10 +174,7 @@ class JournalRepository {
                 durationMinutes = input.durationMinutes,
                 intensity = input.intensity?.storageValue,
                 insulinPresetId = input.insulinPresetId,
-                // Clone and Nightscout can deliver the same treatment in either
-                // order. Preserve the first observed route and storage identity
-                // instead of changing icons or creating a duplicate later.
-                source = preservedIdentity?.source ?: writeIdentity.source.storageValue,
+                source = storedSource,
                 originSource = resolveJournalOriginSource(
                     existingOriginSource = existing?.originSource,
                     storedSource = writeIdentity.source,
@@ -164,7 +194,14 @@ class JournalRepository {
                 foodId = input.foodId,
                 proteinGrams = input.proteinGrams?.coerceAtLeast(0f),
                 fatGrams = input.fatGrams?.coerceAtLeast(0f),
-                nsUploadedAt = existing?.nsUploadedAt,
+                nsUploadedAt = nightscoutUploadedAtAfterWrite(
+                    storedSource = storedSource,
+                    existingSource = existing?.source,
+                    existingUpdatedAt = existing?.updatedAt,
+                    existingNsUploadedAt = existing?.nsUploadedAt,
+                    incomingSource = input.source,
+                    now = now,
+                ),
                 nsRemoteId = nsRemoteId ?: existing?.nsRemoteId,
                 insulinCurveJsonSnapshot = when {
                     !isInsulin -> null
@@ -207,7 +244,8 @@ class JournalRepository {
             // redundant local copy. This must never create a remote delete tombstone.
             redundantOverlap.forEach { dao.deleteEntryById(it.id) }
             Triple(rowId, entity, existing)
-        }
+        } ?: return null
+        val (id, entity, existing) = written
         val mirroredWrite = isExternalJournalMirrorSource(JournalEntrySource.fromStorage(entity.source))
         if (affectsIob(entity.entryType) || affectsIob(existing?.entryType)) {
             if (mirroredWrite) {
@@ -227,6 +265,9 @@ class JournalRepository {
             if (!affectsIob(entity.entryType) && !affectsIob(existing?.entryType)) {
                 tk.glucodata.Natives.wakebackup()
             }
+        } else if (isLocalEditOfReceivedTreatment(existing?.source, input.source)) {
+            // The user's edit of a treatment received from Nightscout goes back to that document.
+            tk.glucodata.NightscoutUploadWake.afterJournalChange()
         }
         return id
     }
@@ -877,10 +918,75 @@ internal fun isEarlierJournalRow(
 private fun JournalEntryEntity.nightscoutDeleteRemoteId(): String? =
     nightscoutDeleteRemoteId(source, nsRemoteId)
 
+/**
+ * The Nightscout document a deleted row leaves a tombstone for, if any.
+ *
+ * This app's own rows, and rows received from Nightscout itself: the user deleted what
+ * Nightscout holds, and without a tombstone the next read of the server (the uploader's
+ * receive, or the follower) brings it straight back. With sending on, the uploader deletes it
+ * there too; with sending off, the tombstone only keeps it from being received again.
+ * Rows mirrored from AAPS, the API or Clone are another system's to delete: never here.
+ */
 internal fun nightscoutDeleteRemoteId(source: String, nsRemoteId: String?): String? {
     val entrySource = JournalEntrySource.fromStorage(source)
-    if (isExternalJournalMirrorSource(entrySource)) return null
+    if (entrySource != JournalEntrySource.NIGHTSCOUT && isExternalJournalMirrorSource(entrySource)) return null
     return nsRemoteId?.takeIf { it.isNotBlank() }
+}
+
+/*
+ * A row received from Nightscout (source NIGHTSCOUT) keeps its edit state in the columns this
+ * app's own rows keep their upload state in, so no schema change is needed:
+ *
+ *   nsUploadedAt null                    as received: the server's copy, which a receive replaces
+ *   updatedAt > nsUploadedAt             the user's edit, not yet confirmed by the server
+ *   updatedAt <= nsUploadedAt            the edit, confirmed; the next receive is the server's
+ *                                        copy again and puts nsUploadedAt back to null
+ *
+ * Such a row is never one of this app's own uploads: JournalDao's own-upload queries leave the
+ * source out, and the uploader writes back to the document the row came from, never a new one.
+ */
+
+/** Whether a write to a row received from Nightscout is the user's own edit of it. */
+internal fun isLocalEditOfReceivedTreatment(existingSource: String?, incomingSource: JournalEntrySource): Boolean =
+    existingSource == JournalEntrySource.NIGHTSCOUT.storageValue && !isExternalJournalMirrorSource(incomingSource)
+
+/** Whether a row received from Nightscout holds an edit of the user's the server has not confirmed. */
+internal fun hasPendingNightscoutEdit(source: String, updatedAt: Long, nsUploadedAt: Long?): Boolean =
+    source == JournalEntrySource.NIGHTSCOUT.storageValue && nsUploadedAt != null && updatedAt > nsUploadedAt
+
+/**
+ * Whether a receive may write the server's copy over this row: always, unless the row holds a
+ * pending edit ([hasPendingNightscoutEdit]); then only when the server says it changed the
+ * document after the edit was made, in which case the server wins as it always has. A document
+ * that says nothing of when it changed leaves the edit to be sent.
+ */
+internal fun receivedCopyMayReplace(
+    source: String,
+    updatedAt: Long,
+    nsUploadedAt: Long?,
+    serverModifiedAt: Long?,
+): Boolean = !hasPendingNightscoutEdit(source, updatedAt, nsUploadedAt) ||
+    (serverModifiedAt != null && serverModifiedAt > updatedAt)
+
+/**
+ * nsUploadedAt after a write. Rows of every other source keep theirs: it is the uploader's to set.
+ * A row received from Nightscout is back in step with the server whenever another system's copy
+ * is written to it (a receive, above all); the user's edit of it marks it pending
+ * (updatedAt > nsUploadedAt, updatedAt being [now]) until the uploader hears the server took it.
+ */
+internal fun nightscoutUploadedAtAfterWrite(
+    storedSource: String,
+    existingSource: String?,
+    existingUpdatedAt: Long?,
+    existingNsUploadedAt: Long?,
+    incomingSource: JournalEntrySource,
+    now: Long,
+): Long? {
+    if (storedSource != JournalEntrySource.NIGHTSCOUT.storageValue) return existingNsUploadedAt
+    if (existingUpdatedAt == null || !isLocalEditOfReceivedTreatment(existingSource, incomingSource)) return null
+    // When the row last said what the server says (received, confirmed, or the mark an earlier
+    // edit set), and before now in any case, so the edit reads as pending.
+    return minOf(existingNsUploadedAt ?: existingUpdatedAt, now - 1)
 }
 
 private fun JournalEntryEntity.toModel(): JournalEntry {

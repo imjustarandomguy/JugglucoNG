@@ -13,6 +13,14 @@ import tk.glucodata.data.HistoryDatabase
 @Keep
 object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
     private const val LOG_ID = "NightscoutJournalFollowerImporter"
+    private const val SOURCE_RECORD_IDS_PER_STATEMENT = 500
+
+    /**
+     * How the sourceRecordId of every row received from the server [sensorId] names begins
+     * ([tk.glucodata.drivers.nightscout.NightscoutFollowerRegistry.deriveSensorId] of its URL),
+     * followed by ":" and the document's id.
+     */
+    internal fun sourcePrefix(sensorId: String): String = "nightscout:${sensorId.trim().ifBlank { "unknown" }}"
 
     @Keep
     override fun importTreatments(sensorId: String, treatmentsJson: String): Int = runBlocking {
@@ -33,10 +41,12 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
         repository.ensureDefaultInsulinPresets()
         val presets = repository.getInsulinPresetsSnapshot()
         val journalDao = HistoryDatabase.getInstance(Applic.app).journalDao()
-        val pendingDeleteRemoteIds = journalDao
-            .getPendingNightscoutDeletes()
+        val pendingDeletes = journalDao.getPendingNightscoutDeletes()
+        val pendingDeleteRemoteIds = pendingDeletes
             .mapNotNull { it.nsRemoteId.trim().takeIf(String::isNotBlank) }
             .toSet()
+        // The same documents as a v3 read serves those sent over v1, without the _id.
+        val pendingDeleteV3Names = JournalTreatmentUploader.v3NamesOfV1Documents(pendingDeletes)
         // Remote IDs this device itself uploaded to Nightscout. Re-importing them
         // would duplicate the local rows they came from, so these — and only these
         // — are skipped. Therapy uploaded by other JugglucoNG devices, or fetched by
@@ -45,15 +55,27 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
             .getOwnUploadedNightscoutRemoteIds()
             .mapNotNull { it.trim().takeIf(String::isNotBlank) }
             .toSet()
-        val sourcePrefix = "nightscout:${sensorId.trim().ifBlank { "unknown" }}"
+        // The same rows once more, as an API v3 read serves those sent over v1.
+        val ownV1Rows = journalDao
+            .getOwnUploadedNightscoutRows()
+            .associate { JournalTreatmentUploader.v1Identifier(it.id) to it.timestamp }
+        val sourcePrefix = sourcePrefix(sensorId)
         var imported = 0
         var deleted = 0
         val context = Applic.app
+        val ownV1Copies = ArrayList<String>()
 
         for (index in 0 until array.length()) {
             val treatment = array.optJSONObject(index) ?: continue
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, ownUploadedRemoteIds)) continue
+            if (JournalTreatmentTransfer.isOwnV1Document(treatment, ownV1Rows)) {
+                // Copies received before these documents were recognised are the install's own
+                // rows a second time.
+                ownV1Copies += JournalTreatmentTransfer.sourceRecordIdsForTreatment(treatment, sourcePrefix)
+                continue
+            }
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, pendingDeleteRemoteIds)) continue
+            if (JournalTreatmentUploader.v1DocumentServedByV3(treatment, pendingDeleteV3Names) != null) continue
             val parsed = JournalTreatmentTransfer.parseTreatment(
                 context = context,
                 treatment = treatment,
@@ -67,14 +89,19 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
                 continue
             }
 
+            // A row the user edited keeps the edit until the server has it (or changed since).
+            val serverModifiedAt = JournalTreatmentTransfer.serverModifiedMillis(treatment)
             for (input in parsed.inputs) {
-                repository.upsertEntry(input)
-                imported++
+                if (repository.upsertReceivedNightscoutEntry(input, serverModifiedAt) != null) imported++
             }
             val importedIds = parsed.inputs.mapNotNull { it.sourceRecordId }.toSet()
             val staleIds = parsed.candidateSourceRecordIds.filterNot { it in importedIds }
             deleted += repository.deleteEntriesBySourceRecordIds(staleIds)
         }
+        // In chunks: a read of 240 documents names five times as many rows, past the 999 bound
+        // variables older SQLite takes in one statement.
+        deleted += ownV1Copies.chunked(SOURCE_RECORD_IDS_PER_STATEMENT)
+            .sumOf { repository.deleteEntriesBySourceRecordIds(it) }
 
         if (imported > 0 || deleted > 0) {
             Log.i(LOG_ID, "Nightscout journal sync imported=$imported deleted=$deleted")

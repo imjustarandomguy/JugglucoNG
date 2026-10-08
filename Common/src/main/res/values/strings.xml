@@ -1680,6 +1680,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Use Nightscout v3 API</string>
     <string name="nightscout_use_v3_api_desc">Glucose uploads need api:entries:create and api:entries:update.</string>
+    <string name="nightscout_wifi_only">Upload only on Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Holds uploads while on mobile data.</string>
+    <string name="nightscout_status_wifi_waiting">Waiting for Wi-Fi</string>
     <string name="nightscout_follow_desc">Create a read-only virtual sensor from this Nightscout URL.</string>
     <string name="nightscout_follow_interval_title">Check for new values</string>
     <string name="nightscout_follow_interval_desc">How often the follower asks the server. This is also how late a value can be, so it is how late an alarm raised on a followed value can be. A follower has no sensor of its own to keep the phone awake, so every check is a wake-up.</string>
@@ -2326,6 +2329,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_source_api">Received via API</string>
     <string name="journal_source_health_connect">From Health Connect</string>
     <string name="journal_source_meter">From meter</string>
+    <string name="journal_time_locked_nightscout">Time can\'t be changed for treatments from Nightscout</string>
     <string name="journal_note_label">Note</string>
     <string name="journal_onset_label">Onset</string>
     <string name="journal_add_preset">Add insulin type</string>

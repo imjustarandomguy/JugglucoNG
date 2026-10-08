@@ -1289,6 +1289,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Выкарыстоўвайце Nightscout v3 API</string>
     <string name="nightscout_use_v3_api_desc">Для загрузкі глюкозы патрэбныя api:entries:create і api:entries:update.</string>
+    <string name="nightscout_wifi_only">Загружаць толькі праз Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Адкладае загрузку пры мабільным інтэрнэце.</string>
+    <string name="nightscout_status_wifi_waiting">Чаканне Wi-Fi</string>
     <string name="nightscout_follow_desc">Стварыць віртуальны датчык толькі для чытання з гэтага URL Nightscout.</string>
     <string name="nightscout_follow_url_required">Спачатку ўвядзіце URL Nightscout</string>
     <string name="nightscout_test_testing">Праверка...</string>
@@ -1829,6 +1832,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_source_api">Атрымана праз API</string>
     <string name="journal_source_health_connect">З Health Connect</string>
     <string name="journal_source_meter">З глюкометра</string>
+    <string name="journal_time_locked_nightscout">Час запісаў з Nightscout нельга змяніць</string>
     <string name="journal_note_label">Нататка</string>
     <string name="journal_onset_label">Пачатак дзеяння</string>
     <string name="journal_add_preset">Дадаць тып інсуліну</string>

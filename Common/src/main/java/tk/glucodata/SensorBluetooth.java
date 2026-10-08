@@ -1118,6 +1118,9 @@ public class SensorBluetooth {
                 if (hasPersistedManagedRecord(name) || shouldSuppressGenericManagedShell(name)) {
                     continue;
                 }
+                if (isCloudNativeMirror(name)) {
+                    continue;
+                }
                 long dataptr = Natives.getdataptr(name);
                 final SuperGattCallback callback = getGattCallback(name, dataptr);
                 if (callback != null) {
@@ -1200,6 +1203,21 @@ public class SensorBluetooth {
             }
         }
         return false;
+    }
+
+    /**
+     * Natives.activeSensors() also lists the record a cloud source mirrors its readings into,
+     * such as the Nightscout follower's, under a short name that reads like a Libre serial.
+     * Nothing transmits under it, so a generic callback would only keep scanning for it.
+     */
+    private static boolean isCloudNativeMirror(String sensorId) {
+        if (!ManagedSensorIdentityRegistry.INSTANCE.isCloudNativeMirror(sensorId)) {
+            return false;
+        }
+        if (doLog) {
+            Log.i(LOG_ID, "no Bluetooth callback for cloud record " + sensorId);
+        }
+        return true;
     }
 
     private boolean shouldSuppressGenericManagedShell(String sensorId) {
@@ -1675,6 +1693,9 @@ public class SensorBluetooth {
                                 increasedwait = startincreasedwait;
                                 index++;
                             }
+                            continue;
+                        }
+                        if (isCloudNativeMirror(dev)) {
                             continue;
                         }
                         final long dataptr = Natives.getdataptr(dev);

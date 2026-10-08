@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -76,6 +77,7 @@ import kotlinx.coroutines.withContext
 import tk.glucodata.Natives
 import tk.glucodata.NightPost
 import tk.glucodata.NightscoutTokenGrant
+import tk.glucodata.NightscoutWifiGate
 import tk.glucodata.R
 import tk.glucodata.data.journal.JournalSyncFailure
 import tk.glucodata.data.journal.JournalSyncStatus
@@ -186,7 +188,6 @@ internal fun setNightscoutActive(context: android.content.Context, active: Boole
     )
     val url = Natives.getnightuploadurl().orEmpty()
     val secret = Natives.getnightuploadsecret().orEmpty()
-    val normalizedUrl = NightscoutFollowerRegistry.normalizeUrl(url)
     val uploadActive = active && mode == NightscoutModePreference.Mode.UPLOAD
     val followActive = active && mode == NightscoutModePreference.Mode.FOLLOW
 
@@ -194,22 +195,14 @@ internal fun setNightscoutActive(context: android.content.Context, active: Boole
     // The stored failure describes the old settings; keep it off the screen until the next
     // attempt has run under the new ones.
     NightPost.clearDeviceStatusOutcome()
-    when {
-        followActive && normalizedUrl.isNotBlank() ->
-            NightscoutFollowerRegistry.enableFollowerSensor(
-                context, normalizedUrl, secret, useV3 = config.useV3
-            )
-        followActive ->
-            NightscoutFollowerRegistry.saveConfig(
-                context, enabled = true, url = normalizedUrl, secret = secret, useV3 = config.useV3
-            )
-        else -> {
-            if (config.enabled) NightscoutFollowerRegistry.disableFollowerSensor(context)
-            NightscoutFollowerRegistry.saveConfig(
-                context, enabled = false, url = normalizedUrl, secret = secret, useV3 = config.useV3
-            )
-        }
-    }
+    NightscoutFollowerRegistry.applyFollowerSettings(
+        context,
+        follow = followActive,
+        url = url,
+        secret = secret,
+        useV3 = config.useV3,
+        connectNow = true,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -241,6 +234,8 @@ fun NightscoutSettingsScreen(navController: NavController) {
     var deviceStatusCode by rememberSaveable { mutableStateOf(0) }
     var testState by remember { mutableStateOf<TestState>(TestState.Idle) }
     var tokenState by remember { mutableStateOf<TokenState>(TokenState.Idle) }
+    var wifiOnly by remember { mutableStateOf(NightscoutWifiGate.isEnabled(context)) }
+    var waitingForWifi by remember { mutableStateOf(false) }
 
     var mode by rememberSaveable {
         mutableStateOf(
@@ -256,7 +251,6 @@ fun NightscoutSettingsScreen(navController: NavController) {
         NightscoutModePreference.save(context, mode)
         val uploadActive = isActive && mode == NightscoutModePreference.Mode.UPLOAD
         val followActive = isActive && mode == NightscoutModePreference.Mode.FOLLOW
-        val normalizedUrl = NightscoutFollowerRegistry.normalizeUrl(url)
 
         Natives.setNightUploader(url.trim(), secret.trim(), uploadActive, isV3)
         // The old device-status failure describes the old settings; keep it off the screen
@@ -266,20 +260,16 @@ fun NightscoutSettingsScreen(navController: NavController) {
         Natives.setpostTreatments(sendTreatments)
         JournalTreatmentUploader.setSendLongInsulin(sendLongInsulin)
         JournalTreatmentUploader.setReceiveTreatments(receiveTreatments)
-        if (followActive) {
-            if (normalizedUrl.isBlank()) {
-                NightscoutFollowerRegistry.saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = followerV3)
-            } else if (connectFollower) {
-                NightscoutFollowerRegistry.enableFollowerSensor(context, normalizedUrl, secret, useV3 = followerV3)
-            } else {
-                NightscoutFollowerRegistry.saveConfig(context, enabled = true, url = normalizedUrl, secret = secret, useV3 = followerV3)
-            }
-        } else {
-            if (NightscoutFollowerRegistry.loadConfig(context).enabled) {
-                NightscoutFollowerRegistry.disableFollowerSensor(context)
-            }
-            NightscoutFollowerRegistry.saveConfig(context, enabled = false, url = normalizedUrl, secret = secret, useV3 = followerV3)
-        }
+        // Stops any follower but the one for this URL, in every mode, and starts that one
+        // in Follow mode even without connectFollower when the URL now names another server.
+        NightscoutFollowerRegistry.applyFollowerSettings(
+            context,
+            follow = followActive,
+            url = url,
+            secret = secret,
+            useV3 = followerV3,
+            connectNow = connectFollower,
+        )
     }
 
     fun refreshStatus() {
@@ -292,6 +282,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
         treatmentSync = JournalSyncStatus.state()
         deviceStatusOutcome = NightPost.getDeviceStatusOutcome()
         deviceStatusCode = NightPost.getDeviceStatusLastCode()
+        waitingForWifi = NightscoutWifiGate.isWaiting(context)
     }
 
     fun requireUrl(): Boolean {
@@ -383,6 +374,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
 
     val uploaderSummary = when {
         !isActive || mode != NightscoutModePreference.Mode.UPLOAD -> context.getString(R.string.nightscout_status_paused)
+        waitingForWifi -> context.getString(R.string.nightscout_status_wifi_waiting)
         uploaderRunning -> context.getString(R.string.nightscout_status_running)
         retryMinutes > 0 -> context.getString(R.string.nightscout_status_retry_in, retryMinutes)
         else -> context.getString(R.string.nightscout_status_waiting)
@@ -815,6 +807,20 @@ fun NightscoutSettingsScreen(navController: NavController) {
                             position = CardPosition.MIDDLE
                         )
                         SettingsSwitchItem(
+                            title = stringResource(R.string.nightscout_wifi_only),
+                            subtitle = stringResource(R.string.nightscout_wifi_only_desc),
+                            checked = wifiOnly,
+                            onCheckedChange = {
+                                wifiOnly = it
+                                NightscoutWifiGate.setEnabled(context, it)
+                                waitingForWifi = NightscoutWifiGate.isWaiting(context)
+                            },
+                            icon = Icons.Default.Wifi,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            enabled = isActive,
+                            position = CardPosition.MIDDLE
+                        )
+                        SettingsSwitchItem(
                             title = stringResource(R.string.nightscout_use_v3_api),
                             subtitle = stringResource(R.string.nightscout_use_v3_api_desc),
                             checked = isV3,
@@ -831,7 +837,7 @@ fun NightscoutSettingsScreen(navController: NavController) {
                     Button(
                         onClick = {
                             persistSettings()
-                            Natives.wakeuploader()
+                            Natives.wakeuploadernow()
                             refreshStatus()
                             Toast.makeText(context, context.getString(R.string.sending_now), Toast.LENGTH_SHORT).show()
                         },

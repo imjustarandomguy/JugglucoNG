@@ -358,9 +358,15 @@ class JournalTreatmentUploaderTests {
     }
 
     @Test
-    fun aDeleteThatNeverGotAnAnswerIsRetriedToo() {
-        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = -1, attemptsSoFar = 0))
-        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
+    fun aDeleteThatNeverGotAnAnswerWaitsWithoutCountingAgainstTheTombstone() {
+        // A server reachable only at home answers nothing for days while away; counting that
+        // dropped the tombstone, and the next read at home brought the treatment back.
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = MAX_DELETE_ATTEMPTS))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 500, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 502, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 408, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 429, attemptsSoFar = 0))
     }
 
     // -- receive endpoint --------------------------------------------------
@@ -453,5 +459,60 @@ class JournalTreatmentUploaderTests {
         val start = 1_000_000L
         assertEquals(0, log.suppressedSince("HTTP 401", start))
         assertEquals(0, log.suppressedSince("HTTP 401", start - 60_000L))
+    }
+
+    /** A token without api:treatments:read answers every read with 403. */
+    @Test
+    fun aRefusedReceiveDoesNotHoldTheSendsBack() {
+        for (wrote in listOf(false, true)) {
+            assertTrue(
+                JournalTreatmentUploader.treatmentPassOk(
+                    sendsOk = true,
+                    deletesUnanswered = false,
+                    receive = JournalTreatmentUploader.ReceiveResult.REFUSED,
+                    wroteThisPass = wrote
+                )
+            )
+        }
+    }
+
+    @Test
+    fun anUnansweredReceiveBacksOffUnlessThisPassReachedTheServer() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = false
+            )
+        )
+        assertTrue(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = true
+            )
+        )
+    }
+
+    @Test
+    fun failedSendsAndUnansweredDeletesStillBackOff() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = false,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = true,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
     }
 }

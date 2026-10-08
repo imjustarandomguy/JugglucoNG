@@ -1296,6 +1296,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Utiliser l\'API Nightscout v3</string>
     <string name="nightscout_use_v3_api_desc">L\'envoi de la glycémie nécessite api:entries:create et api:entries:update.</string>
+    <string name="nightscout_wifi_only">Envoyer uniquement en Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Suspend les envois en données mobiles.</string>
+    <string name="nightscout_status_wifi_waiting">En attente du Wi-Fi</string>
     <string name="nightscout_follow_desc">Crée un capteur virtuel en lecture seule à partir de cette URL Nightscout.</string>
     <string name="nightscout_follow_url_required">Saisissez d\'abord une URL Nightscout</string>
     <string name="nightscout_test_testing">Test...</string>
@@ -1765,6 +1768,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_source_api">Reçu via l\'API</string>
     <string name="journal_source_health_connect">Depuis Health Connect</string>
     <string name="journal_source_meter">Depuis le lecteur</string>
+    <string name="journal_time_locked_nightscout">L\'heure des traitements de Nightscout ne peut pas être modifiée</string>
     <string name="journal_note_label">Note</string>
     <string name="journal_onset_label">Début d\'action</string>
     <string name="journal_add_preset">Ajouter un type d\'insuline</string>

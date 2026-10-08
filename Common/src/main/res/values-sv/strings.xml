@@ -1290,6 +1290,9 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_url_placeholder">https://my-nightscout.herokuapp.com</string>
     <string name="nightscout_use_v3_api">Använd Nightscout v3 API</string>
     <string name="nightscout_use_v3_api_desc">Glukosuppladdningar behöver api:entries:create och api:entries:update.</string>
+    <string name="nightscout_wifi_only">Ladda upp bara via wifi</string>
+    <string name="nightscout_wifi_only_desc">Håller inne uppladdningar vid mobildata.</string>
+    <string name="nightscout_status_wifi_waiting">Väntar på wifi</string>
     <string name="nightscout_follow_desc">Skapa en skrivskyddad virtuell sensor från denna Nightscout-URL.</string>
     <string name="nightscout_follow_url_required">Ange en Nightscout-URL först</string>
     <string name="nightscout_test_testing">Testar...</string>
@@ -1759,6 +1762,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_source_api">Mottaget via API</string>
     <string name="journal_source_health_connect">Från Health Connect</string>
     <string name="journal_source_meter">Från mätaren</string>
+    <string name="journal_time_locked_nightscout">Tiden för behandlingar från Nightscout kan inte ändras</string>
     <string name="journal_note_label">Anteckning</string>
     <string name="journal_onset_label">Verkan startar</string>
     <string name="journal_add_preset">Lägg till insulintyp</string>

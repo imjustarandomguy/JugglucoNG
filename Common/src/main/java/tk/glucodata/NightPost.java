@@ -457,6 +457,16 @@ static public boolean uploadJournalTreatments(boolean useV3) {
     }
 
 /**
+ * Whether the uploader may send anything now: false while "Upload only on Wi-Fi" is on and the
+ * default network is neither Wi-Fi nor Ethernet. Asked by the native uploader at the start of
+ * each pass.
+ */
+@Keep
+static public boolean uploadNetworkAllowed() {
+    return NightscoutWifiGate.uploadAllowed();
+    }
+
+/**
  * Phone battery charge as a percentage, or -1 when it cannot be read.
  *
  * <p>Uploaded to Nightscout as {@code devicestatus[].uploader.battery}, which is what the
@@ -803,7 +813,7 @@ public static void  config(MainActivity act, View settingsview) {
     var clear=getbutton(act,R.string.resenddata);
     clear.setOnClickListener(v->  askclearupload(act));
     var wake=getbutton(act,act.getString(R.string.sendnow));
-    wake.setOnClickListener(v-> Natives.wakeuploader());
+    wake.setOnClickListener(v-> Natives.wakeuploadernow());
     Button help;
     CheckBox treatments=getcheckbox(act,R.string.sendamounts,Natives.getpostTreatments());
     if(!isWearable) {
