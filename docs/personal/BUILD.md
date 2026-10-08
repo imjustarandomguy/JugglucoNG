@@ -39,7 +39,9 @@ Current personal branches (keep this list up to date):
 Dropped from `personal` on 2026-10-06 (branches deleted; their commits stay in `personal`'s history and can be brought back): `feat/xdrip-interapp-broadcast` (tip `933de71bc`, removed by `d95fd5f99`; the owner no longer uses xDrip+), `feat/wear-colored-complication` (tip `f4793672b`, reverted; maybe later), `feat/floating-hide-glucose-notification` (tip `41fd10b67`, removed by `7360a3b62`). Dropped 2026-10-08: `feat/samsung-now-bar` (Now Bar live notification and gauge; tip `c91fb9694`, kept as the local tag `dropped/feat-samsung-now-bar`, removed by `eb8ea6efc`).
 
 Open work and investigation notes: [NEXT.md](NEXT.md). Battery runs (method and
-results): [BATTERY.md](BATTERY.md).
+results): [BATTERY.md](BATTERY.md). Reviews of 2026-10-08 and what was fixed:
+[REVIEW.md](REVIEW.md), [REVIEW-COPILOT.md](REVIEW-COPILOT.md),
+[REVIEW-FIXES.md](REVIEW-FIXES.md).
 
 ### Sending branches upstream
 
