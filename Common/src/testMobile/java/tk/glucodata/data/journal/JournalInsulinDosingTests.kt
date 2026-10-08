@@ -43,13 +43,13 @@ class JournalInsulinDosingTests {
     }
 
     @Test
-    fun anUnusableStepFallsBackToWholeUnits() {
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(0f))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(-0.5f))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(Float.NaN))
-        assertEquals(1f, JournalInsulinDosing.sanitizeStep(null))
-        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(0.5f))
-        assertEquals(7f, JournalInsulinDosing.stepped(6f, +1, 0f))
+    fun anUnusableStepFallsBackToHalfUnits() {
+        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(0f))
+        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(-0.5f))
+        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(Float.NaN))
+        assertEquals(0.5f, JournalInsulinDosing.sanitizeStep(null))
+        assertEquals(1f, JournalInsulinDosing.sanitizeStep(1f))
+        assertEquals(6.5f, JournalInsulinDosing.stepped(6f, +1, 0f))
     }
 
     @Test
