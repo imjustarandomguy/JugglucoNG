@@ -266,34 +266,105 @@ class TrendConsumerPointListTests {
         assertEquals(TrendArrowAngle.rotationDegrees(dashboard), TrendArrowAngle.rotationDegrees(complication), 0f)
     }
 
+    // ---- A live reading and its stored row under different times ----
+    //
+    // As seen on a G7 (mmol/L): 5.4, 5.45, 5.5, 5.6, 5.9, 6.1, the phone's arrow up and
+    // the watch's flat. Native rows keep whole seconds, but the live reading the watch
+    // takes from the G7 itself keeps the milliseconds it arrived at (now less the
+    // reading's age). The phone's Room rows keep each live reading's own time.
+
+    private val g7Readings = listOf(5.4f, 5.45f, 5.5f, 5.6f, 5.9f, 6.1f)
+    private val liveTs = newestTs + 417L
+
+    private fun watchRows() = g7Rows(g7Readings.size) { k -> g7Readings[g7Readings.lastIndex - k] }
+
+    private fun phoneRows() = watchRows().map { GlucosePoint(it.timestamp + 417L, it.value, it.rawValue) }
+
+    /** The alert engine's rate: CurrentDisplaySource's resolution of the live G7 reading. */
+    private fun alertRate(rows: List<GlucosePoint>, smoothingMinutes: Int): Float {
+        val live = CurrentGlucoseSource.Snapshot.of(
+            reading = LiveReadingLanes.stock(g7Readings.last(), Float.NaN),
+            timeMillis = liveTs,
+            valueText = "",
+            rate = Float.NaN,
+            sensorId = serial,
+            sensorGen = 0,
+            index = 0,
+            source = "callback"
+        )
+        return requireNotNull(
+            CurrentDisplaySource.resolveSnapshot(
+                current = live,
+                recentPoints = rows,
+                historyStart = liveTs - DisplayTrendSource.TREND_WINDOW_MS,
+                viewMode = 0,
+                isMmol = true,
+                smoothingMode = CurrentDisplaySource.SmoothingMode(
+                    smoothAllData = smoothingMinutes > 0,
+                    smoothingMinutes = smoothingMinutes,
+                    collapseChunks = false
+                ),
+                sensorId = serial
+            )
+        ).rate
+    }
+
     @Test
     fun watchArrowRisesWithTheDashboardWhenItsRowsKeepWholeSeconds() {
-        // As seen on a G7 (mmol/L): 5.4, 5.45, 5.5, 5.6, 5.9, 6.1, the phone's arrow up
-        // and the watch's flat. Native rows keep whole seconds, but the live reading the
-        // watch takes from the G7 itself keeps the milliseconds it arrived at (now less
-        // the reading's age), and with local smoothing on, the snapshot carries the
-        // smoothed 6.0 where its own stored row says 6.1.
-        val readings = listOf(5.4f, 5.45f, 5.5f, 5.6f, 5.9f, 6.1f)
-        val watchRows = g7Rows(readings.size) { k -> readings[readings.lastIndex - k] }
-        val liveTs = newestTs + 417L
+        // With local smoothing on, the snapshot carries the smoothed 6.0 where its own
+        // stored row says 6.1.
+        val watchRows = watchRows()
         val snap = snapshot(liveTs, 6.0f, isMmol = true)
-        // The phone's Room rows keep each live reading's own time.
-        val phoneRows = watchRows.map { GlucosePoint(it.timestamp + 417L, it.value, it.rawValue) }
 
         val dashboard = TrendEngine.calculateTrend(
-            DisplayTrendSource.resolveTrendPoints(phoneRows, snap, null), useRaw = false, isMmol = true
+            DisplayTrendSource.resolveTrendPoints(phoneRows(), snap, null), useRaw = false, isMmol = true
         )
         val watch = DisplayTrendSource.resolveDisplayArrowRate(watchRows, snap, serial, 0, true)
-        // Merged as a reading of its own, the live point sat 417 ms after its stored row
-        // and 0.1 mmol/L off it: a > 20 mg/dL/min artifact to TrendEngine, which then
+        // Beside its own row, as it used to go in, the live point sat 417 ms after it and
+        // 0.1 mmol/L off it: a > 20 mg/dL/min artifact to TrendEngine, which then
         // measured the newest point alone.
-        val asSeparateReading = DisplayTrendSource.resolveArrowRate(
-            DisplayTrendSource.resolveTrendPoints(watchRows, snap, serial), snap, 0, true, Float.NaN
-        )
+        val besideItsRow = TrendEngine.calculateTrend(
+            watchRows + GlucosePoint(liveTs, 6.0f, 0f), useRaw = false, isMmol = true
+        ).velocity
 
-        assertEquals(0f, asSeparateReading, 0f)
+        assertEquals(0f, besideItsRow, 0f)
         assertEquals(1, deadZoneSide(dashboard.velocity))
         assertEquals(dashboard.velocity, watch, 1e-4f)
         assertEquals(TrendArrowAngle.rotationDegrees(dashboard.velocity), TrendArrowAngle.rotationDegrees(watch), 0.01f)
+    }
+
+    @Test
+    fun alertRateOnWatchRowsIsThePhones() {
+        // The snapshot takes its value from the same rows, so here the duplicate was no
+        // step but the newest reading counted twice: 0.77 on the watch, 0.65 on the phone.
+        for (smoothingMinutes in listOf(0, 10)) {
+            assertEquals(
+                "smoothing $smoothingMinutes min",
+                alertRate(phoneRows(), smoothingMinutes),
+                alertRate(watchRows(), smoothingMinutes),
+                1e-4f
+            )
+        }
+    }
+
+    @Test
+    fun phoneRowsSharingTheLiveTimestampMergeAsBefore() {
+        val rows = phoneRows()
+        val snap = snapshot(liveTs, 6.0f, isMmol = true)
+
+        // The live reading replaces its own row in place, nothing added.
+        assertEquals(
+            triples(rows.dropLast(1) + GlucosePoint(liveTs, 6.0f, 0f)),
+            triples(DisplayTrendSource.resolveTrendPoints(rows, snap, null))
+        )
+        // The alert engine measures the rows as stored, the live value being the newest row's.
+        assertEquals(
+            TrendEngine.calculateTrend(rows, useRaw = false, isMmol = true).velocity,
+            alertRate(rows, smoothingMinutes = 0),
+            1e-6f
+        )
+        // A live reading 30 s or more from every row is a reading of its own.
+        val later = DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTs + 30_000L, 6.2f, isMmol = true), null)
+        assertEquals(listOf(rows.last().timestamp, liveTs + 30_000L), later.takeLast(2).map { it.timestamp })
     }
 }
