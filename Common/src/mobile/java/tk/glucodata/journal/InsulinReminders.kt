@@ -11,9 +11,12 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.text.format.DateFormat
+import android.text.format.DateUtils
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +31,7 @@ import tk.glucodata.R
 import tk.glucodata.SensorIdentity
 import tk.glucodata.data.journal.InsulinReminderPolicy
 import tk.glucodata.data.journal.InsulinReminderPolicy.Slot
+import tk.glucodata.data.journal.JournalEntry
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalInsulinDosing
@@ -38,8 +42,8 @@ import tk.glucodata.ui.journal.JournalQuickEntryPrefs
 import tk.glucodata.ui.journal.formatFloatForEditor
 
 /**
- * The basal reminder: "Tresiba not logged" when a long-acting dose is not in the journal by its
- * time. What counts as logged is [InsulinReminderPolicy]'s; this is the plumbing around it.
+ * The basal reminder: "Tresiba due at 21:00", with the last dose logged, when a long-acting dose
+ * is not in the journal by its time. What counts as logged is [InsulinReminderPolicy]'s; this is the plumbing around it.
  *
  * - Every reminder time of every long-acting preset has one exact AlarmManager alarm, at its next
  *   time (allow-while-idle, not an alarm clock: it is a reminder, not an alarm). Nothing else
@@ -192,7 +196,12 @@ object InsulinReminders {
             now + InsulinReminderPolicy.FUTURE_TOLERANCE_MILLIS
         )
         if (InsulinReminderPolicy.shouldNotify(preset, slot.minuteOfDay, dueAt, now, entries)) {
-            postReminder(context, preset, slot, dueAt, windowStart)
+            val lastDose = InsulinReminderPolicy.lastDose(
+                repository.getEntriesBetweenSnapshot(now - InsulinReminderPolicy.LAST_DOSE_LOOKBACK_MILLIS, now),
+                preset,
+                now
+            )
+            postReminder(context, preset, slot, dueAt, lastDose, now)
         }
     }
 
@@ -242,13 +251,28 @@ object InsulinReminders {
         armAlarm(context, ACTION_SNOOZE_END, slot, dueAt = dueAt, ringAt = InsulinReminderPolicy.snoozeUntil(now))
     }
 
-    private fun postReminder(context: Context, preset: JournalInsulinPreset, slot: Slot, dueAt: Long, windowStart: Long) {
+    /**
+     * "Tresiba due at 21:00" / "Last dose: 18 U, yesterday 21:04". The time is the one the reminder
+     * was set for, not the start of its window: that half-way rule is not something to read.
+     */
+    private fun postReminder(
+        context: Context,
+        preset: JournalInsulinPreset,
+        slot: Slot,
+        dueAt: Long,
+        lastDose: JournalEntry?,
+        now: Long
+    ) {
         val manager = notificationManager(context) ?: return
-        val title = context.getString(R.string.insulin_reminder_not_logged, preset.displayName)
-        val text = context.getString(
-            R.string.insulin_reminder_not_logged_since,
-            DateFormat.getTimeFormat(context).format(Date(windowStart))
-        )
+        val timeFormat = DateFormat.getTimeFormat(context)
+        val title = context.getString(R.string.insulin_reminder_due, preset.displayName, timeFormat.format(Date(dueAt)))
+        val text = lastDose?.let { dose ->
+            context.getString(
+                R.string.insulin_reminder_last_dose,
+                context.getString(R.string.unit_insulin_value, formatFloatForEditor(dose.amount ?: 0f)),
+                lastDoseWhen(context, dose.timestamp, now)
+            )
+        } ?: context.getString(R.string.insulin_reminder_not_logged_yet)
         val openSheet = PendingIntent.getActivity(
             context,
             0,
@@ -297,6 +321,18 @@ object InsulinReminders {
             ).build()
         )
         manager.notify(NOTIFICATION_TAG, notificationId(preset.id), builder.build())
+    }
+
+    /** "today 08:02", "yesterday 21:04", else the weekday: the last dose is at most 6 days back. */
+    private fun lastDoseWhen(context: Context, doseAt: Long, now: Long): String {
+        val time = DateFormat.getTimeFormat(context).format(Date(doseAt))
+        val locale = Locale.getDefault()
+        val day = when (InsulinReminderPolicy.daysAgo(doseAt, now)) {
+            0, 1 -> DateUtils.getRelativeTimeSpanString(doseAt, now, DateUtils.DAY_IN_MILLIS)
+                .toString().lowercase(locale)
+            else -> SimpleDateFormat("EEEE", locale).format(Date(doseAt))
+        }
+        return "$day $time"
     }
 
     /** "Logged 25 U Tresiba", in place of the reminder, for a few seconds. */
