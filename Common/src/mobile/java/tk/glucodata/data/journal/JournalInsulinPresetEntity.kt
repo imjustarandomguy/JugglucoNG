@@ -28,7 +28,11 @@ data class JournalInsulinPresetEntity(
     val curveModelVersion: Int = 0,
     @ColumnInfo(defaultValue = "'unverified'")
     val curveEvidence: String = JournalCurveEvidence.UNVERIFIED.storageValue,
-    /** Units the entry sheet's -/+ buttons move by: the dial step of the pen this insulin is in. */
+    /**
+     * Units the entry sheet's -/+ buttons move by: the dial step of the pen this insulin is in.
+     * The column default is only what MIGRATION_32_33 adds the column with (then sets 0.5); a
+     * row written by Room always carries its own step, [JournalInsulinDosing.DEFAULT_STEP] if unset.
+     */
     @ColumnInfo(defaultValue = "1")
     val doseStep: Float = JournalInsulinDosing.DEFAULT_STEP,
     /** Filled in when this insulin is chosen in the entry sheet; null when none is set. */
