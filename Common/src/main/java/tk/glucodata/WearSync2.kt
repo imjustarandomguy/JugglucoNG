@@ -580,7 +580,7 @@ object WearSync2 {
                     // still gets off a dead sensor after a swap ("No data"
                     // with fresh chunks landing in the new one).
                     if (!localOwner) WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
-                    UiRefreshBus.requestDataRefresh()
+                    UiRefreshBus.requestDataRefresh(stamps.copyOf(written).max())
                 }
                 if (doLog) Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final")
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }

@@ -42,4 +42,36 @@ class TrailingThrottleTests {
         assertEquals(0L, throttle.request(20_000L))
         assertEquals(0L, throttle.request(300_000L))
     }
+
+    @Test fun newerReadingRunsAtOnceInsideTheInterval() {
+        val throttle = TrailingThrottle(20_000L)
+        assertEquals(0L, throttle.request(100_000L, key = 1_000L))
+        assertEquals(0L, throttle.request(100_300L, key = 61_000L))
+    }
+
+    @Test fun newerReadingRunsAtOnceWhileARepeatIsPending() {
+        val throttle = TrailingThrottle(20_000L)
+        throttle.request(0L, key = 1_000L)
+        assertEquals(15_000L, throttle.request(5_000L))
+        assertEquals(0L, throttle.request(6_000L, key = 2_000L))
+        assertEquals("the newer reading's run replaced the pending one",
+            19_000L, throttle.request(7_000L, key = 2_000L))
+    }
+
+    @Test fun repeatsOfTheSameReadingCoalesce() {
+        val throttle = TrailingThrottle(20_000L)
+        assertEquals(0L, throttle.request(0L, key = 1_000L))
+        assertEquals(15_000L, throttle.request(5_000L, key = 1_000L))
+        assertEquals(TrailingThrottle.COVERED, throttle.request(6_000L, key = 1_000L))
+        assertEquals("an older reading is a repeat too",
+            TrailingThrottle.COVERED, throttle.request(7_000L, key = 500L))
+    }
+
+    @Test fun complicationKeyIsTheReadingTimeOnlyWhileItCanBeShown() {
+        val timeout = 10L * 60_000L
+        val now = 1_700_000_000_000L
+        assertEquals(now - 30_000L, UiRefreshBus.complicationKey(now - 30_000L, now, timeout))
+        assertEquals(TrailingThrottle.NO_KEY, UiRefreshBus.complicationKey(now - timeout, now, timeout))
+        assertEquals(TrailingThrottle.NO_KEY, UiRefreshBus.complicationKey(0L, now, timeout))
+    }
 }

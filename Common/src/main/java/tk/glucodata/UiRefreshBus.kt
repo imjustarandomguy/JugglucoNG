@@ -31,19 +31,27 @@ object UiRefreshBus {
 
     @JvmStatic
     fun requestDataRefresh() {
+        requestDataRefresh(0L)
+    }
+
+    /**
+     * [requestDataRefresh] after storing a reading taken at [readingTimeMillis]: a
+     * newer reading than the watch's complications have shown reaches them at once.
+     */
+    @JvmStatic
+    fun requestDataRefresh(readingTimeMillis: Long) {
         bumpRevision()
         _events.tryEmit(Event.DataChanged)
         Notify.scheduleDataChangedRefresh()
         GlucoseUpdateBroadcaster.send(Applic.app)
-        refreshWatchFaceSurfaces()
+        refreshWatchFaceSurfaces(readingTimeMillis)
     }
 
     /**
-     * Minimum spacing of complication updates. A request inside it is postponed
-     * to the end of the interval, not dropped: on a companion watch the
-     * calibration payload asks for a refresh just before the reading it travels
-     * with is stored, and dropping the reading's own refresh left every
-     * complication on the previous value until something else redrew it.
+     * Minimum spacing of complication updates for the same reading. A request
+     * inside it is postponed to the end of the interval, not dropped. The delay
+     * runs on uptime, which stops while the watch sleeps, so a newer reading is
+     * never put behind it.
      */
     private const val COMPLICATION_MIN_INTERVAL_MS = 20_000L
     private val complicationThrottle = TrailingThrottle(COMPLICATION_MIN_INTERVAL_MS)
@@ -61,16 +69,34 @@ object UiRefreshBus {
      * Throttled: a backfill delivers dozens of chunks, and each would otherwise
      * ask six data sources to redraw.
      */
-    private fun refreshWatchFaceSurfaces() {
+    private fun refreshWatchFaceSurfaces(readingTimeMillis: Long) {
         if (!Applic.isWearable) return
         // Real time, sleep included: uptime stops while the watch sleeps, so the
         // interval could still look open when the next reading arrives minutes later.
-        val delayMs = complicationThrottle.request(SystemClock.elapsedRealtime())
+        val delayMs = complicationThrottle.request(
+            SystemClock.elapsedRealtime(),
+            complicationKey(readingTimeMillis, System.currentTimeMillis(), Notify.glucosetimeout)
+        )
         when {
-            delayMs == 0L -> updateComplications()
+            delayMs == 0L -> {
+                complicationHandler.removeCallbacks(deferredComplicationUpdate)
+                updateComplications()
+            }
             delayMs > 0L -> complicationHandler.postDelayed(deferredComplicationUpdate, delayMs)
         }
     }
+
+    /**
+     * The throttle key of a refresh for a reading taken at [readingTimeMillis]. A
+     * reading too old to be shown changes nothing on the face, so the chunks of a
+     * backfill stay coalesced until one carries a current reading.
+     */
+    internal fun complicationKey(readingTimeMillis: Long, nowMillis: Long, timeoutMillis: Long): Long =
+        if (readingTimeMillis > 0L && nowMillis - readingTimeMillis < timeoutMillis) {
+            readingTimeMillis
+        } else {
+            TrailingThrottle.NO_KEY
+        }
 
     private fun updateComplications() {
         runCatching { GlucoseValueRefreshAccess.get()?.updateAll() }
