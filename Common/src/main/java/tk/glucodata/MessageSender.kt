@@ -65,6 +65,7 @@ class MessageSender(val activity: Context):CapabilityClient.OnCapabilityChangedL
             runCatching { SensorOwnershipRuntime.onPeerReachabilityChanged(!ns.isEmpty()) }
             // Snoozes, dismissals and the quiet window catch up as the other device returns.
             runCatching { tk.glucodata.alerts.AlarmSilenceSync.onPeerReachabilityChanged(!ns.isEmpty()) }
+            runCatching { tk.glucodata.alerts.WatchAlarmReadiness.onPeerReachabilityChanged(!ns.isEmpty()) }
         }
         sendnetinfo();
     }
