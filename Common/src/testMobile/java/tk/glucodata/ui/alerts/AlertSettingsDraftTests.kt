@@ -10,6 +10,7 @@ import org.junit.Before
 import org.junit.Test
 import tk.glucodata.AlertDeliveryPolicy
 import tk.glucodata.R
+import tk.glucodata.alerts.AlarmRoutingMode
 import tk.glucodata.alerts.AlertConfig
 import tk.glucodata.alerts.AlertDefaults
 import tk.glucodata.alerts.AlertDeliveryMode
@@ -18,6 +19,7 @@ import tk.glucodata.alerts.CustomAlertConfig
 import tk.glucodata.alerts.CustomAlertType
 import tk.glucodata.alerts.GlobalAlertSettings
 import tk.glucodata.alerts.HapticProfile
+import tk.glucodata.alerts.WatchAlarmStyle
 import tk.glucodata.alerts.resetToDefaults
 
 class AlertSettingsDraftTests {
@@ -447,5 +449,51 @@ class AlertSettingsDraftTests {
         assertTrue(saved.copy(retryEnabled = true).differsUnderAdvanced(saved))
         assertTrue(saved.copy(iobCoverageFactor = 0.5f).differsUnderAdvanced(saved))
         assertTrue(saved.copy(defaultSnoozeMinutes = 45).differsUnderAdvanced(saved))
+    }
+
+    // ---- settings from the other alert branches -----------------------------------
+
+    @Test
+    fun whereAlarmsRingIsADraftedGlobalSetting() {
+        val start = AlertSettingsDraft(stored())
+        val edited = start.withGlobal(
+            start.draft.global.copy(
+                alarmRouting = AlarmRoutingMode.PHONE_ONLY,
+                watchAlarmStyle = WatchAlarmStyle.VIBRATE_ONLY
+            )
+        )
+        assertEquals(
+            listOf(
+                AlertSettingChange(
+                    AlertSettingSubject.AllAlerts, AlertSetting.ALARM_ROUTING,
+                    AlarmRoutingMode.BOTH, AlarmRoutingMode.PHONE_ONLY
+                ),
+                AlertSettingChange(
+                    AlertSettingSubject.AllAlerts, AlertSetting.WATCH_ALARM_STYLE,
+                    WatchAlarmStyle.SAME_AS_PHONE, WatchAlarmStyle.VIBRATE_ONLY
+                ),
+            ),
+            edited.changes()
+        )
+        val store = RecordingStore()
+        edited.saveTo(store)
+        assertEquals(1, store.globals.size)
+        assertTrue(store.configs.isEmpty())
+        assertEquals(edited.draft.global, PendingAlertEditsCodec.decode(PendingAlertEditsCodec.encode(edited.pendingEdits())).global)
+    }
+
+    @Test
+    fun persistentLowRiseHoldIsAnAdvancedSettingAndOffAgainIsNoEdit() {
+        val start = AlertSettingsDraft(stored())
+        val saved = start.config(AlertType.PERSISTENT_LOW)
+        assertNull(saved.riseRateSuppress)
+
+        val on = start.withConfig(saved.copy(riseRateSuppress = 1f), isMmol)
+        assertEquals(
+            listOf(AlertSettingChange(AlertSettingSubject.Alert(AlertType.PERSISTENT_LOW), AlertSetting.RISE_HOLD, false, true)),
+            on.changes()
+        )
+        assertTrue(on.config(AlertType.PERSISTENT_LOW).differsUnderAdvanced(saved))
+        assertFalse(on.withConfig(on.config(AlertType.PERSISTENT_LOW).copy(riseRateSuppress = 0f), isMmol).isDirty)
     }
 }

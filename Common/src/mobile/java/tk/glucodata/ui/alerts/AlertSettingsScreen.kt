@@ -169,18 +169,10 @@ fun AlertSettingsScreen(
     fun editGlobal(updated: GlobalAlertSettings) {
         AlertSettingsEditor.edit { it.withGlobal(updated) }
     }
-    var alarmRouting by remember { mutableStateOf(AlertRepository.loadAlarmRouting()) }
-    fun persistAlarmRouting(mode: AlarmRoutingMode) {
-        if (mode == alarmRouting) return
-        alarmRouting = mode
-        AlertRepository.saveAlarmRouting(mode)
-    }
-    var watchAlarmStyle by remember { mutableStateOf(AlertRepository.loadWatchAlarmStyle()) }
-    fun persistWatchAlarmStyle(style: WatchAlarmStyle) {
-        if (style == watchAlarmStyle) return
-        watchAlarmStyle = style
-        AlertRepository.saveWatchAlarmStyle(style)
-    }
+    // Where alarms ring and how the watch rings them are in the draft with the rest;
+    // a test rings where the stored choice says, so a change to either is noted there.
+    val routingChanged = globalSettings.alarmRouting != editor.saved.global.alarmRouting
+    val watchStyleChanged = globalSettings.watchAlarmStyle != editor.saved.global.watchAlarmStyle
 
     // Collected outside the LazyColumn: the quiet-window card only exists while
     // something can be silenced, or while a window runs.
@@ -363,10 +355,12 @@ fun AlertSettingsScreen(
             // choice of each for all of them.
             item(key = "alarm-routing") {
                 AlarmRoutingCard(
-                    selected = alarmRouting,
-                    onSelect = { persistAlarmRouting(it) },
-                    watchStyle = watchAlarmStyle,
-                    onSelectWatchStyle = { persistWatchAlarmStyle(it) }
+                    selected = globalSettings.alarmRouting,
+                    onSelect = { editGlobal(globalSettings.copy(alarmRouting = it)) },
+                    watchStyle = globalSettings.watchAlarmStyle,
+                    onSelectWatchStyle = { editGlobal(globalSettings.copy(watchAlarmStyle = it)) },
+                    routingChanged = routingChanged,
+                    watchStyleChanged = watchStyleChanged
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -387,6 +381,7 @@ fun AlertSettingsScreen(
                 AlertCard(
                     config = config,
                     savedConfig = editor.savedConfig(type),
+                    ringingChanged = routingChanged || watchStyleChanged,
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = position,
@@ -466,6 +461,7 @@ fun AlertSettingsScreen(
                 AlertCard(
                     config = config,
                     savedConfig = editor.savedConfig(type),
+                    ringingChanged = routingChanged || watchStyleChanged,
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = position,
@@ -542,6 +538,7 @@ fun AlertSettingsScreen(
                 AlertCard(
                     config = config,
                     savedConfig = editor.savedConfig(type),
+                    ringingChanged = routingChanged || watchStyleChanged,
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = getCardPosition(type, trendAlerts),
@@ -601,6 +598,7 @@ fun AlertSettingsScreen(
                 AlertCard(
                     config = config,
                     savedConfig = editor.savedConfig(type),
+                    ringingChanged = routingChanged || watchStyleChanged,
                     isMmol = isMmol,
                     isExpanded = expandedType == type,
                     position = getCardPosition(type, sensorAlerts),
@@ -1052,7 +1050,10 @@ private fun AlarmRoutingCard(
     selected: AlarmRoutingMode,
     onSelect: (AlarmRoutingMode) -> Unit,
     watchStyle: WatchAlarmStyle,
-    onSelectWatchStyle: (WatchAlarmStyle) -> Unit
+    onSelectWatchStyle: (WatchAlarmStyle) -> Unit,
+    // Each choice differs from what is saved.
+    routingChanged: Boolean = false,
+    watchStyleChanged: Boolean = false
 ) {
     val choices = listOf(
         AlarmRoutingMode.BOTH to R.string.alarm_routing_both,
@@ -1080,15 +1081,19 @@ private fun AlarmRoutingCard(
         title = stringResource(R.string.alarm_routing_title),
         subtitle = stringResource(explanation),
         icon = Icons.Filled.Watch,
-        position = SettingsItemPosition.SINGLE
+        position = SettingsItemPosition.SINGLE,
+        changed = routingChanged
     ) {
         RadioChoiceRows(choices = choices, selected = selected, onSelect = onSelect)
         Spacer(Modifier.height(12.dp))
-        Text(
-            text = stringResource(R.string.watch_alarm_style_title),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        LabelWithChange(changed = watchStyleChanged) { labelModifier ->
+            Text(
+                text = stringResource(R.string.watch_alarm_style_title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = labelModifier
+            )
+        }
         Spacer(Modifier.height(4.dp))
         Text(
             text = stringResource(watchExplanation),
@@ -1185,6 +1190,9 @@ private fun AlertCard(
     config: AlertConfig,
     // What is stored for this alert: [config] is the page's draft of it.
     savedConfig: AlertConfig?,
+    // Where alarms ring, or how the watch rings, differs from what is saved:
+    // the test rings the stored choice.
+    ringingChanged: Boolean = false,
     isMmol: Boolean,
     isExpanded: Boolean,
     position: CardPosition,
@@ -1320,7 +1328,7 @@ private fun AlertCard(
                             // the alert's stored configuration, not this page's draft.
                             Notify.testTrigger(config.type.id)
                         },
-                        testNote = if (savedConfig != null && config != savedConfig) {
+                        testNote = if (savedConfig != null && config != savedConfig || ringingChanged) {
                             stringResource(R.string.alert_settings_test_uses_saved)
                         } else {
                             null
@@ -1529,7 +1537,8 @@ private fun AlertSettingsExpanded(
                         checked = (config.riseRateSuppress ?: 0f) > 0f,
                         onCheckedChange = { enabled ->
                             onConfigChange(config.copy(riseRateSuppress = if (enabled) riseRate else 0f))
-                        }
+                        },
+                        changed = changed { (it.riseRateSuppress ?: 0f) > 0f }
                     )
                 }
                 if (config.type == AlertType.FALLING_FAST || config.type == AlertType.RISING_FAST) {

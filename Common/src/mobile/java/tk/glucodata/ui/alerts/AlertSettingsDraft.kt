@@ -184,6 +184,10 @@ internal fun AlertConfig.matchedTo(saved: AlertConfig, isMmol: Boolean): AlertCo
     if (fallRateSuppress != saved.fallRateSuppress && (fallRateSuppress ?: 0f) <= 0f && (saved.fallRateSuppress ?: 0f) <= 0f) {
         result = result.copy(fallRateSuppress = saved.fallRateSuppress)
     }
+    // The persistent low's rise hold, the same way.
+    if (riseRateSuppress != saved.riseRateSuppress && (riseRateSuppress ?: 0f) <= 0f && (saved.riseRateSuppress ?: 0f) <= 0f) {
+        result = result.copy(riseRateSuppress = saved.riseRateSuppress)
+    }
     return result
 }
 
@@ -331,9 +335,12 @@ enum class AlertSetting {
     REARM_INTERVAL,
     IOB_COVERAGE,
     FALL_SUPPRESS,
+    RISE_HOLD,
     DELTA_INTERVAL,
     EARLY_TRIGGER,
     SAME_DIRECTION_QUIET_PERIOD,
+    ALARM_ROUTING,
+    WATCH_ALARM_STYLE,
     QUIET_MODE,
     QUIET_BREAKTHROUGH,
     QUIET_BREAKTHROUGH_SCOPE,
@@ -398,11 +405,14 @@ private val CONFIG_FIELDS: List<Field<AlertConfig>> = listOf(
     configField(AlertSetting.REARM_INTERVAL) { it.rearmMinIntervalMinutes },
     configField(AlertSetting.IOB_COVERAGE) { it.iobCoverageFactor },
     configField(AlertSetting.FALL_SUPPRESS) { (it.fallRateSuppress ?: 0f) > 0f },
+    configField(AlertSetting.RISE_HOLD) { (it.riseRateSuppress ?: 0f) > 0f },
     configField(AlertSetting.DELTA_INTERVAL) { it.deltaIntervalMinutes },
     configField(AlertSetting.EARLY_TRIGGER) { it.earlyTriggerEnabled },
 )
 
 private val GLOBAL_FIELDS: List<Field<GlobalAlertSettings>> = listOf(
+    Field(AlertSetting.ALARM_ROUTING) { it.alarmRouting },
+    Field(AlertSetting.WATCH_ALARM_STYLE) { it.watchAlarmStyle },
     Field(AlertSetting.SAME_DIRECTION_QUIET_PERIOD) { it.sameDirectionSuppressionMinutes },
 )
 

@@ -33,10 +33,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import tk.glucodata.AlertDeliveryPolicy
 import tk.glucodata.R
+import tk.glucodata.alerts.AlarmRoutingMode
 import tk.glucodata.alerts.AlertDeliveryMode
 import tk.glucodata.alerts.AlertType
 import tk.glucodata.alerts.CustomAlertType
 import tk.glucodata.alerts.HapticProfile
+import tk.glucodata.alerts.WatchAlarmStyle
 
 /** How many summary lines the leave dialog lists before "and N more". */
 private const val SUMMARY_LINES = 6
@@ -260,9 +262,12 @@ internal class AlertChangeText(
         AlertSetting.REARM_INTERVAL -> s(R.string.rearm_min_interval_label)
         AlertSetting.IOB_COVERAGE -> s(R.string.pre_high_iob_coverage_label)
         AlertSetting.FALL_SUPPRESS -> s(R.string.persistent_high_fall_suppress_label)
+        AlertSetting.RISE_HOLD -> s(R.string.persistent_low_rise_hold_label)
         AlertSetting.DELTA_INTERVAL -> s(R.string.delta_alarm_interval_label)
         AlertSetting.EARLY_TRIGGER -> s(R.string.delta_early_trigger_label)
         AlertSetting.SAME_DIRECTION_QUIET_PERIOD -> s(R.string.same_direction_suppression_title)
+        AlertSetting.ALARM_ROUTING -> s(R.string.alarm_routing_title)
+        AlertSetting.WATCH_ALARM_STYLE -> s(R.string.watch_alarm_style_title)
         AlertSetting.QUIET_BREAKTHROUGH -> s(R.string.quiet_window_breakthrough_title)
         AlertSetting.QUIET_BREAKTHROUGH_SCOPE -> s(R.string.quiet_window_breakthrough_scope_title)
         AlertSetting.QUIET_TILE_DEFAULT -> s(R.string.quiet_window_tile_default_title)
@@ -329,6 +334,21 @@ internal class AlertChangeText(
                 5 -> s(R.string.delta_interval_5min)
                 else -> minutes(value)
             }
+            AlertSetting.ALARM_ROUTING -> s(
+                when (value as AlarmRoutingMode) {
+                    AlarmRoutingMode.BOTH -> R.string.alarm_routing_both
+                    AlarmRoutingMode.WATCH_WHEN_CONNECTED -> R.string.alarm_routing_watch
+                    AlarmRoutingMode.PHONE_ONLY -> R.string.alarm_routing_phone
+                }
+            )
+            AlertSetting.WATCH_ALARM_STYLE -> s(
+                when (value as WatchAlarmStyle) {
+                    WatchAlarmStyle.SAME_AS_PHONE -> R.string.watch_alarm_style_same
+                    WatchAlarmStyle.VIBRATE_ONLY -> R.string.watch_alarm_style_vibrate
+                    WatchAlarmStyle.SOUND_AND_VIBRATION -> R.string.watch_alarm_style_sound
+                    WatchAlarmStyle.SCREEN_ONLY -> R.string.watch_alarm_style_screen
+                }
+            )
             AlertSetting.QUIET_MODE -> s(
                 if (value == AlertDeliveryPolicy.QUIET_NOTIFICATION_ONLY) R.string.quiet_window_mode_notification_only
                 else R.string.quiet_window_mode_vibrate_only
