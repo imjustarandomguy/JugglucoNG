@@ -82,11 +82,12 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /** How a failed request for one delete or edit is taken. */
     internal enum class OperationFailure {
         /**
-         * No answer, a busy or unreachable server (408, 429, 502-504), credentials it does not
-         * take (401), or a page not Nightscout's.
+         * No answer, an answer that is not Nightscout's whatever its status (a proxy's or a
+         * captive portal's page, an empty 500), a busy or unreachable server (408, 429, 502-504),
+         * or credentials it does not take (401).
          */
         WAIT,
-        /** The server failed on this request (another 5xx). */
+        /** Nightscout failed on this request: another 5xx, in its own JSON. */
         RETRY,
         /** Nightscout refused this request. */
         REFUSED
@@ -95,16 +96,17 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /**
      * What a failed request for one operation says. Only what is about the whole server makes
      * the rest of the queue wait; a server error on one document is that document's, so it is
-     * counted and retried on its own, and the others go on.
+     * counted and retried on its own, and the others go on. An answer that is not Nightscout's
+     * says nothing about the document, so it is never counted against it, whatever its status:
+     * counted, a proxy's error page would use up a delete's or an edit's attempts.
      */
     internal fun operationFailure(code: Int, answeredByNightscout: Boolean): OperationFailure = when {
-        code < 0 -> OperationFailure.WAIT
+        code < 0 || !answeredByNightscout -> OperationFailure.WAIT
         code == HttpURLConnection.HTTP_UNAUTHORIZED ||
             code == HttpURLConnection.HTTP_CLIENT_TIMEOUT ||
             code == HTTP_TOO_MANY_REQUESTS ||
             code in HttpURLConnection.HTTP_BAD_GATEWAY..HttpURLConnection.HTTP_GATEWAY_TIMEOUT -> OperationFailure.WAIT
         code >= HttpURLConnection.HTTP_INTERNAL_ERROR -> OperationFailure.RETRY
-        !answeredByNightscout -> OperationFailure.WAIT
         else -> OperationFailure.REFUSED
     }
 
@@ -304,11 +306,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * What to do with a tombstone after a delete answered [code]. 404/410 count as done:
      * the document we wanted gone is gone, and the old code kept retrying those forever.
      *
-     * A refusal or a server error counts toward [MAX_DELETE_ATTEMPTS]. No answer at all (a server
-     * reachable only at home, seen from elsewhere), a busy or unreachable server, or a page that
-     * is not Nightscout's says nothing about the document and does not count. Past the cap the
-     * delete is no longer sent, but the tombstone stays: dropped, the next read brought the
-     * deleted treatment back.
+     * Nightscout's refusal or server error counts toward [MAX_DELETE_ATTEMPTS]. No answer at all (a
+     * server reachable only at home, seen from elsewhere), a busy or unreachable server, or a page
+     * that is not Nightscout's, whatever its status, says nothing about the document and does not
+     * count ([operationFailure]). Past the cap the delete is no longer sent, but the tombstone
+     * stays: dropped, the next read brought the deleted treatment back.
      */
     internal fun tombstoneAction(
         code: Int,
