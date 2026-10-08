@@ -25,6 +25,7 @@ const val KEY_PREDICTION_ANALYSIS = "dashboard_prediction_analysis_enabled"
 const val KEY_PREDICTION_ADAPTIVE = "dashboard_prediction_adaptive_enabled"
 const val KEY_SENSOR_SELECTION = "dashboard_multi_sensor_selection_order"
 const val KEY_SENSOR_COLORS = "sensor_color_overrides_argb"
+const val KEY_CHART_READINGS_STYLE = "chart_readings_style"
 
 // The defaults, declared once (plan §2.4). Before this, prediction-horizon 120 lived in four files
 // and carb-absorption 35 in five, all agreeing only by hand.
@@ -43,6 +44,7 @@ const val DEFAULT_PREDICTION_CARB_ABSORPTION_G_PER_H = 35f
 const val DEFAULT_PREDICTION_HORIZON_MINUTES = 120
 const val DEFAULT_PREDICTION_ANALYSIS = false
 const val DEFAULT_PREDICTION_ADAPTIVE = false
+const val DEFAULT_CHART_READINGS_STYLE = 0 // ChartReadingsStyle.LINE
 
 /** Where a setting belongs and who may write it. */
 enum class SettingScope { PHONE, WATCH, MIRRORED }
@@ -223,6 +225,11 @@ object SettingsRegistry {
         KEY_SENSOR_COLORS, SettingType.STRING, "",
         SettingScope.MIRRORED, SettingBackup.INCLUDED,
     )
+    // Line, dots, or line and dots: drawn the same way on the phone and the watch.
+    val CHART_READINGS_STYLE = SettingDefinition(
+        KEY_CHART_READINGS_STYLE, SettingType.INT, DEFAULT_CHART_READINGS_STYLE,
+        SettingScope.MIRRORED, SettingBackup.INCLUDED, minValue = 0f, maxValue = 2f,
+    )
 
     val definitions: List<SettingDefinition> = listOf(
         SMOOTHING_MINUTES,
@@ -241,6 +248,7 @@ object SettingsRegistry {
         PREDICTION_ADAPTIVE,
         SENSOR_SELECTION,
         SENSOR_COLORS,
+        CHART_READINGS_STYLE,
     )
 
     /**
