@@ -3235,4 +3235,5 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
         <item quantity="one">%d tervezett naplóbejegyzés beszámítva</item>
         <item quantity="other">%d tervezett naplóbejegyzés beszámítva</item>
     </plurals>
+    <string name="insulin_reminder_changed">Nincs rögzítve: az inzulin megváltozott az emlékeztető óta. Koppintson az adag ellenőrzéséhez és rögzítéséhez.</string>
 </resources>
