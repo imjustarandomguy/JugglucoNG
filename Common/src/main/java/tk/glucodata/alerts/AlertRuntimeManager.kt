@@ -297,13 +297,15 @@ object AlertRuntimeManager {
             // A threshold entry during the short rearm cooldown must remain eligible;
             // otherwise the alert is lost until glucose first returns to normal.
             standardEpisodes.markPendingDelivery(type)
+        } else if (AlertStateTracker.isHeld(type)) {
+            // Held for the other device: offered again at the next reading or check.
+            standardEpisodes.markPendingDelivery(type)
         } else {
             standardEpisodes.clearPending(type)
         }
         return AlertRuntimeEvaluation(
             standardGlucoseAlertHandled = true,
-            // A firing held for the other device sounded and said nothing here.
-            standardGlucoseAlertStarted = triggered && AlarmRouting.ringsHere(type)
+            standardGlucoseAlertStarted = triggered
         )
     }
 
@@ -788,8 +790,8 @@ object AlertRuntimeManager {
         val label = Applic.app.getString(type.nameResId)
         val message = "$label ${Notify.glucosestr(glucoseValue)}"
         if (!triggerAlert(type, glucoseValue, currentRateLocked(), message)) {
-            // The latch disarmed on the offer; a failed delivery must not consume
-            // the alarm. Re-armed, it fires again while the run stands and dies
+            // The latch disarmed on the offer; a failed or held delivery must not
+            // consume the alarm. Re-armed, it fires again while the run stands and dies
             // with it if the run breaks.
             state.rearmAfterFailedDelivery()
         }
@@ -846,10 +848,27 @@ object AlertRuntimeManager {
             }
         }
     }
-    private fun triggerAlert(type: AlertType, glucoseValue: Float, rate: Float, message: String): Boolean {
-        if (!AlarmRouting.ringsHere(type)) {
-            return holdForOtherDevice(type)
-        }
+    /**
+     * Rings [type] here, or holds it for the other device ([AlarmRouting.offer]):
+     * a held firing shows nothing, opens no same-direction quiet period and
+     * returns false, so each caller offers it again while its condition stands.
+     */
+    private fun triggerAlert(type: AlertType, glucoseValue: Float, rate: Float, message: String): Boolean =
+        AlarmRouting.offer(
+            type,
+            ringsHere = AlarmRouting.ringsHere(type),
+            mayStart = { mayStartHeldEpisode(type) },
+            deliver = { deliverAlert(type, glucoseValue, rate, message) }
+        )
+
+    private fun mayStartHeldEpisode(type: AlertType): Boolean = try {
+        AlertStateTracker.shouldTrigger(type, AlertRepository.loadConfig(type))
+    } catch (t: Throwable) {
+        Log.stack(LOG_ID, "mayStartHeldEpisode ${type.name}", t)
+        false
+    }
+
+    private fun deliverAlert(type: AlertType, glucoseValue: Float, rate: Float, message: String): Boolean {
         try {
             val triggered = Notify.triggerSupplementalGlucoseAlert(type.id, glucoseValue, rate, message)
             if (triggered) {
@@ -869,32 +888,6 @@ object AlertRuntimeManager {
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "triggerAlert ${type.name}", t)
             return false
-        }
-    }
-
-    /**
-     * Where alarms ring ([AlarmRouting]) gives [type] to the other device, so
-     * this one stays silent: no sound, vibration, alarm screen, banner or
-     * retry. The firing still passes Notify's first-fire gate and spends the
-     * episode as a delivery would ([AlertStateTracker.onAlertHeld]), so it does
-     * not ring here later in the same episode. It opens no same-direction quiet
-     * period and arms no SMS watchdog: nothing here was shown to acknowledge.
-     * Returns what a delivery would have, so every caller's bookkeeping
-     * (pending delivery, delta latch) treats it as handled.
-     */
-    private fun holdForOtherDevice(type: AlertType): Boolean {
-        return try {
-            val config = AlertRepository.loadConfig(type)
-            if (!AlertStateTracker.shouldTrigger(type, config)) {
-                false
-            } else {
-                AlertStateTracker.onAlertHeld(type, config)
-                Log.i(LOG_ID, "Held ${type.name} for the other device (${AlarmRouting.describeInputs()})")
-                true
-            }
-        } catch (t: Throwable) {
-            Log.stack(LOG_ID, "holdForOtherDevice ${type.name}", t)
-            false
         }
     }
 

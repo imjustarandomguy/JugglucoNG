@@ -67,11 +67,16 @@ public    void handlealarm() {
                     long lasttime=Natives.lastglucosetime( );
                     if(lasttime!=0L)
                         wastime=lasttime;
-                    Notify.onenot.lossalarm(wastime);
-                     if(SuperGattCallback.doWearInt)  {
-                        WearInt.missingalarm(nu /*SIC, that what xDrip is doing*/);
+                    if(Notify.onenot.sayLossAlarm(wastime)) {
+                         if(SuperGattCallback.doWearInt)  {
+                            WearInt.missingalarm(nu /*SIC, that what xDrip is doing*/);
+                            }
+                        saidloss = true;
                         }
-                    saidloss = true;
+                    else {
+                        // Held for the watch: not said, asked again at the next check.
+                        Notify.onenot.oldnotification(wastime);
+                        }
                     }
                  else {
                     Notify.onenot.oldnotification(wastime);
