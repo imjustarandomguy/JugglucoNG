@@ -2922,4 +2922,8 @@
     </plurals>
     <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
     <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu</string>
+    <string name="widget_value_label">Glukoza</string>
+    <string name="widget_chart_label">Wykres glukozy</string>
+    <string name="widget_value_description">Bieżąca glukoza, strzałka trendu i czas pomiaru</string>
+    <string name="widget_chart_description">Bieżąca glukoza z wykresem ostatnich odczytów</string>
 </resources>

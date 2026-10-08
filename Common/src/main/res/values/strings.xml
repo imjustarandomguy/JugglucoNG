@@ -3132,4 +3132,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="status_bar_icon_colored_title">Colored status bar icon</string>
     <string name="status_bar_icon_colored_desc">Draw the status bar value in its range color</string>
+    <string name="widget_value_label">Glucose</string>
+    <string name="widget_chart_label">Glucose chart</string>
+    <string name="widget_value_description">Current glucose, trend arrow and reading time</string>
+    <string name="widget_chart_description">Current glucose with a chart of recent readings</string>
 </resources>

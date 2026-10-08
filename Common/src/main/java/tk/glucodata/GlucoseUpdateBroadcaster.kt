@@ -5,13 +5,9 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.update
 
 object GlucoseUpdateBroadcaster {
     const val ACTION_GLUCOSE_UPDATE = "tk.glucodata.action.GLUCOSE_UPDATE"
-    const val EXTRA_TICK_DELIVERED = "tk.glucodata.extra.TICK_DELIVERED"
 
     private const val LOG_ID = "GlucoseUpdateBroadcast"
 
@@ -25,11 +21,13 @@ object GlucoseUpdateBroadcaster {
      */
     internal const val MIN_BROADCAST_INTERVAL_MS = 1_000L
 
-    private val tickState = MutableStateFlow(0L)
-
-    // Glance widget sessions observe this because update() recomposes the
-    // captured content but does not re-run provideGlance.
-    val tick: StateFlow<Long> get() = tickState
+    /**
+     * Called in-process on every delivered update, on the delivering thread. The
+     * phone's home-screen widgets listen here rather than through a manifest
+     * receiver: a broadcast per reading reached them even with none placed.
+     */
+    @Volatile
+    private var listener: Runnable? = null
 
     @Volatile
     private var lastContext: Context? = null
@@ -47,8 +45,8 @@ object GlucoseUpdateBroadcaster {
     )
 
     @JvmStatic
-    fun hasActiveTickObservers(): Boolean {
-        return tickState.subscriptionCount.value > 0
+    fun setListener(listener: Runnable?) {
+        this.listener = listener
     }
 
     @JvmStatic
@@ -61,12 +59,15 @@ object GlucoseUpdateBroadcaster {
 
     private fun deliver() {
         val appContext = lastContext ?: return
-        tickState.update { it + 1L }
+        try {
+            listener?.run()
+        } catch (th: Throwable) {
+            Log.stack(LOG_ID, "listener", th)
+        }
         try {
             appContext.sendBroadcast(
                 Intent(ACTION_GLUCOSE_UPDATE)
                     .setPackage(appContext.packageName)
-                    .putExtra(EXTRA_TICK_DELIVERED, true)
             )
         } catch (th: Throwable) {
             Log.stack(LOG_ID, "send", th)

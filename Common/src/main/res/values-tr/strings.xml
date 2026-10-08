@@ -2908,4 +2908,8 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     </plurals>
     <string name="status_bar_icon_colored_title">Renkli durum çubuğu simgesi</string>
     <string name="status_bar_icon_colored_desc">Durum çubuğundaki değeri aralık rengiyle çizer</string>
+    <string name="widget_value_label">Glikoz</string>
+    <string name="widget_chart_label">Glikoz grafiği</string>
+    <string name="widget_value_description">Güncel glikoz, trend oku ve ölçüm saati</string>
+    <string name="widget_chart_description">Son ölçümlerin grafiğiyle güncel glikoz</string>
 </resources>

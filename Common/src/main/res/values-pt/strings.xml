@@ -2881,4 +2881,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
     <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa</string>
+    <string name="widget_value_label">Glicose</string>
+    <string name="widget_chart_label">Gráfico de glicose</string>
+    <string name="widget_value_description">Glicose atual, seta de tendência e hora da leitura</string>
+    <string name="widget_chart_description">Glicose atual com um gráfico das leituras recentes</string>
 </resources>

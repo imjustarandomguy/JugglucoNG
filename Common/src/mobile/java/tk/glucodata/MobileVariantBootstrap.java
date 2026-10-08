@@ -24,6 +24,8 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         // Re-arm the nightly backup chain from process start, not only from the
         // settings screen: a chain that died stays dead until someone re-enqueues it.
         ScheduledBackupWorker.initialize(application);
+        // Home-screen widgets: hear readings and screen-on, and catch up after a restart.
+        tk.glucodata.widget.GlucoseWidgets.start(application);
     }
 
     @Override

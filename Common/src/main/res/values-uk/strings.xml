@@ -2960,4 +2960,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="status_bar_icon_colored_title">Кольоровий значок у рядку стану</string>
     <string name="status_bar_icon_colored_desc">Малює значення в рядку стану кольором діапазону</string>
+    <string name="widget_value_label">Глюкоза</string>
+    <string name="widget_chart_label">Графік глюкози</string>
+    <string name="widget_value_description">Поточна глюкоза, стрілка тенденції та час вимірювання</string>
+    <string name="widget_chart_description">Поточна глюкоза з графіком останніх значень</string>
 </resources>

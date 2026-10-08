@@ -3065,4 +3065,8 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     </plurals>
     <string name="status_bar_icon_colored_title">Astaanta baararka xaaladda oo midab leh</string>
     <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa</string>
+    <string name="widget_value_label">Gulukoos</string>
+    <string name="widget_chart_label">Shaxda gulukooska</string>
+    <string name="widget_value_description">Gulukooska hadda, falaarta isbeddelka iyo waqtiga akhriska</string>
+    <string name="widget_chart_description">Gulukooska hadda oo leh shax akhrisyadii u dambeeyay</string>
 </resources>

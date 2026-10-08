@@ -2886,4 +2886,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
     <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage</string>
+    <string name="widget_value_label">Glucose</string>
+    <string name="widget_chart_label">Graphique du glucose</string>
+    <string name="widget_value_description">Glucose actuel, flèche de tendance et heure de la mesure</string>
+    <string name="widget_chart_description">Glucose actuel avec un graphique des dernières valeurs</string>
 </resources>

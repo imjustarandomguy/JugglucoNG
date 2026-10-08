@@ -73,12 +73,15 @@
             android:screenOrientation="portrait"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
+        <!-- Home-screen widgets. Only the system talks to them (it may send to
+             receivers that are not exported); readings reach them in-process
+             (tk.glucodata.widget.GlucoseWidgets), not by broadcast. -->
         <receiver
             android:name=".GlucoseWidget"
-            android:exported="false">
+            android:exported="false"
+            android:label="@string/widget_value_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="tk.glucodata.action.GLUCOSE_UPDATE" />
             </intent-filter>
 
             <meta-data
@@ -88,11 +91,10 @@
 
         <receiver
             android:name=".widget.ExpressiveWidgetReceiver"
-            android:enabled="true"
-            android:exported="true">
+            android:exported="false"
+            android:label="@string/widget_chart_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="tk.glucodata.action.GLUCOSE_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

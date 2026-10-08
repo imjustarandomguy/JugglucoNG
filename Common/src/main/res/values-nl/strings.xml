@@ -2923,4 +2923,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     </plurals>
     <string name="status_bar_icon_colored_title">Gekleurd statusbalkpictogram</string>
     <string name="status_bar_icon_colored_desc">Tekent de waarde in de statusbalk in de kleur van het bereik</string>
+    <string name="widget_value_label">Glucose</string>
+    <string name="widget_chart_label">Glucosegrafiek</string>
+    <string name="widget_value_description">Actuele glucose, trendpijl en meettijd</string>
+    <string name="widget_chart_description">Actuele glucose met een grafiek van recente metingen</string>
 </resources>

@@ -2996,4 +2996,8 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     </plurals>
     <string name="status_bar_icon_colored_title">Farbiges Statusleisten-Symbol</string>
     <string name="status_bar_icon_colored_desc">Zeichnet den Wert in der Statusleiste in der Bereichsfarbe</string>
+    <string name="widget_value_label">Glukose</string>
+    <string name="widget_chart_label">Glukose-Diagramm</string>
+    <string name="widget_value_description">Aktueller Glukosewert, Trendpfeil und Messzeit</string>
+    <string name="widget_chart_description">Aktueller Glukosewert mit einem Diagramm der letzten Werte</string>
 </resources>
