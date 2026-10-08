@@ -133,7 +133,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // The deadline holds this callback's monitor, also used for GATT replacement.
         if (mBluetoothGatt != attempt || stop || dataptr == 0L
                 || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return;
+                || SensorOwnershipRuntime.blocksLocalConnection(this)) return;
         Log.i(LOG_ID, SerialNumber + " no connection result before deadline; retrying");
         onConnectionAttemptTimeout();
         closeGattTransport();
@@ -1483,12 +1483,12 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
             }
             ;
             if (stop || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                    || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)
+                    || SensorOwnershipRuntime.blocksLocalConnection(this)
                     || (dataptr == 0L && !allowConnectWithoutDataptr())) {
                 if (doLog) {
                     Log.i(LOG_ID, SerialNumber + " getConnectDevice: cancelled (stop=" + stop
                             + ", clone=" + CloneSensorRegistry.isCloneSensor(SerialNumber)
-                            + ", ownershipReleased=" + SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)
+                            + ", ownershipReleased=" + SensorOwnershipRuntime.blocksLocalConnection(this)
                             + ", dataptr=" + dataptr + ")");
                 }
                 return;
@@ -1610,7 +1610,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         }
         ;
         if (stop || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)
+                || SensorOwnershipRuntime.blocksLocalConnection(this)
                 || (dataptr == 0L && !allowConnectWithoutDataptr())) {
             return false;
         }
