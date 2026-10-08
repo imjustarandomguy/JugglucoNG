@@ -2897,6 +2897,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_tap_details_desc">点按显示图表和详情</string>
     <string name="floating_next_reading">距下次读数的时间</string>
     <string name="floating_next_reading_desc">底部进度条逐步填满，直到下次读数</string>
+    <string name="floating_next_reading_style">下次读数样式</string>
+    <string name="floating_next_reading_style_bar">细条</string>
+    <string name="floating_next_reading_style_colored_bar">彩色条</string>
+    <string name="floating_next_reading_style_outline">轮廓</string>
+    <string name="floating_next_reading_style_arrow_ring">箭头外圈</string>
     <string name="floating_above_status_bar">显示在状态栏之上</string>
     <string name="floating_above_status_bar_desc">在状态栏之上也可点按</string>
     <string name="floating_accessibility_service_off">请在无障碍设置中开启“%1$s”</string>

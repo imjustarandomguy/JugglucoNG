@@ -78,6 +78,7 @@ import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.components.CardPosition
 import tk.glucodata.ui.components.MasterSwitchCard
 import tk.glucodata.ui.components.SectionLabel
+import tk.glucodata.ui.overlay.FloatingNextReadingStyle
 import tk.glucodata.ui.components.SettingsSwitchItem
 import tk.glucodata.ui.components.SettingsItem
 import tk.glucodata.ui.viewmodel.DashboardViewModel
@@ -499,6 +500,7 @@ fun FloatingGlucoseSettingsScreen(
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
     val isMirrored by repository.isMirrored.collectAsState(initial = false)
     val showNextReading by repository.showNextReading.collectAsState(initial = true)
+    val nextReadingStyle by repository.nextReadingStyle.collectAsState(initial = FloatingNextReadingStyle.CURRENT.name)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -726,6 +728,38 @@ fun FloatingGlucoseSettingsScreen(
                 onCheckedChange = { repository.setShowNextReading(it) },
                 position = CardPosition.BOTTOM
             )
+        }
+
+        // Temporary, while the styles are tried on the pill: goes with FloatingNextReadingStyle
+        // once one is chosen.
+        if (showNextReading) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                stringResource(R.string.floating_next_reading_style),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            val selectedStyle = FloatingNextReadingStyle.fromKey(nextReadingStyle)
+            FlowRow(
+                modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FloatingNextReadingStyle.entries.forEach { style ->
+                    val labelRes = when (style) {
+                        FloatingNextReadingStyle.CURRENT -> R.string.floating_next_reading_style_bar
+                        FloatingNextReadingStyle.COLOURED_BAR -> R.string.floating_next_reading_style_colored_bar
+                        FloatingNextReadingStyle.OUTLINE -> R.string.floating_next_reading_style_outline
+                        FloatingNextReadingStyle.ARROW_RING -> R.string.floating_next_reading_style_arrow_ring
+                    }
+                    FilterChip(
+                        selected = selectedStyle == style,
+                        onClick = { repository.setNextReadingStyle(style.name) },
+                        label = { Text(stringResource(labelRes)) }
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(24.dp))

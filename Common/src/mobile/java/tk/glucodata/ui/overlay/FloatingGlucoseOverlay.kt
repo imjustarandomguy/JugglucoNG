@@ -172,6 +172,7 @@ fun FloatingGlucoseOverlay(
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
     val isMirrored by repository.isMirrored.collectAsState(initial = false)
     val showNextReading by repository.showNextReading.collectAsState(initial = true)
+    val nextReadingStyle by repository.nextReadingStyle.collectAsState(initial = FloatingNextReadingStyle.CURRENT.name)
 
     // Metrics State (from Service WindowInsets)
     val cutoutData by cutoutDataFlow.collectAsState(initial = CutoutData(0.dp, CutoutEdge.NONE))
@@ -360,6 +361,7 @@ fun FloatingGlucoseOverlay(
     val sideIslandVerticalPadding = (fontSize * 0.32f).coerceIn(3f, 8f).dp
     val sideIslandSplitPadding = (fontSize * 0.18f).coerceIn(2f, 6f).dp
     val sideIslandArrowSize = (fontSize * 0.78f).coerceIn(10f, 34f).dp
+    val shownArrowSize = if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize
     val sideSecondarySpacing = (fontSize * 0.08f).coerceIn(1f, 4f).dp
     val sideSecondaryFontSize = fontSize * 0.58f
 
@@ -417,11 +419,12 @@ fun FloatingGlucoseOverlay(
     }
     val paletteRevision = GlucosePaletteState.revision
     val primaryValue = displayValues?.primaryValue
-    val valueColor = remember(
-        primaryValue, isFreshReading, valueRangeColors, isTransparent, isDarkTheme, unitInt,
-        finalTextColor, refreshRevision, paletteRevision,
+    // The value's range colour, whether or not the value is drawn in it: the time to the
+    // next reading fills in it too (in all its styles but the thin bar).
+    val rangeColor = remember(
+        primaryValue, isTransparent, isDarkTheme, unitInt, finalTextColor, refreshRevision, paletteRevision,
     ) {
-        if (!isFreshReading || primaryValue == null || !valueRangeColors) {
+        if (primaryValue == null) {
             finalTextColor
         } else {
             Color(
@@ -439,21 +442,28 @@ fun FloatingGlucoseOverlay(
             )
         }
     }
+    val valueColor = if (!isFreshReading || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
 
-    // Time to the next reading: a bar along the pill's bottom edge, drawn on its clipped
-    // background. Late in the range colours' amber, and late too while the pill is stale.
+    // Time to the next reading: a bar along the pill's bottom edge (its long inner side on
+    // an upright island) or its outline, drawn on its clipped background, or a ring around
+    // the arrow. Late in the range colours' amber, and late too while the pill is stale.
     val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
         Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
     }
     val isStale = !isFreshReading
-    val nextReadingBar = nextReadingIndicator(
+    val hasArrow = showArrow && glucosePoint != null
+    val nextReading = nextReadingIndicator(
         enabled = showNextReading,
+        style = FloatingNextReadingStyle.fromKey(nextReadingStyle),
+        side = FloatingNextReading.barSide(if (isDynamicIsland) cutoutEdge else null),
         readingTime = reading.readingTime,
         intervalMillis = reading.intervalMillis,
         stale = isStale,
         color = finalTextColor,
+        rangeColor = rangeColor,
         lateColor = nextReadingLateColor,
         cornerRadius = cornerRadius.dp,
+        arrowSize = if (hasArrow) shownArrowSize else null,
     )
 
     // A stale value is drawn dimmed: the value, its arrow and its secondary value in
@@ -538,14 +548,28 @@ fun FloatingGlucoseOverlay(
     }
 
     val arrowContent: @Composable () -> Unit = {
-        if (showArrow && displayPoint != null) {
-            TrendIndicator(
-                trendResult = trendResult,
-                modifier = Modifier.size(if (isDynamicIsland && isVerticalIsland) sideIslandArrowSize else arrowSize),
-                color = shownValueColor,
-                outlineColor = arrowOutlineColor,
-                shadowColor = arrowShadowColor
-            )
+        if (hasArrow) {
+            val arrow: @Composable () -> Unit = {
+                TrendIndicator(
+                    trendResult = trendResult,
+                    modifier = Modifier.size(shownArrowSize),
+                    color = shownValueColor,
+                    outlineColor = arrowOutlineColor,
+                    shadowColor = arrowShadowColor
+                )
+            }
+            val ringSlot = nextReading.arrowSlot
+            if (ringSlot != null) {
+                // The ring around the arrow: a slot just larger than the arrow, which stays in its middle.
+                Box(
+                    modifier = Modifier.size(ringSlot).then(nextReading.arrowRing),
+                    contentAlignment = Alignment.Center
+                ) {
+                    arrow()
+                }
+            } else {
+                arrow()
+            }
         } else {
             Spacer(Modifier.size(1.dp))
         }
@@ -590,7 +614,7 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
-                                .then(nextReadingBar)
+                                .then(nextReading.background)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -628,7 +652,7 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
-                                .then(nextReadingBar)
+                                .then(nextReading.background)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -663,7 +687,7 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
-                .then(nextReadingBar)
+                .then(nextReading.background)
                 .combinedClickable(
                     interactionSource = overlayInteractionSource,
                     indication = overlayIndication,
@@ -677,7 +701,6 @@ fun FloatingGlucoseOverlay(
                 horizontalArrangement = Arrangement.spacedBy(inlineSpacing)
             ) {
                 // No placeholder for a hidden arrow here: spacedBy would add a gap for it.
-                val hasArrow = showArrow && glucosePoint != null
                 if (isMirrored && hasArrow) arrowContent()
                 valueContent()
                 if (!isMirrored && hasArrow) arrowContent()

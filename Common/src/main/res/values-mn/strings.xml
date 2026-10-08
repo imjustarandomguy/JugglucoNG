@@ -2983,6 +2983,11 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна</string>
     <string name="floating_next_reading">Дараагийн уншилт хүртэлх хугацаа</string>
     <string name="floating_next_reading_desc">Доод талын зурвас дараагийн уншилт хүртэл дүүрнэ</string>
+    <string name="floating_next_reading_style">Заагчийн хэлбэр</string>
+    <string name="floating_next_reading_style_bar">Нимгэн зурвас</string>
+    <string name="floating_next_reading_style_colored_bar">Өнгөт зурвас</string>
+    <string name="floating_next_reading_style_outline">Хүрээ</string>
+    <string name="floating_next_reading_style_arrow_ring">Сумыг тойрсон цагираг</string>
     <string name="floating_above_status_bar">Төлөвийн мөрийн дээр</string>
     <string name="floating_above_status_bar_desc">Төлөвийн мөрийн дээр ч дарж болно</string>
     <string name="floating_accessibility_service_off">Хүртээмжийн тохиргооноос «%1$s»-ийг асаана уу</string>

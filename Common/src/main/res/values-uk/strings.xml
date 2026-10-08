@@ -2962,6 +2962,11 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_tap_details_desc">Натискання показує графік і подробиці</string>
     <string name="floating_next_reading">Час до наступного значення</string>
     <string name="floating_next_reading_desc">Смужка внизу заповнюється до наступного значення</string>
+    <string name="floating_next_reading_style">Вигляд індикатора</string>
+    <string name="floating_next_reading_style_bar">Тонка смужка</string>
+    <string name="floating_next_reading_style_colored_bar">Кольорова смужка</string>
+    <string name="floating_next_reading_style_outline">Контур</string>
+    <string name="floating_next_reading_style_arrow_ring">Кільце навколо стрілки</string>
     <string name="floating_above_status_bar">Над рядком стану</string>
     <string name="floating_above_status_bar_desc">Можна натискати й над рядком стану</string>
     <string name="floating_accessibility_service_off">Увімкніть «%1$s» у налаштуваннях спеціальних можливостей</string>
