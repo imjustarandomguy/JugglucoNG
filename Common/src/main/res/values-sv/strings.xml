@@ -2880,6 +2880,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Detaljer vid tryck</string>
     <string name="floating_tap_details_desc">Tryck visar diagram och detaljer</string>
+    <string name="floating_details_opacity_percent">Bakgrundsopacitet för detaljer: %1$d%%</string>
     <string name="floating_next_reading">Tid till nästa avläsning</string>
     <string name="floating_next_reading_desc">En stapel längst ner fylls fram till nästa avläsning</string>
     <string name="floating_next_reading_style">Indikatorns stil</string>

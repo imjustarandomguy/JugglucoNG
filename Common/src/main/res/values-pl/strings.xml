@@ -2922,6 +2922,7 @@
     </plurals>
     <string name="floating_tap_details">Szczegóły po dotknięciu</string>
     <string name="floating_tap_details_desc">Dotknięcie pokazuje wykres i szczegóły</string>
+    <string name="floating_details_opacity_percent">Nieprzezroczystość tła szczegółów: %1$d%%</string>
     <string name="floating_next_reading">Czas do następnego odczytu</string>
     <string name="floating_next_reading_desc">Pasek u dołu wypełnia się do następnego odczytu</string>
     <string name="floating_next_reading_style">Styl wskaźnika</string>

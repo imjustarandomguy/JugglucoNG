@@ -2960,6 +2960,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Подробиці за натисканням</string>
     <string name="floating_tap_details_desc">Натискання показує графік і подробиці</string>
+    <string name="floating_details_opacity_percent">Непрозорість фону подробиць: %1$d%%</string>
     <string name="floating_next_reading">Час до наступного значення</string>
     <string name="floating_next_reading_desc">Смужка внизу заповнюється до наступного значення</string>
     <string name="floating_next_reading_style">Вигляд індикатора</string>

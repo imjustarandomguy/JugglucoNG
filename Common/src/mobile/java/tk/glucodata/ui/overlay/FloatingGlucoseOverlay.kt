@@ -737,13 +737,14 @@ fun FloatingGlucoseOverlay(
 /**
  * What the glucose notification shows, for the reading on the pill: its time
  * and age, the Δ, the chart and the IOB/COB line (when the notification shows
- * one). Tapping it opens the app.
+ * one). Tapping it opens the app. Its background is [backgroundOpacity] opaque.
  */
 @Composable
 fun FloatingDetailsCard(
     request: FloatingDetailsRequest,
     isDark: Boolean,
     onOpenApp: () -> Unit,
+    backgroundOpacity: Float = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY,
 ) {
     val point = request.point
     val sensorId = request.sensorId
@@ -763,7 +764,7 @@ fun FloatingDetailsCard(
             )
         }
     }
-    val background = if (isDark) Color(0xF2202124) else Color(0xF2F6F4F1)
+    val background = (if (isDark) Color(0xFF202124) else Color(0xFFF6F4F1)).copy(alpha = backgroundOpacity)
     val textColor = if (isDark) Color.White else Color(0xFF27231F)
     val minutes = ((System.currentTimeMillis() - point.timestamp) / 60_000L).coerceAtLeast(0L)
     val time = remember(point.timestamp) {

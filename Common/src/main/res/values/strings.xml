@@ -3132,6 +3132,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Details on tap</string>
     <string name="floating_tap_details_desc">Tap for the chart and details</string>
+    <string name="floating_details_opacity_percent">Details background opacity: %1$d%%</string>
     <string name="floating_next_reading">Time to next reading</string>
     <string name="floating_next_reading_desc">A bar along the bottom fills until the next reading</string>
     <string name="floating_next_reading_style">Next reading style</string>

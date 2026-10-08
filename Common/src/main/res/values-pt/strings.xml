@@ -2881,6 +2881,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     </plurals>
     <string name="floating_tap_details">Detalhes ao tocar</string>
     <string name="floating_tap_details_desc">Tocar mostra o gráfico e os detalhes</string>
+    <string name="floating_details_opacity_percent">Opacidade do fundo dos detalhes: %1$d%%</string>
     <string name="floating_next_reading">Tempo até à próxima leitura</string>
     <string name="floating_next_reading_desc">Uma barra em baixo enche até à próxima leitura</string>
     <string name="floating_next_reading_style">Estilo do indicador</string>

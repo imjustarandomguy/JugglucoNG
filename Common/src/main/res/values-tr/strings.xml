@@ -2908,6 +2908,7 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     </plurals>
     <string name="floating_tap_details">Dokununca ayrıntılar</string>
     <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir</string>
+    <string name="floating_details_opacity_percent">Ayrıntılar arka plan opaklığı: %1$d%%</string>
     <string name="floating_next_reading">Sonraki ölçüme kalan süre</string>
     <string name="floating_next_reading_desc">Alttaki çubuk sonraki ölçüme kadar dolar</string>
     <string name="floating_next_reading_style">Gösterge stili</string>
