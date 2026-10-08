@@ -34,12 +34,14 @@ class PersistentLowPolicyTests {
     /**
      * Feeds readings through the policy, threading its state like the runtime
      * does. With [stored], an episode's start comes from those readings before
-     * the current one, then the current one, as [EpisodeHistory.load] hands them over.
+     * the current one, then the current one, as [EpisodeHistory.load] hands them over,
+     * with [veryLow] as the runtime passes VERY_LOW's config to the walk.
      */
     private class Run(
         val config: AlertConfig,
         val isMmol: Boolean = true,
-        val stored: List<StoredReading>? = null
+        val stored: List<StoredReading>? = null,
+        val veryLow: AlertConfig? = null
     ) {
         var state = PersistentLowState()
         var historyReads = 0
@@ -67,7 +69,7 @@ class PersistentLowPolicyTests {
                     historyReads++
                     stored?.let { readings ->
                         val upToNow = readings.filter { it.timeMs < atMs } + StoredReading(atMs, value!!)
-                        PersistentLowPolicy.startFromHistory(upToNow, config, isMmol)?.startedAtMs
+                        PersistentLowPolicy.startFromHistory(upToNow, config, isMmol, veryLow)?.startedAtMs
                     } ?: 0L
                 }
             )
@@ -307,24 +309,47 @@ class PersistentLowPolicyTests {
         run.reading(t0 + 10 * minute, 2.8f, veryLowActive = true)
         assertEquals(PersistentLowAction.HOLD, run.reading(t0 + 15 * minute, 2.8f, veryLowActive = true))
         assertEquals("persistent-low-very-low", run.last.reason)
+        assertTrue(run.state.heldByVeryLow)
         assertEquals(t0, run.state.startedAtMs)
     }
 
     @Test
-    fun aVeryLowInTheEpisodeKeepsItQuietUntilTheLowIsOver() {
+    fun aDismissedVeryLowThenALowBetweenTheLinesRingsAfterTheDuration() {
         val run = Run(mmolConfig(durationMinutes = 15))
         run.reading(t0, 3.4f)
-        run.reading(t0 + 5 * minute, 2.9f, veryLowActive = true)
-        // VERY_LOW resolved (treated, dismissed, snoozed), still below 3.9.
-        assertEquals(PersistentLowAction.HOLD, run.reading(t0 + 10 * minute, 3.5f))
-        assertEquals(PersistentLowAction.HOLD, run.reading(t0 + 20 * minute, 3.6f))
-        assertTrue(run.state.veryLowSeen)
-        // A real recovery ends the episode and clears the latch.
-        assertEquals(PersistentLowAction.RESET, run.reading(t0 + 25 * minute, 4.4f))
-        assertFalse(run.state.veryLowSeen)
+        // VERY_LOW fires and is dismissed: its episode runs until its condition clears.
+        assertEquals(PersistentLowAction.HOLD, run.reading(t0 + 5 * minute, 2.9f, veryLowActive = true))
+        assertEquals(PersistentLowAction.HOLD, run.reading(t0 + 10 * minute, 3.1f, veryLowActive = true))
+        // Its episode is over, the value stays between the two lines: the count starts here.
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0 + 15 * minute, 3.6f))
+        assertFalse(run.state.heldByVeryLow)
+        assertEquals(t0 + 15 * minute, run.state.startedAtMs)
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0 + 20 * minute, 3.5f))
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0 + 25 * minute, 3.6f))
+        assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 30 * minute, 3.5f))
+    }
+
+    @Test
+    fun aVeryLowEndingInTheBandRestartsAtTheNextLowReading() {
+        val run = Run(mmolConfig(durationMinutes = 10))
+        assertEquals(PersistentLowAction.HOLD, run.reading(t0, 2.9f, veryLowActive = true))
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0 + 5 * minute, 4.0f))
+        assertEquals(PersistentLowState(), run.state)
+        run.reading(t0 + 10 * minute, 3.7f)
+        assertEquals(t0 + 10 * minute, run.state.startedAtMs)
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0 + 15 * minute, 3.7f))
+        assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 20 * minute, 3.7f))
+    }
+
+    @Test
+    fun aRecoveryEndsAHeldEpisode() {
+        val run = Run(mmolConfig(durationMinutes = 15))
+        run.reading(t0, 2.9f, veryLowActive = true)
+        assertEquals(PersistentLowAction.RESET, run.reading(t0 + 5 * minute, 4.4f))
+        assertEquals(PersistentLowState(), run.state)
         // The next low episode without a very low rings as usual.
-        (6..8).forEach { run.reading(t0 + it * 5 * minute, 3.7f) }
-        assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 45 * minute, 3.7f))
+        (2..4).forEach { run.reading(t0 + it * 5 * minute, 3.7f) }
+        assertEquals(PersistentLowAction.FIRE, run.reading(t0 + 25 * minute, 3.7f))
     }
 
     @Test
@@ -449,10 +474,54 @@ class PersistentLowPolicyTests {
     }
 
     @Test
-    fun aStoredStartStillHoldsForALiveVeryLow() {
+    fun aLiveVeryLowHoldsWithoutReadingTheHistory() {
         val run = Run(mmolConfig(rearmMargin = 0.6f), stored = tonight)
         assertEquals(PersistentLowAction.HOLD, run.reading(tonight[4].timeMs, tonight[4].value, veryLowActive = true))
-        assertEquals(t0, run.state.startedAtMs)
+        assertEquals(0, run.historyReads)
+    }
+
+    /** VERY_LOW at 3.0 with a 0.6 margin: entered below 3.0, over at 3.6 and above. */
+    private val veryLow = AlertConfig(type = AlertType.VERY_LOW, enabled = true, threshold = 3.0f, rearmMargin = 0.6f)
+
+    /** 3.4 starts the low, 2.9 enters VERY_LOW, 3.3 keeps it, 3.7 ends it. */
+    private val afterVeryLow = listOf(4.5f, 3.4f, 2.9f, 3.3f, 3.7f, 3.8f, 3.7f, 3.5f)
+        .mapIndexed { i, value -> StoredReading(t0 + i * 5 * minute, value) }
+
+    @Test
+    fun theStoredStartRestartsWhereAVeryLowEnded() {
+        val config = mmolConfig(durationMinutes = 15)
+        assertEquals(
+            EpisodeStart(t0 + 20 * minute, 7),
+            PersistentLowPolicy.startFromHistory(afterVeryLow, config, isMmol = true, veryLow = veryLow)
+        )
+        // VERY_LOW off or outside its hours: the low counts from its first reading.
+        assertEquals(t0 + 5 * minute, PersistentLowPolicy.startFromHistory(afterVeryLow, config, isMmol = true)?.startedAtMs)
+        // Its episode still runs at the current reading (3.3 is under its exit line): no start.
+        assertNull(PersistentLowPolicy.startFromHistory(afterVeryLow.take(4), config, isMmol = true, veryLow = veryLow))
+        // Ended in the band: the next reading below starts the count.
+        val bandEnd = afterVeryLow.mapIndexed { i, reading -> if (i == 4) reading.copy(value = 4.0f) else reading }
+        assertEquals(
+            t0 + 25 * minute,
+            PersistentLowPolicy.startFromHistory(bandEnd, config, isMmol = true, veryLow = veryLow)?.startedAtMs
+        )
+    }
+
+    @Test
+    fun liveAndRestartedRunsAgreeAfterAVeryLow() {
+        val config = mmolConfig(durationMinutes = 15)
+        val veryLowAt = setOf(t0 + 10 * minute, t0 + 15 * minute)
+        val live = Run(config, stored = afterVeryLow, veryLow = veryLow)
+        val actions = afterVeryLow.map { live.reading(it.timeMs, it.value, veryLowActive = it.timeMs in veryLowAt) }
+        assertEquals(PersistentLowAction.FIRE, actions.last())
+        assertTrue(actions.dropLast(1).none { it == PersistentLowAction.FIRE })
+        assertEquals(t0 + 20 * minute, live.state.startedAtMs)
+        // A restart at any reading after VERY_LOW ended finds the same start.
+        (4 until afterVeryLow.size).forEach { i ->
+            val restarted = Run(config, stored = afterVeryLow, veryLow = veryLow)
+            val action = restarted.reading(afterVeryLow[i].timeMs, afterVeryLow[i].value)
+            assertEquals(t0 + 20 * minute, restarted.state.startedAtMs)
+            assertEquals(if (i == afterVeryLow.lastIndex) PersistentLowAction.FIRE else PersistentLowAction.WAIT, action)
+        }
     }
 
     @Test
