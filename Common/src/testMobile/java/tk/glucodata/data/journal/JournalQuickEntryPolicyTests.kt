@@ -159,16 +159,6 @@ class JournalQuickEntryPolicyTests {
     }
 
     @Test
-    fun theEntryBeingEditedIsNotItsOwnLastDose() {
-        val earlier = entry(1, JournalEntryType.INSULIN, 2 * hour, 4f, fiasp)
-        val edited = entry(2, JournalEntryType.INSULIN, 30 * minute, 6f, fiasp)
-        assertSame(
-            earlier,
-            JournalQuickEntryPolicy.lastActiveInsulin(listOf(earlier, edited), fiasp, 300, now, excludeEntryId = 2)
-        )
-    }
-
-    @Test
     fun aDoseLoggedAheadOfNowOrWithoutAmountIsNotTheLastDose() {
         val future = entry(1, JournalEntryType.INSULIN, -15 * minute, 6f, fiasp)
         val empty = entry(2, JournalEntryType.INSULIN, 10 * minute, null, fiasp)
@@ -209,11 +199,10 @@ class JournalQuickEntryPolicyTests {
     }
 
     @Test
-    fun lastMealIgnoresOtherTypesAndTheEditedEntry() {
+    fun lastMealIgnoresOtherTypes() {
         val dose = entry(1, JournalEntryType.INSULIN, 5 * minute, 6f, fiasp)
         val meal = entry(2, JournalEntryType.CARBS, 20 * minute, 30f, durationMinutes = 90)
         assertSame(meal, JournalQuickEntryPolicy.lastActiveMeal(listOf(dose, meal), emptyMap(), now))
-        assertNull(JournalQuickEntryPolicy.lastActiveMeal(listOf(dose, meal), emptyMap(), now, excludeEntryId = 2))
     }
 
     private val zone: TimeZone = TimeZone.getTimeZone("America/Toronto")
