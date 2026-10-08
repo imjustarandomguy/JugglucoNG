@@ -46,7 +46,7 @@ class SettingsRegistryTests {
     }
 
     @Test
-    fun thePilotMirrorIsExactlyThePredictionAndSmoothingSettings() {
+    fun theMirrorIsExactlyThePredictionSmoothingAndChartSettings() {
         assertEquals(
             setOf(
                 KEY_SMOOTHING_MINUTES,
@@ -63,6 +63,7 @@ class SettingsRegistryTests {
                 KEY_PREDICTION_HORIZON,
                 KEY_SENSOR_SELECTION,
                 KEY_SENSOR_COLORS,
+                KEY_CHART_READINGS_STYLE,
             ),
             SettingsRegistry.mirrored.map { it.key }.toSet(),
         )

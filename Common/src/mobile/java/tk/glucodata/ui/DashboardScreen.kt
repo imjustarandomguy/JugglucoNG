@@ -369,6 +369,7 @@ fun DashboardScreen(
     val visualCollapseMinutes = tk.glucodata.DataSmoothing.graphCollapseMinutes(chartSmoothingMinutes, dataSmoothingTargets)
     val evaluationCollapseMinutes = tk.glucodata.DataSmoothing.localCollapseMinutes(chartSmoothingMinutes, dataSmoothingTargets)
     val previewWindowMode by viewModel.previewWindowMode.collectAsStateWithLifecycle()
+    val chartReadingsStyle by viewModel.chartReadingsStyle.collectAsStateWithLifecycle()
     val journalEnabled by viewModel.journalEnabled.collectAsStateWithLifecycle()
     val journalEiobDisplayEnabled by viewModel.journalEiobDisplayEnabled.collectAsStateWithLifecycle()
     val journalQuickAddAlwaysNow by viewModel.journalQuickAddAlwaysNow.collectAsStateWithLifecycle()
@@ -1705,6 +1706,7 @@ fun DashboardScreen(
                                         graphSmoothingMinutes = visualSmoothingMinutes,
                                         graphCollapseMinutes = visualCollapseMinutes,
                                         previewWindowMode = previewWindowMode,
+                                        readingsStyle = chartReadingsStyle,
                                         graphLow = graphLow,
                                         graphHigh = graphHigh,
                                         targetLow = targetLow,
@@ -1954,6 +1956,7 @@ fun DashboardScreen(
                                         graphSmoothingMinutes = visualSmoothingMinutes,
                                         graphCollapseMinutes = visualCollapseMinutes,
                                         previewWindowMode = previewWindowMode,
+                                        readingsStyle = chartReadingsStyle,
                                         graphLow = graphLow,
                                         graphHigh = graphHigh,
                                         targetLow = targetLow,
