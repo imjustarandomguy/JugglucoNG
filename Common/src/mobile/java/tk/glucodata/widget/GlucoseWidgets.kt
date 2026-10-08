@@ -60,9 +60,10 @@ object GlucoseWidgets {
         1, 1, 30L, TimeUnit.SECONDS, LinkedBlockingQueue(),
     ) { runnable -> Thread(runnable, "GlucoseWidgets") }.apply { allowCoreThreadTimeOut(true) }
 
-    private val lastModels = HashMap<Int, WidgetRenderModel>()
-    private val chartCache = WidgetChartCache<Bitmap>()
+    private val cache = WidgetRenderCache<WidgetRenderModel, Bitmap>()
     private val chartContexts = HashMap<Boolean, Context>()
+    // Set by redrawAll; the next render forgets every widget first.
+    private val redrawAllPending = AtomicBoolean(false)
 
     /** At process start (MobileVariantBootstrap). */
     @JvmStatic
@@ -84,8 +85,9 @@ object GlucoseWidgets {
         val targets = appWidgetIds.map { Target(kind, it) }
         executor.execute {
             try {
-                // The host may have dropped what it had: send even an unchanged widget.
-                targets.forEach { lastModels.remove(it.appWidgetId) }
+                // The host may have dropped what it had, or a setting the chart is drawn
+                // with changed: send even an unchanged widget, its chart drawn again.
+                targets.forEach { cache.forget(it.appWidgetId) }
                 render(app, targets)
             } catch (th: Throwable) {
                 Log.stack(LOG_ID, "renderNow", th)
@@ -101,14 +103,23 @@ object GlucoseWidgets {
         renderNow(context, kind, intArrayOf(appWidgetId))
     }
 
+    /**
+     * An app setting the widgets are drawn with changed: every placed widget is drawn
+     * again, charts included, now or at the next screen-on.
+     */
+    @JvmStatic
+    fun redrawAll(context: Context) {
+        val app = ensureStarted(context)
+        if (!placed) return
+        redrawAllPending.set(true)
+        requestRender(app)
+    }
+
     fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val app = ensureStarted(context)
         store(app).delete(appWidgetIds)
         executor.execute {
-            for (id in appWidgetIds) {
-                lastModels.remove(id)
-                chartCache.remove(id)
-            }
+            for (id in appWidgetIds) cache.forget(id)
         }
         refreshPlacement(app)
     }
@@ -232,6 +243,8 @@ object GlucoseWidgets {
     private fun render(context: Context, targets: List<Target>): WidgetData? {
         if (targets.isEmpty()) return null
         val manager = AppWidgetManager.getInstance(context) ?: return null
+        // Forgotten here, on the render thread, so no render queued before it can miss it.
+        if (redrawAllPending.getAndSet(false)) cache.forgetAll()
         val store = store(context)
         val entries = targets.map {
             Entry(it, store.load(it.appWidgetId, it.kind), sizeOf(context, it.appWidgetId, it.kind))
@@ -251,12 +264,12 @@ object GlucoseWidgets {
                 val model = WidgetPresenter.present(
                     context, entry.target.kind, entry.options, entry.size, data, fonts, night, largeArrow, ::timeText,
                 )
-                if (lastModels[id] == model) continue
+                if (cache.shows(id, model)) continue
                 val chart = model.chartKey?.let { key ->
-                    chartCache.get(id, key) { drawChart(context, key, data, chartContexts) }
+                    cache.chart(id, key) { drawChart(context, key, data, chartContexts) }
                 }
                 manager.updateAppWidget(id, renderer.build(model, chart))
-                lastModels[id] = model
+                cache.sent(id, model)
             } catch (th: Throwable) {
                 Log.stack(LOG_ID, "render $id", th)
             }
@@ -346,14 +359,18 @@ object GlucoseWidgets {
             val key = key(newConfig)
             if (key == lastKey) return
             lastKey = key
-            executor.execute { chartContexts.clear() }
+            // The charts were drawn in the old configuration's contexts.
+            executor.execute {
+                chartContexts.clear()
+                cache.dropCharts()
+            }
             val context = appContext ?: return
             if (placed) requestRender(context)
         }
 
         @Deprecated("Deprecated in Java")
         override fun onLowMemory() {
-            executor.execute { chartCache.clear() }
+            executor.execute { cache.dropCharts() }
         }
     }
 }

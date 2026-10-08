@@ -2130,6 +2130,8 @@ class DashboardViewModel(
         context.sendBroadcast(
             android.content.Intent(tk.glucodata.accessibility.AODOverlayService.ACTION_IMMEDIATE_REFRESH)
         )
+        // The widgets draw their value and chart with these settings too.
+        tk.glucodata.widget.GlucoseWidgets.redrawAll(context)
     }
 
     fun saveJournalEntry(input: JournalEntryInput) {
