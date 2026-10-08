@@ -1135,6 +1135,23 @@ fun DashboardScreen(
 
             val chartBoostState = rememberSaveable { mutableFloatStateOf(0f) }
             val chartExpansionGestureGate = remember { DashboardChartExpansionGestureGate() }
+            // The height chosen last (collapsed, middle or full) opens again at the next
+            // launch. It is applied, and applied again while the layout is still being
+            // measured, until the first touch; from then on where the chart settles is stored.
+            var pendingChartHeightAnchor by rememberSaveable {
+                mutableStateOf<Int?>(
+                    DashboardChartHeightAnchors.fromPreference(
+                        dashboardPrefs.getInt(
+                            DashboardChartHeightAnchors.PREFERENCE_KEY,
+                            DashboardChartHeightAnchors.COLLAPSED
+                        )
+                    )
+                )
+            }
+            // A drag on the handle under the chart, through its settling animation: the
+            // list-driven snap below leaves the height to it meanwhile.
+            var chartHandleActive by remember { mutableStateOf(false) }
+            var chartHandleSnapJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
             val scope = rememberCoroutineScope()
 
@@ -1185,30 +1202,14 @@ fun DashboardScreen(
                     override suspend fun onPreFling(available: androidx.compose.ui.unit.Velocity): androidx.compose.ui.unit.Velocity {
                         val currentBoostPx = chartBoostState.floatValue * maxChartBoostPx
                         if (currentBoostPx > 0f && maxChartBoostPx > 0f) {
-                            val middleAnchor = middleChartBoostPx.coerceIn(0f, maxChartBoostPx)
-
-                            val target = when {
-                                // FAST EXIT: extremely strong upward fling → collapse to 0
-                                available.y < -3000f -> 0f
-                                // GRADUAL EXIT: moderate upward fling → step DOWN one state
-                                available.y < -400f -> {
-                                    if (currentBoostPx > middleAnchor + 10f) middleAnchor
-                                    else 0f
-                                }
-                                // FAST EXPAND: extremely strong downward fling → jump full expand
-                                available.y > 3000f -> maxChartBoostPx
-                                // GRADUAL EXPAND: moderate downward fling → step UP one state
-                                available.y > 400f -> {
-                                    if (currentBoostPx < middleAnchor - 10f) middleAnchor
-                                    else maxChartBoostPx
-                                }
-                                // NO FLING (slow release): position-based zones
-                                else -> when {
-                                    currentBoostPx <= middleAnchor * 0.5f -> 0f
-                                    currentBoostPx < ((middleAnchor + maxChartBoostPx) * 0.5f) -> middleAnchor
-                                    else -> maxChartBoostPx
-                                }
-                            }
+                            // A strong fling jumps to the end, a moderate one steps one
+                            // state, a slow release settles by position.
+                            val target = DashboardChartHeightAnchors.snapTargetPx(
+                                currentPx = currentBoostPx,
+                                middlePx = middleChartBoostPx,
+                                maxPx = maxChartBoostPx,
+                                velocityY = available.y
+                            )
 
                             // Already maxed and flinging down → let list handle overscroll glow
                             if (currentBoostPx >= maxChartBoostPx - 1f && available.y > 0) {
@@ -1245,13 +1246,24 @@ fun DashboardScreen(
                 }
             }
 
+            LaunchedEffect(maxChartBoostPx, middleChartBoostPx, pendingChartHeightAnchor) {
+                val anchor = pendingChartHeightAnchor ?: return@LaunchedEffect
+                if (maxChartBoostPx > 0f) {
+                    chartBoostState.floatValue = DashboardChartHeightAnchors.boostPx(
+                        anchor,
+                        middleChartBoostPx,
+                        maxChartBoostPx
+                    ) / maxChartBoostPx
+                }
+            }
+
             // Same reason as above: keying this on live scroll state read it during
             // composition. Collecting the same values leaves the behaviour identical
             // and the outer body untouched while a scroll is in flight.
             LaunchedEffect(listState, chartBoostState, maxChartBoostPx, middleChartBoostPx) {
                 snapshotFlow {
                     SnapInput(
-                        scrolling = listState.isScrollInProgress,
+                        scrolling = listState.isScrollInProgress || chartHandleActive,
                         firstIndex = listState.firstVisibleItemIndex,
                         firstOffset = listState.firstVisibleItemScrollOffset,
                         boost = chartBoostState.floatValue
@@ -1265,21 +1277,95 @@ fun DashboardScreen(
                         return@collect
                     }
 
-                    val middleAnchorPx = middleChartBoostPx.coerceIn(0f, maxChartBoostPx)
                     val shouldCollapseToDefault = input.firstIndex > 0 || input.firstOffset > 0
                     val targetAnchorPx = if (shouldCollapseToDefault) {
                         0f
                     } else {
-                        when {
-                            currentBoostPx <= middleAnchorPx * 0.5f -> 0f
-                            currentBoostPx < ((middleAnchorPx + maxChartBoostPx) * 0.5f) -> middleAnchorPx
-                            else -> maxChartBoostPx
-                        }
+                        DashboardChartHeightAnchors.snapTargetPx(
+                            currentPx = currentBoostPx,
+                            middlePx = middleChartBoostPx,
+                            maxPx = maxChartBoostPx,
+                            velocityY = 0f
+                        )
                     }
 
                     if (abs(targetAnchorPx - currentBoostPx) > 1f) {
                         chartBoostState.floatValue =
                             (targetAnchorPx / maxChartBoostPx).coerceIn(0f, 1f)
+                    }
+                }
+            }
+
+            // Stores the anchor the chart comes to rest on, once the user has touched it.
+            LaunchedEffect(listState, chartBoostState, maxChartBoostPx, middleChartBoostPx) {
+                snapshotFlow {
+                    if (pendingChartHeightAnchor != null || listState.isScrollInProgress || chartHandleActive) {
+                        null
+                    } else {
+                        DashboardChartHeightAnchors.anchorAt(
+                            boostPx = chartBoostState.floatValue * maxChartBoostPx,
+                            middlePx = middleChartBoostPx,
+                            maxPx = maxChartBoostPx
+                        )
+                    }
+                }
+                    .collect { anchor ->
+                        if (anchor != null) {
+                            dashboardPrefs.edit()
+                                .putInt(DashboardChartHeightAnchors.PREFERENCE_KEY, anchor)
+                                .apply()
+                        }
+                    }
+            }
+
+            // The handle under the chart resizes it 1:1 with the finger and, on release,
+            // settles on an anchor by the same rules as the pull on the list. Only from
+            // the top of the list, where the pull-down works too.
+            fun dragChartHandle(deltaPx: Float) {
+                if (maxChartBoostPx <= 0f) return
+                if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) return
+                chartHandleSnapJob?.cancel()
+                chartHandleSnapJob = null
+                chartHandleActive = true
+                pendingChartHeightAnchor = null
+                val boostPx = (chartBoostState.floatValue * maxChartBoostPx + deltaPx)
+                    .coerceIn(0f, maxChartBoostPx)
+                chartBoostState.floatValue = boostPx / maxChartBoostPx
+            }
+
+            fun releaseChartHandle(velocityY: Float) {
+                if (!chartHandleActive) return
+                if (maxChartBoostPx <= 0f) {
+                    chartHandleActive = false
+                    return
+                }
+                val currentPx = chartBoostState.floatValue * maxChartBoostPx
+                val targetPx = DashboardChartHeightAnchors.snapTargetPx(
+                    currentPx = currentPx,
+                    middlePx = middleChartBoostPx,
+                    maxPx = maxChartBoostPx,
+                    velocityY = velocityY
+                )
+                chartHandleSnapJob?.cancel()
+                chartHandleSnapJob = scope.launch {
+                    val job = coroutineContext[kotlinx.coroutines.Job]
+                    try {
+                        androidx.compose.animation.core.animate(
+                            initialValue = currentPx,
+                            targetValue = targetPx,
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = 0.85f,
+                                stiffness = if (targetPx < currentPx) Spring.StiffnessMedium else Spring.StiffnessMediumLow
+                            )
+                        ) { value, _ ->
+                            chartBoostState.floatValue = (value / maxChartBoostPx).coerceIn(0f, 1f)
+                        }
+                    } finally {
+                        // A new drag cancelled this one and owns the handle now.
+                        if (chartHandleSnapJob === job) {
+                            chartHandleSnapJob = null
+                            chartHandleActive = false
+                        }
                     }
                 }
             }
@@ -1658,6 +1744,7 @@ fun DashboardScreen(
                                     expandedProgress = 1f,
                                     expandedUnderlayBottom = 0.dp,
                                     onToggleExpanded = null,
+                                    predictionHorizonMinutes = predictionHorizonMinutes,
                                     onPointClick = { point ->
                                         clearJournalAction()
                                         triggerCalibrationIfEnabled(
@@ -1727,6 +1814,9 @@ fun DashboardScreen(
                                 requireUnconsumed = false,
                                 pass = PointerEventPass.Initial
                             )
+                            // The layout has settled by the first touch: stop re-applying
+                            // the stored height and start storing the one in use.
+                            pendingChartHeightAnchor = null
                             chartExpansionGestureGate.onGestureStarted(
                                 startedAtTop = listState.firstVisibleItemIndex == 0 &&
                                     listState.firstVisibleItemScrollOffset == 0,
@@ -1900,6 +1990,9 @@ fun DashboardScreen(
                                     expandedUnderlayBottom = 0.dp,
                                     onToggleExpanded = null,
                                     chartBoostProgress = chartBoostProgress,
+                                    predictionHorizonMinutes = predictionHorizonMinutes,
+                                    onExpansionHandleDrag = ::dragChartHandle,
+                                    onExpansionHandleDragStopped = ::releaseChartHandle,
                                     onPointClick = { point ->
                                         clearJournalAction()
                                         triggerCalibrationIfEnabled(

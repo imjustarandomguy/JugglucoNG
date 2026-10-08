@@ -758,7 +758,10 @@ fun DashboardChartSection(
     resetToLatestOnResume: Boolean = true,
     onViewportSnapshotChanged: ((ChartViewportSnapshot) -> Unit)? = null,
     dataBounds: ChartDataBounds? = null,
-    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
+    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null,
+    predictionHorizonMinutes: Int? = null,
+    onExpansionHandleDrag: ((deltaPx: Float) -> Unit)? = null,
+    onExpansionHandleDragStopped: ((velocityPx: Float) -> Unit)? = null
 ) {
     val chartContent: @Composable () -> Unit = {
         Column(modifier = Modifier.padding(bottom = 0.dp)) {
@@ -810,7 +813,10 @@ fun DashboardChartSection(
                         onJournalMarkerClick = onJournalMarkerClick,
                         chartBoostProgress = chartBoostProgress,
                         resetToLatestOnResume = resetToLatestOnResume,
-                        onViewportSnapshotChanged = onViewportSnapshotChanged
+                        onViewportSnapshotChanged = onViewportSnapshotChanged,
+                        predictionHorizonMinutes = predictionHorizonMinutes,
+                        onExpansionHandleDrag = onExpansionHandleDrag,
+                        onExpansionHandleDragStopped = onExpansionHandleDragStopped
                     )
                 } else {
                     Box(Modifier.fillMaxSize())
@@ -896,7 +902,16 @@ fun InteractiveGlucoseChart(
      */
     dataBounds: ChartDataBounds? = null,
     /** Reports the viewport as it moves, so the owner of [fullData] can load around it. */
-    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
+    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null,
+    /**
+     * How far ahead the window may scroll while a prediction is drawn. Null reads the
+     * prediction horizon setting.
+     */
+    predictionHorizonMinutes: Int? = null,
+    /** Vertical drags on the handle under the chart, for an owner that resizes it. */
+    onExpansionHandleDrag: ((deltaPx: Float) -> Unit)? = null,
+    /** The handle drag ended, with its vertical velocity in px/s. */
+    onExpansionHandleDragStopped: ((velocityPx: Float) -> Unit)? = null
 ) {
     // --- THEME & PAINTS ---
     val isDark = isSystemInDarkTheme()
@@ -1185,11 +1200,6 @@ fun InteractiveGlucoseChart(
         .maxOfOrNull { series -> series.points.lastOrNull()?.timestamp ?: Long.MIN_VALUE }
         ?.takeIf { it != Long.MIN_VALUE }
         ?: 0L
-    val latestJournalTimelineTimestamp = remember(journalMarkers) {
-        journalMarkers.maxOfOrNull { marker ->
-            maxOf(marker.timestamp, marker.activeEndMillis ?: marker.timestamp)
-        } ?: 0L
-    }
     fun predictionLeadMillis(durationMillis: Long): Long {
         return (durationMillis * 0.18f).toLong()
             .coerceIn(15L * 60L * 1000L, 35L * 60L * 1000L)
@@ -1257,16 +1267,41 @@ fun InteractiveGlucoseChart(
         val fullSpan = (latestDataTimestamp - earliestDataTimestamp).coerceAtLeast(0L)
         maxOf(72L * 60L * 60L * 1000L, fullSpan + (2L * 60L * 60L * 1000L))
     }
-    fun maxAllowedCenterTime(durationMillis: Long): Long {
-        val journalAwareEnd = maxOf(System.currentTimeMillis(), latestDataTimestamp, latestJournalTimelineTimestamp)
-        return if (hasPredictionOverlay && predictionEndTimestamp > journalAwareEnd) {
-            predictionEndTimestamp - durationMillis / 2L
-        } else {
-            journalAwareEnd + (2L * 60L * 1000L)
-        }
+    // The dashboard passes the horizon it predicts with; other callers fall back to the setting.
+    val settingsPredictionHorizonMinutes = remember(context) {
+        tk.glucodata.settings.SettingsRegistry.PREDICTION_HORIZON.readIntClamped(context)
+    }
+    val resolvedPredictionHorizonMinutes = predictionHorizonMinutes ?: settingsPredictionHorizonMinutes
+    // Held as state so the long-lived gesture coroutine below clamps against the
+    // current data and prediction, not those of the composition that started it.
+    val viewportLimits by rememberUpdatedState(
+        ChartViewportLimits(
+            latestDataMs = latestDataTimestamp,
+            earliestDataMs = earliestDataTimestamp,
+            predictionHorizonMs = if (hasPredictionOverlay && resolvedPredictionHorizonMinutes > 0) {
+                resolvedPredictionHorizonMinutes * 60_000L
+            } else {
+                null
+            }
+        )
+    )
+
+    /** Every move of the window goes through here; see [ChartViewportLimits]. */
+    fun clampCenterTime(center: Long, durationMillis: Long = visibleDuration): Long =
+        viewportLimits.clampCenter(center, durationMillis, System.currentTimeMillis())
+
+    fun maxAllowedCenterTime(durationMillis: Long): Long =
+        viewportLimits.maxCenter(durationMillis, System.currentTimeMillis())
+
+    /** Sets the window's duration and keeps its center inside the bounds for it. */
+    fun setVisibleDurationClamped(durationMillis: Long) {
+        visibleDuration = durationMillis
+        centerTime = clampCenterTime(centerTime, durationMillis)
     }
 
-    val maxAllowedTime = maxAllowedCenterTime(visibleDuration)
+    /** Where the live view puts the window, inside the bounds. */
+    fun clampedLiveCenterTimeFor(latestTimestamp: Long, durationMillis: Long): Long =
+        clampCenterTime(liveCenterTimeFor(latestTimestamp, durationMillis), durationMillis)
 
     fun isViewportAtLiveEdge(durationMillis: Long): Boolean {
         val latestOrNow = latestDataTimestamp.takeIf { it > 0L } ?: System.currentTimeMillis()
@@ -1282,7 +1317,7 @@ fun InteractiveGlucoseChart(
             liveCenterTimeFor(latestOrNow, durationMillis)
         } else {
             centerTime
-        }.coerceAtMost(maxAllowedCenterTime(durationMillis))
+        }.let { clampCenterTime(it, durationMillis) }
 
         visibleDuration = durationMillis
         centerTime = targetCenter
@@ -1311,9 +1346,9 @@ fun InteractiveGlucoseChart(
                     visibleDuration = (currentSelectedTimeRange?.hours?.toLong() ?: 3L) * 60 * 60 * 1000
                     val latestTimestamp = currentLatestDataTimestamp
                     val targetCenter = if (latestTimestamp > 0L) {
-                        liveCenterTimeFor(latestTimestamp, visibleDuration)
+                        clampedLiveCenterTimeFor(latestTimestamp, visibleDuration)
                     } else {
-                        currentTime - visibleDuration / 2
+                        clampCenterTime(currentTime - visibleDuration / 2)
                     }
                     centerTime = targetCenter
                     previewCenterTime = previewCenterTimeForWindowEnd(targetCenter + visibleDuration / 2L)
@@ -1348,7 +1383,7 @@ fun InteractiveGlucoseChart(
         val switchedToOlderSeries = lastAutoScrolledTimestamp > 0L && latestDataTimestamp + 60_000L < lastAutoScrolledTimestamp
 
         if (lastAutoScrolledTimestamp == 0L || switchedToOlderSeries) {
-            val targetCenter = liveCenterTimeFor(latestDataTimestamp, visibleDuration)
+            val targetCenter = clampedLiveCenterTimeFor(latestDataTimestamp, visibleDuration)
             centerTime = targetCenter
             previewCenterTime = previewCenterTimeForWindowEnd(targetCenter + visibleDuration / 2L)
             lastAutoScrolledTimestamp = latestDataTimestamp
@@ -1361,7 +1396,7 @@ fun InteractiveGlucoseChart(
         }
         val currentEnd = centerTime + visibleDuration / 2
         if (abs(currentEnd - latestDataTimestamp) < 75L * 60L * 1000L) {
-            val targetCenter = liveCenterTimeFor(latestDataTimestamp, visibleDuration)
+            val targetCenter = clampedLiveCenterTimeFor(latestDataTimestamp, visibleDuration)
             centerTime = targetCenter
             previewCenterTime = previewCenterTimeForWindowEnd(targetCenter + visibleDuration / 2L)
         }
@@ -1393,7 +1428,7 @@ fun InteractiveGlucoseChart(
 
             if (!isResumed) {
                 if (isMonitoring) {
-                    val targetCenter = liveCenterTimeFor(latestDataTimestamp, visibleDuration)
+                    val targetCenter = clampedLiveCenterTimeFor(latestDataTimestamp, visibleDuration)
                     centerTime = targetCenter
                     previewCenterTime = previewCenterTimeForWindowEnd(targetCenter + visibleDuration / 2L)
                 }
@@ -1406,7 +1441,7 @@ fun InteractiveGlucoseChart(
 
             // Keep monitoring users on live data, but preserve viewport when they were browsing history.
             if (isMonitoring) {
-                val targetCenter = liveCenterTimeFor(latestDataTimestamp, visibleDuration)
+                val targetCenter = clampedLiveCenterTimeFor(latestDataTimestamp, visibleDuration)
                 centerTime = targetCenter
                 previewCenterTime = previewCenterTimeForWindowEnd(targetCenter + visibleDuration / 2L)
             }
@@ -1432,7 +1467,7 @@ fun InteractiveGlucoseChart(
             val isMonitoring = lastAutoScrolledTimestamp == 0L || dist < 60 * 60 * 1000L
             if (!isMonitoring) continue
 
-            val targetCenter = liveCenterTimeFor(latestDataTimestamp, visibleDuration)
+            val targetCenter = clampedLiveCenterTimeFor(latestDataTimestamp, visibleDuration)
             // Only advance forward, never rewind (avoids fighting other effects).
             if (targetCenter > centerTime) {
                 centerTime = targetCenter
@@ -1631,21 +1666,22 @@ fun InteractiveGlucoseChart(
         autoScrollJob = null
     }
 
-    fun startAutoScrollTo(targetTime: Long) {
+    fun startAutoScrollTo(requestedTargetTime: Long) {
         cancelAutoScroll()
         val maxScroll = 12 * 60 * 60 * 1000L
+        val targetTime = clampCenterTime(requestedTargetTime)
         val job = coroutineScope.launch {
             val diff = targetTime - centerTime
             var startScroll = centerTime
             if (abs(diff) > maxScroll) {
                 startScroll = targetTime - (if (diff > 0) maxScroll else -maxScroll)
-                centerTime = startScroll
+                centerTime = clampCenterTime(startScroll)
             }
             androidx.compose.animation.core.Animatable(startScroll.toFloat()).animateTo(
                 targetValue = targetTime.toFloat(),
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
             ) {
-                centerTime = value.toLong()
+                centerTime = clampCenterTime(value.toLong())
             }
         }
         autoScrollJob = job
@@ -1739,10 +1775,10 @@ fun InteractiveGlucoseChart(
     // The pointerInput lambda below is keyed on previewWindowReservedIntPx and otherwise
     // long-lived, so it would otherwise capture these as stale snapshots — when the
     // prediction horizon, zoom level, or expansion progress change, gesture clamping
-    // (maxAllowedTime) and useful-width math would keep using the values from the
-    // composition that started the gesture coroutine. With predictive simulation enabled
-    // that desynced clamp pulls centerTime back to the old bound after zoom or back-to-now.
-    val currentMaxAllowedTime by rememberUpdatedState(maxAllowedTime)
+    // and useful-width math would keep using the values from the composition that
+    // started the gesture coroutine. With predictive simulation enabled that desynced
+    // clamp pulls centerTime back to the old bound after zoom or back-to-now. The
+    // clamp itself reads viewportLimits, which is held the same way.
     val currentHasPredictionOverlay by rememberUpdatedState(hasPredictionOverlay)
     val currentSafeExpandedProgress by rememberUpdatedState(safeExpandedProgress)
 
@@ -1750,7 +1786,7 @@ fun InteractiveGlucoseChart(
         if (!deltaX.isFinite() || widthPx <= 0f) return
         val timePerPixel = visibleDuration.toFloat() / widthPx
         val timeDelta = -(deltaX * timePerPixel).toLong()
-        centerTime = (centerTime + timeDelta).coerceAtMost(currentMaxAllowedTime)
+        centerTime = clampCenterTime(centerTime + timeDelta)
     }
 
     // --- DATA HELPER (Fixed Interpolation) ---
@@ -1925,8 +1961,8 @@ fun InteractiveGlucoseChart(
                                     val fraction = (localX / previewSafeWidth).coerceIn(0f, 1f)
                                     val targetCenter =
                                         (gesturePreviewStart + (previewDuration * fraction)).toLong()
-                                    val maxAllowed = currentMaxAllowedTime
-                                    centerTime = targetCenter.coerceAtMost(maxAllowed)
+                                    val maxAllowed = maxAllowedCenterTime(visibleDuration)
+                                    centerTime = clampCenterTime(targetCenter)
                                     previewCenterTime = adjustedPreviewCenter(
                                         centerTime,
                                         gestureStartPreviewCenter
@@ -1966,11 +2002,8 @@ fun InteractiveGlucoseChart(
                                         val totalDeltaX = localX - downLocalX
                                         val totalDeltaMs =
                                             ((totalDeltaX / previewSafeWidth) * previewDuration.toFloat()).toLong()
-                                        val maxAllowed = currentMaxAllowedTime
-                                        centerTime =
-                                            (gestureStartCenter + totalDeltaMs).coerceAtMost(
-                                                maxAllowed
-                                            )
+                                        val maxAllowed = maxAllowedCenterTime(visibleDuration)
+                                        centerTime = clampCenterTime(gestureStartCenter + totalDeltaMs)
                                         previewCenterTime = adjustedPreviewCenter(
                                             centerTime,
                                             gestureStartPreviewCenter
@@ -2159,8 +2192,7 @@ fun InteractiveGlucoseChart(
                                         val zoomFactor = kotlin.math.exp(-panY * zoomSensitivity)
 
                                         val newDuration = (visibleDuration * zoomFactor).toLong()
-                                        visibleDuration =
-                                            newDuration.coerceIn(minDuration, maxDuration)
+                                        setVisibleDurationClamped(newDuration.coerceIn(minDuration, maxDuration))
                                         totalDragDistance += abs(panY) // Mark as dragged, not tap
                                     }
                                     newChange.consume()
@@ -2174,8 +2206,7 @@ fun InteractiveGlucoseChart(
                                     if (zoomChange != 1f) {
                                         val effectiveZoom = 1f + (zoomChange - 1f) * 2.0f
                                         val newDuration = (visibleDuration / effectiveZoom).toLong()
-                                        visibleDuration =
-                                            newDuration.coerceIn(minDuration, maxDuration)
+                                        setVisibleDurationClamped(newDuration.coerceIn(minDuration, maxDuration))
                                     }
                                     event.changes.forEach { it.consume() }
                                 } else {
@@ -2234,7 +2265,8 @@ fun InteractiveGlucoseChart(
                                                 totalDragY = accumulatedPanY,
                                                 chartHeight = contentHeight,
                                                 adjustsMax = yGestureAdjustsMax,
-                                                minimumSpan = minYAxisSpan
+                                                minimumSpan = minYAxisSpan,
+                                                maximumMax = manualChartYMaxCap(isMmol)
                                             )
                                             baselineYMin = manualRange.min
                                             baselineYMax = manualRange.max
@@ -2264,12 +2296,13 @@ fun InteractiveGlucoseChart(
                                         cancelPendingTimelineTap()
                                         // DOUBLE TAP TOGGLE ZOOM
                                         if (preZoomDuration > 0) {
-                                            visibleDuration = preZoomDuration
+                                            setVisibleDurationClamped(preZoomDuration)
                                             preZoomDuration = 0L
                                         } else {
                                             preZoomDuration = visibleDuration
-                                            visibleDuration = (visibleDuration / 2f).toLong()
-                                                .coerceIn(minDuration, maxDuration)
+                                            setVisibleDurationClamped(
+                                                (visibleDuration / 2f).toLong().coerceIn(minDuration, maxDuration)
+                                            )
                                         }
                                     } else {
                                         // SINGLE TAP (Selection)
@@ -2334,10 +2367,7 @@ fun InteractiveGlucoseChart(
                                                     )
                                                 val tPerPix =
                                                     visibleDuration.toFloat() / usefulWidth
-                                                centerTime =
-                                                    (centerTime + (delta * tPerPix).toLong()).coerceAtMost(
-                                                        currentMaxAllowedTime
-                                                    )
+                                                centerTime = clampCenterTime(centerTime + (delta * tPerPix).toLong())
                                                 lastVal = this.value
                                             }
                                         }
@@ -2688,6 +2718,13 @@ fun InteractiveGlucoseChart(
                         tGrid += gridInterval
                     }
                 }
+
+                // Everything from here to the min/max labels, and again from the target
+                // band to the cursor, is data: clipped to the plot, so a value off the
+                // y range cannot paint over the time labels, the preview strip or the
+                // range picker below (or the screen above). Grid labels stay outside.
+                drawContext.canvas.save()
+                drawContext.canvas.clipRect(0f, 0f, width, chartHeight)
 
                 // --- PEER LINES (from the resolved model) ---
                 if (chartModel.peers.isNotEmpty()) {
@@ -3098,6 +3135,8 @@ fun InteractiveGlucoseChart(
                     }
                 }
 
+                drawContext.canvas.restore()
+
                 // --- 4. MIN/MAX INDICATORS (Restored & Optimized) ---
                 if (endIdx > startIdx) {
                     var minPoint = renderData[startIdx]
@@ -3159,6 +3198,8 @@ fun InteractiveGlucoseChart(
                     if (minVal < Float.MAX_VALUE && minVal != maxVal) drawIndicator(minPoint, minVal)
                 }
 
+                drawContext.canvas.save()
+                drawContext.canvas.clipRect(0f, 0f, width, chartHeight)
                 // --- 5. TARGET RANGE ---
                 val yHigh = valToY(targetHigh)
                 val yLow = valToY(targetLow)
@@ -3433,6 +3474,7 @@ fun InteractiveGlucoseChart(
                         }
                     }
                 }
+                drawContext.canvas.restore()
                 } finally { android.os.Trace.endSection() }
             }
 
@@ -4800,7 +4842,7 @@ fun InteractiveGlucoseChart(
         val density = LocalDensity.current
         val items = TimeRange.values()
         val now = System.currentTimeMillis()
-        val targetTime = liveCenterTimeFor(latestDataTimestamp.takeIf { it > 0L } ?: now, visibleDuration)
+        val targetTime = clampedLiveCenterTimeFor(latestDataTimestamp.takeIf { it > 0L } ?: now, visibleDuration)
         val isAtNow = abs(centerTime - targetTime) < 60 * 60 * 1000 // 1 hour threshold (Old behavior)
         val showBackToNow = !isAtNow
         val isScrolledRight = centerTime > targetTime
@@ -4849,17 +4891,55 @@ fun InteractiveGlucoseChart(
                 .zIndex(1f),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // With an owner that resizes the chart, the handle is a drag target, wider than
+            // it looks and always shown; without one it only fades in as the chart grows.
+            val handleDraggable = onExpansionHandleDrag != null
+            val currentOnHandleDrag by rememberUpdatedState(onExpansionHandleDrag)
+            val currentOnHandleDragStopped by rememberUpdatedState(onExpansionHandleDragStopped)
             Box(
                 modifier = Modifier
-                    .padding(bottom = 8.dp * safeExpandedProgress)
-                    .width(32.dp)
-                    .height(4.dp * safeExpandedProgress)
-                    .graphicsLayer { alpha = chartBoostProgress }
-                    .background(
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        shape = RoundedCornerShape(2.dp)
-                    )
-            )
+                    .width(if (handleDraggable) 96.dp else 32.dp)
+                    .height(12.dp * safeExpandedProgress)
+                    .then(
+                        if (handleDraggable) {
+                            Modifier.pointerInput(Unit) {
+                                // Tracked on the summed drag, not on local positions: the
+                                // handle moves with the chart it resizes.
+                                val handleVelocity = VelocityTracker()
+                                var draggedY = 0f
+                                detectVerticalDragGestures(
+                                    onDragStart = {
+                                        handleVelocity.resetTracking()
+                                        draggedY = 0f
+                                    },
+                                    onDragEnd = {
+                                        currentOnHandleDragStopped?.invoke(handleVelocity.calculateVelocity().y)
+                                    },
+                                    onDragCancel = { currentOnHandleDragStopped?.invoke(0f) }
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    draggedY += dragAmount
+                                    handleVelocity.addPosition(change.uptimeMillis, Offset(0f, draggedY))
+                                    currentOnHandleDrag?.invoke(dragAmount)
+                                }
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(32.dp)
+                        .height(4.dp * safeExpandedProgress)
+                        .graphicsLayer { alpha = if (handleDraggable) 1f else chartBoostProgress }
+                        .background(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(2.dp)
+                        )
+                )
+            }
 
             BoxWithConstraints(
                 modifier = Modifier
@@ -5109,7 +5189,7 @@ fun InteractiveGlucoseChart(
                             performSubtleTick()
                             markProgrammaticViewportChange()
                             cancelAutoScroll()
-                            centerTime = selectedDate + (12 * 60 * 60 * 1000) // Center on noon of selected day
+                            centerTime = clampCenterTime(selectedDate + (12 * 60 * 60 * 1000)) // Center on noon of selected day
                         }
                         showDatePicker = false
                     }

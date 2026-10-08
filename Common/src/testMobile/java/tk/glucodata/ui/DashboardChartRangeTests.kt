@@ -51,6 +51,67 @@ class DashboardChartRangeTests {
     }
 
     @Test
+    fun manualRangeTopStopsAtTheCap() {
+        val range = manuallyAdjustedChartYRange(
+            startMin = 0f,
+            startMax = 20f,
+            totalDragY = 400f,
+            chartHeight = 500f,
+            adjustsMax = true,
+            minimumSpan = 6f,
+            maximumMax = manualChartYMaxCap(isMmol = true)
+        )
+
+        assertEquals(0f, range.min, 0.001f)
+        assertEquals(22f, range.max, 0.001f)
+    }
+
+    @Test
+    fun manualRangeCapsAnAutoExpandedTopWhenTheBottomMoves() {
+        val range = manuallyAdjustedChartYRange(
+            startMin = 0f,
+            startMax = 450f,
+            totalDragY = 50f,
+            chartHeight = 500f,
+            adjustsMax = false,
+            minimumSpan = 108f,
+            maximumMax = manualChartYMaxCap(isMmol = false)
+        )
+
+        assertEquals(400f, range.max, 0.001f)
+        assertEquals(90f, range.min, 0.001f)
+    }
+
+    @Test
+    fun manualRangeKeepsTheMinimumSpanUnderTheCap() {
+        val range = manuallyAdjustedChartYRange(
+            startMin = 19f,
+            startMax = 25f,
+            totalDragY = 100f,
+            chartHeight = 500f,
+            adjustsMax = true,
+            minimumSpan = 6f,
+            maximumMax = 22f
+        )
+
+        assertEquals(22f, range.max, 0.001f)
+        assertEquals(16f, range.min, 0.001f)
+    }
+
+    @Test
+    fun autoRangeMayStillExceedTheCapForAReadingAboveIt() {
+        val range = autoExpandedChartYRange(
+            baselineMin = 0f,
+            baselineMax = manualChartYMaxCap(isMmol = true),
+            visibleMin = 5f,
+            visibleMax = 24f,
+            isMmol = true
+        )
+
+        assertEquals(25f, range.max, 0.001f)
+    }
+
+    @Test
     fun autoRangeKeepsBaselineWhileVisibleValuesAreInsideIt() {
         val range = autoExpandedChartYRange(
             baselineMin = 0f,
