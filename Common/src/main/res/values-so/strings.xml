@@ -3095,4 +3095,6 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Ma akhriyo shaashadda.</string>
     <string name="floating_mirrored">Rog qaabka</string>
     <string name="floating_mirrored_desc">Fallaarta marka hore, kadibna qiimaha</string>
+    <string name="status_bar_icon_colored_title">Astaanta baararka xaaladda oo midab leh</string>
+    <string name="status_bar_icon_colored_desc">Waxay ku sawirtaa qiimaha baararka xaaladda midabka xadkiisa</string>
 </resources>

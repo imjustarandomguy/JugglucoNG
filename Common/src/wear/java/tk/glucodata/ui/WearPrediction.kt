@@ -4,7 +4,7 @@ import android.content.Context
 import tk.glucodata.Applic
 import tk.glucodata.GlucosePoint
 import tk.glucodata.GlucoseRangeColors
-import tk.glucodata.Natives
+import tk.glucodata.GlucoseRanges
 import tk.glucodata.WearJournalSync
 import tk.glucodata.data.prediction.GlucosePredictionKernel
 import tk.glucodata.data.prediction.GlucosePredictionPoint
@@ -126,10 +126,12 @@ object WearPrediction {
             return delta
         }
 
-        val thresholdLow = runCatching { Natives.targetlow() }.getOrNull()
-            ?.takeIf { it.isFinite() && it > 0f } ?: GlucoseRangeColors.defaultLow(isMmol)
-        val thresholdHigh = runCatching { Natives.targethigh() }.getOrNull()
-            ?.takeIf { it.isFinite() && it > thresholdLow } ?: GlucoseRangeColors.defaultHigh(isMmol)
+        // The phone's target range, so the simulation is the phone's own.
+        val ranges = GlucoseRanges.current(isMmol)
+        val thresholdLow = ranges.targetLow
+            .takeIf { it.isFinite() && it > 0f } ?: GlucoseRangeColors.defaultLow(isMmol)
+        val thresholdHigh = ranges.targetHigh
+            .takeIf { it.isFinite() && it > thresholdLow } ?: GlucoseRangeColors.defaultHigh(isMmol)
 
         return GlucosePredictionKernel.simulate(
             history = lane,

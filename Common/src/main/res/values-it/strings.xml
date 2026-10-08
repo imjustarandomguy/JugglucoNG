@@ -2900,4 +2900,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
     <string name="floating_mirrored">Layout speculare</string>
     <string name="floating_mirrored_desc">Prima la freccia, poi il valore</string>
+    <string name="status_bar_icon_colored_title">Icona della barra di stato colorata</string>
+    <string name="status_bar_icon_colored_desc">Disegna il valore nella barra di stato con il colore del suo intervallo</string>
 </resources>

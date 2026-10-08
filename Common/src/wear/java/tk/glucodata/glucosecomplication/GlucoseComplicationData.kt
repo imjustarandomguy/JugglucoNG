@@ -15,7 +15,7 @@ import tk.glucodata.Applic
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.DisplayTrendSource
 import tk.glucodata.GlucoseRangeColors
-import tk.glucodata.Natives
+import tk.glucodata.GlucoseRanges
 import tk.glucodata.Notify
 import tk.glucodata.R
 import kotlin.math.max
@@ -227,20 +227,15 @@ internal object GlucoseComplicationData {
     }
 
     private fun thresholds(isMmol: Boolean): Thresholds {
-        val defaultLow = GlucoseRangeColors.defaultLow(isMmol)
         val defaultHigh = GlucoseRangeColors.defaultHigh(isMmol)
         val defaultVeryLow = GlucoseRangeColors.defaultVeryLow(isMmol)
         val defaultVeryHigh = GlucoseRangeColors.defaultVeryHigh(isMmol)
-        var low = defaultLow
-        var high = defaultHigh
-        var veryLow = defaultVeryLow
-        var veryHigh = defaultVeryHigh
-        runCatching {
-            Natives.targetlow().takeIf { it.isFinite() && it > 0.0f }?.let { low = it }
-            Natives.targethigh().takeIf { it.isFinite() && it > 0.0f }?.let { high = it }
-            Natives.alarmverylow().takeIf { it.isFinite() && it > 0.0f }?.let { veryLow = it }
-            Natives.alarmveryhigh().takeIf { it.isFinite() && it > 0.0f }?.let { veryHigh = it }
-        }
+        // The phone's ranges, as every other watch surface cuts its bands.
+        val ranges = GlucoseRanges.current(isMmol).orDefaults()
+        val low = ranges.targetLow
+        var high = ranges.targetHigh
+        var veryLow = ranges.veryLow
+        var veryHigh = ranges.veryHigh
         if (high <= low) {
             high = max(defaultHigh, low + 0.1f)
         }

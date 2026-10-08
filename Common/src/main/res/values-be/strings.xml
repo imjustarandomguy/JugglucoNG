@@ -2985,4 +2985,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Не чытае экран.</string>
     <string name="floating_mirrored">Люстраны макет</string>
     <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне</string>
+    <string name="status_bar_icon_colored_title">Каляровы значок у радку стану</string>
+    <string name="status_bar_icon_colored_desc">Маляваць значэнне ў радку стану колерам дыяпазону</string>
 </resources>

@@ -870,6 +870,13 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
                 Log.stack(LOG_ID, "onResume wakestream", th);
             }
         }
+        if (!Applic.isWearable && Applic.Nativesloaded) {
+            // Home-screen widgets redraw only on a glucose update broadcast, and the
+            // notification refresh above deliberately sends none, so opening the app
+            // (or tapping a widget, which just opens it) left a widget that had
+            // fallen behind as it was.
+            GlucoseUpdateBroadcaster.send(this);
+        }
         return;
     }
 

@@ -62,8 +62,8 @@ import tk.glucodata.CalibrationAccess
 import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.GlucosePoint
 import tk.glucodata.GlucoseRangeColors
+import tk.glucodata.GlucoseRanges
 import tk.glucodata.GlucoseValuePlausibility
-import tk.glucodata.Natives
 import tk.glucodata.R
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.ui.WearGlucoseStore
@@ -120,15 +120,10 @@ internal data class WearChartData(
     val peers: List<WearPeerSeries> = emptyList(),
 )
 
+// The phone's ranges, so the chart bands match the phone's and the readouts'.
 private fun thresholds(isMmol: Boolean): ChartThresholds {
-    fun nativeOrDefault(value: () -> Float, fallback: Float) =
-        runCatching(value).getOrNull()?.takeIf { it.isFinite() && it > 0f } ?: fallback
-    return ChartThresholds(
-        nativeOrDefault(Natives::targetlow, GlucoseRangeColors.defaultLow(isMmol)),
-        nativeOrDefault(Natives::targethigh, GlucoseRangeColors.defaultHigh(isMmol)),
-        nativeOrDefault(Natives::alarmverylow, GlucoseRangeColors.defaultVeryLow(isMmol)),
-        nativeOrDefault(Natives::alarmveryhigh, GlucoseRangeColors.defaultVeryHigh(isMmol)),
-    )
+    val ranges = GlucoseRanges.current(isMmol).orDefaults()
+    return ChartThresholds(ranges.targetLow, ranges.targetHigh, ranges.veryLow, ranges.veryHigh)
 }
 
 /**

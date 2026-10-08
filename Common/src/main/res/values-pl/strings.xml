@@ -2952,4 +2952,6 @@
     <string name="floating_accessibility_service_desc">Pozwala dotykać pływającej glukozy nad paskiem stanu. Nie odczytuje ekranu.</string>
     <string name="floating_mirrored">Odwróć układ</string>
     <string name="floating_mirrored_desc">Najpierw strzałka, potem wartość</string>
+    <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu</string>
 </resources>

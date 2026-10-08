@@ -2916,4 +2916,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Permet de toucher le glucose flottant au-dessus de la barre d\'état. Ne lit pas l\'écran.</string>
     <string name="floating_mirrored">Disposition inversée</string>
     <string name="floating_mirrored_desc">Flèche d\'abord, puis la valeur</string>
+    <string name="status_bar_icon_colored_title">Icône de barre d\'état colorée</string>
+    <string name="status_bar_icon_colored_desc">Affiche la valeur de la barre d\'état dans la couleur de sa plage</string>
 </resources>

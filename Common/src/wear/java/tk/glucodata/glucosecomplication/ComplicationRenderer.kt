@@ -10,8 +10,8 @@ import androidx.compose.ui.graphics.toArgb
 import tk.glucodata.Applic
 import tk.glucodata.GlucosePoint
 import tk.glucodata.GlucoseRangeColors
+import tk.glucodata.GlucoseRanges
 import tk.glucodata.GlucoseValueTone
-import tk.glucodata.Natives
 import tk.glucodata.NotificationHistorySource
 import tk.glucodata.TrendArrowAngle
 import kotlin.math.abs
@@ -74,35 +74,41 @@ internal object ComplicationRenderer {
 
     fun isMmol(): Boolean = runCatching { Applic.unit == 1 }.getOrDefault(false)
 
-    private fun threshold(source: () -> Float, fallback: Float): Float =
-        runCatching(source).getOrNull()?.takeIf { it.isFinite() && it > 0f } ?: fallback
+    /** Where the bands are cut: the phone's ranges, as the watch's own readouts use them. */
+    private fun ranges(isMmol: Boolean): GlucoseRanges.Ranges = GlucoseRanges.current(isMmol).orDefaults()
 
     /**
      * Colour for a value: neutral unless the user asked for range colouring,
      * exactly as the watch's own readouts decide it.
      */
-    fun valueColor(value: Float, isMmol: Boolean): Int = GlucoseValueTone.valueColorArgb(
-        value = value,
-        isDark = DARK,
-        isMmol = isMmol,
-        targetLow = threshold(Natives::targetlow, GlucoseRangeColors.defaultLow(isMmol)),
-        targetHigh = threshold(Natives::targethigh, GlucoseRangeColors.defaultHigh(isMmol)),
-        veryLowThreshold = threshold(Natives::alarmverylow, GlucoseRangeColors.defaultVeryLow(isMmol)),
-        veryHighThreshold = threshold(Natives::alarmveryhigh, GlucoseRangeColors.defaultVeryHigh(isMmol)),
-        fallbackArgb = neutral(),
-    )
+    fun valueColor(value: Float, isMmol: Boolean): Int {
+        val ranges = ranges(isMmol)
+        return GlucoseValueTone.valueColorArgb(
+            value = value,
+            isDark = DARK,
+            isMmol = isMmol,
+            targetLow = ranges.targetLow,
+            targetHigh = ranges.targetHigh,
+            veryLowThreshold = ranges.veryLow,
+            veryHighThreshold = ranges.veryHigh,
+            fallbackArgb = neutral(),
+        )
+    }
 
     /** Band colour for a value, or the neutral tone while it is in range. */
-    fun bandColor(value: Float, isMmol: Boolean): Int = GlucoseRangeColors.colorForValue(
-        value,
-        threshold(Natives::targetlow, GlucoseRangeColors.defaultLow(isMmol)),
-        threshold(Natives::targethigh, GlucoseRangeColors.defaultHigh(isMmol)),
-        threshold(Natives::alarmverylow, GlucoseRangeColors.defaultVeryLow(isMmol)),
-        threshold(Natives::alarmveryhigh, GlucoseRangeColors.defaultVeryHigh(isMmol)),
-        neutral(),
-        DARK,
-        isMmol,
-    )
+    fun bandColor(value: Float, isMmol: Boolean): Int {
+        val ranges = ranges(isMmol)
+        return GlucoseRangeColors.colorForValue(
+            value,
+            ranges.targetLow,
+            ranges.targetHigh,
+            ranges.veryLow,
+            ranges.veryHigh,
+            neutral(),
+            DARK,
+            isMmol,
+        )
+    }
 
     private fun bitmap(width: Int, height: Int): Pair<Bitmap, Canvas> {
         val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -623,8 +629,9 @@ internal object ComplicationRenderer {
         bandBleed: FloatArray = FloatArray(4),
     ) {
         if (points.size < 2 || width <= 0f || height <= 0f) return
-        val low = threshold(Natives::targetlow, GlucoseRangeColors.defaultLow(isMmol))
-        val high = threshold(Natives::targethigh, GlucoseRangeColors.defaultHigh(isMmol))
+        val ranges = ranges(isMmol)
+        val low = ranges.targetLow
+        val high = ranges.targetHigh
 
         // The app's own chart numbers, not approximations of them: fit to the
         // data, but never to a span narrower than MIN_SPAN, or a calm hour of
@@ -674,8 +681,8 @@ internal object ComplicationRenderer {
         // matters — came out plain white beside a tinted one in the app. The
         // gradient fades into a band before the line is crossed, so approaching
         // a limit already shows.
-        val veryLow = threshold(Natives::alarmverylow, GlucoseRangeColors.defaultVeryLow(isMmol))
-        val veryHigh = threshold(Natives::alarmveryhigh, GlucoseRangeColors.defaultVeryHigh(isMmol))
+        val veryLow = ranges.veryLow
+        val veryHigh = ranges.veryHigh
         val stops = tk.glucodata.ui.GlucoseChartBands.verticalStops(
             veryHigh = androidx.compose.ui.graphics.Color(GlucoseRangeColors.veryHigh(DARK)),
             high = androidx.compose.ui.graphics.Color(GlucoseRangeColors.high(DARK)),

@@ -2911,4 +2911,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Permite tocar na glicose flutuante sobre a barra de estado. Não lê o ecrã.</string>
     <string name="floating_mirrored">Inverter disposição</string>
     <string name="floating_mirrored_desc">Primeiro a seta, depois o valor</string>
+    <string name="status_bar_icon_colored_title">Ícone colorido na barra de status</string>
+    <string name="status_bar_icon_colored_desc">Desenha o valor na barra de status com a cor da faixa</string>
 </resources>

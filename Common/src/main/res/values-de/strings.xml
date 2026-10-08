@@ -3026,4 +3026,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest den Bildschirm nicht.</string>
     <string name="floating_mirrored">Layout spiegeln</string>
     <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert</string>
+    <string name="status_bar_icon_colored_title">Farbiges Statusleisten-Symbol</string>
+    <string name="status_bar_icon_colored_desc">Zeichnet den Wert in der Statusleiste in der Bereichsfarbe</string>
 </resources>

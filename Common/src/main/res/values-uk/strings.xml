@@ -2990,4 +2990,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Дає натискати плаваючу глюкозу над рядком стану. Не читає екран.</string>
     <string name="floating_mirrored">Дзеркальний макет</string>
     <string name="floating_mirrored_desc">Спершу стрілка, потім значення</string>
+    <string name="status_bar_icon_colored_title">Кольоровий значок у рядку стану</string>
+    <string name="status_bar_icon_colored_desc">Малює значення в рядку стану кольором діапазону</string>
 </resources>

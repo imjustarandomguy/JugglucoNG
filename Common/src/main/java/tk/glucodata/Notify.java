@@ -609,6 +609,8 @@ public class Notify {
         }
     }
 
+    public static final String PREF_STATUS_ICON_COLORED = "notification_status_icon_colored";
+
     private static final String NUMALARM = "MedicationReminder";
     private static final String GLUCOSEALARM = "glucoseAlarm";
     public static final String CHANNEL_LOW = "LOW";
@@ -1101,6 +1103,22 @@ public class Notify {
         if (fallbackStatus == null || fallbackStatus.startsWith("Status="))
             return "";
         return fallbackStatus;
+    }
+
+    /**
+     * Like {@link #resolveNotificationStatusText(String, String)}, but hides passive
+     * link states ("Searching for sensors", "Connecting…") while the displayed reading
+     * is younger than {@link #glucosetimeout}, so a sensor that connects only briefly
+     * per reading is not shown as searching between readings.
+     */
+    private static String resolveNotificationStatusText(String activeSensorSerial, String fallbackStatus,
+            long readingTimeMillis) {
+        final String status = resolveNotificationStatusText(activeSensorSerial, fallbackStatus);
+        if (readingTimeMillis > 0L
+                && System.currentTimeMillis() - readingTimeMillis < glucosetimeout
+                && ManagedSensorStatusPolicy.isPassiveSummaryStatus(status))
+            return "";
+        return status;
     }
 
     private static CurrentDisplaySource.Snapshot resolveNotificationCurrentSnapshot() {
@@ -3481,8 +3499,9 @@ public class Notify {
 
     private void setIcon(Notification.Builder GluNotBuilder, float glvalue, int sensorgen2,
             java.util.List<NotificationChartDrawer.ValueItem> peerValues) {
-        boolean hideIcon = Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
-                .getBoolean("notification_hide_status_icon", false);
+        final android.content.SharedPreferences prefs = Applic.app
+                .getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE);
+        boolean hideIcon = prefs.getBoolean("notification_hide_status_icon", false);
 
         if (hideIcon) {
             GluNotBuilder.setSmallIcon(R.drawable.transparent_icon);
@@ -3508,11 +3527,26 @@ public class Notify {
                     }
                 }
             }
-            final var icon = icons.getIcon(getglstring(glvalue, sensorgen2), peerTexts);
+            final var icon = icons.getIcon(getglstring(glvalue, sensorgen2), peerTexts,
+                    statusIconColor(prefs, glvalue));
             GluNotBuilder.setSmallIcon(icon);
         } else {
             var draw = GlucoseDraw.getgludraw(glvalue, sensorgen2);
             GluNotBuilder.setSmallIcon(draw);
+        }
+    }
+
+    /** White, or the value's range colour when the coloured status bar icon is on. */
+    private static int statusIconColor(android.content.SharedPreferences prefs, float glvalue) {
+        try {
+            if (!prefs.getBoolean(PREF_STATUS_ICON_COLORED, false))
+                return android.graphics.Color.WHITE;
+            return GlucoseRangeColors.trafficColorForValue(glvalue,
+                    Natives.targetlow(), Natives.targethigh(),
+                    Natives.alarmverylow(), Natives.alarmveryhigh(),
+                    /* darkTheme */ true, Applic.unit == 1, android.graphics.Color.WHITE);
+        } catch (Throwable th) {
+            return android.graphics.Color.WHITE;
         }
     }
 
@@ -4118,8 +4152,7 @@ public class Notify {
                 == android.content.res.Configuration.UI_MODE_NIGHT_YES;
         boolean showTargetRange = prefs.getBoolean("notification_chart_target_range", true);
 
-        // Optional GDH-style traffic coloring of the value (and arrow): green
-        // in target range, yellow up to the alarm bounds, red beyond.
+        // Optional coloring of the value (and arrow) in the color set for its range.
         if (prefs.getBoolean("glucose_value_range_colors_enabled", false)) {
             primaryDisplayColor = GlucoseRangeColors.trafficColorForValue(
                     displayGlucoseValue,
@@ -4167,7 +4200,8 @@ public class Notify {
                 ? NotificationChartDrawer.drawArrow(Applic.app, rate, isMmol, arrowColor, arrowSize)
                 : null;
 
-        String sensorStatusText = resolveNotificationStatusText(activeSensorSerial, statusText);
+        String sensorStatusText = resolveNotificationStatusText(activeSensorSerial, statusText,
+                fallbackDisplay != null ? fallbackDisplay.getTimeMillis() : 0L);
 
         // The status line carries the journal IOB/eIOB/COB (when enabled) and
         // the sensor status (gated by its own pref). IOB goes first — the

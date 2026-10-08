@@ -2910,4 +2910,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Gör det flytande glukosvärdet tryckbart över statusfältet. Läser inte skärmen.</string>
     <string name="floating_mirrored">Spegla layouten</string>
     <string name="floating_mirrored_desc">Pilen först, sedan värdet</string>
+    <string name="status_bar_icon_colored_title">Färgad statusfältsikon</string>
+    <string name="status_bar_icon_colored_desc">Ritar värdet i statusfältet i intervallets färg</string>
 </resources>
