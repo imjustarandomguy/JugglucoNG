@@ -262,6 +262,7 @@ object WidgetPresenter {
                 viewMode = data.viewMode,
                 hasCalibration = data.hasCalibration,
                 sensorSerial = data.sensorSerial,
+                style = data.chartStyle,
             )
         } else {
             null
