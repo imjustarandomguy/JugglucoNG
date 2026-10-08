@@ -1882,6 +1882,8 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="journal_reminders_desc">Uhrzeiten, zu denen diese Dosis fällig ist</string>
     <string name="journal_reminder_add">Uhrzeit hinzufügen</string>
     <string name="journal_reminder_remove">%1$s entfernen</string>
+    <string name="journal_reminders_not_shown">Benachrichtigungen für Insulin-Erinnerungen sind aus: Erinnerungen werden nicht angezeigt.</string>
+    <string name="journal_reminders_late">Exakte Wecker sind nicht erlaubt: Erinnerungen können einige Minuten zu spät kommen.</string>
     <string name="journal_log_action">Eintragen</string>
     <string name="journal_quick_log_insulin">Insulin eintragen</string>
     <string name="journal_quick_log_food">Essen eintragen</string>

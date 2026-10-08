@@ -1750,6 +1750,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Tider då dosen ska tas</string>
     <string name="journal_reminder_add">Lägg till tid</string>
     <string name="journal_reminder_remove">Ta bort %1$s</string>
+    <string name="journal_reminders_not_shown">Aviseringar för insulinpåminnelser är avstängda: påminnelser visas inte.</string>
+    <string name="journal_reminders_late">Exakta alarm är inte tillåtna: påminnelser kan komma några minuter sent.</string>
     <string name="journal_log_action">Logga</string>
     <string name="journal_quick_log_insulin">Logga insulin</string>
     <string name="journal_quick_log_food">Logga mat</string>

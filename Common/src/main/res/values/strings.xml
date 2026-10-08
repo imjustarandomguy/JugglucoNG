@@ -2258,6 +2258,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Times of day this dose is due</string>
     <string name="journal_reminder_add">Add time</string>
     <string name="journal_reminder_remove">Remove %1$s</string>
+    <string name="journal_reminders_not_shown">Notifications for insulin reminders are off: reminders will not show.</string>
+    <string name="journal_reminders_late">Exact alarms are not allowed: reminders may come a few minutes late.</string>
     <string name="journal_log_action">Log</string>
     <string name="journal_quick_log_insulin">Log insulin</string>
     <string name="journal_quick_log_food">Log food</string>

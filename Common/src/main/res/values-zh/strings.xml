@@ -1766,6 +1766,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">此剂量的注射时间</string>
     <string name="journal_reminder_add">添加时间</string>
     <string name="journal_reminder_remove">移除 %1$s</string>
+    <string name="journal_reminders_not_shown">胰岛素提醒的通知已关闭：提醒将不会显示。</string>
+    <string name="journal_reminders_late">未允许精确闹钟：提醒可能会晚几分钟。</string>
     <string name="journal_log_action">记录</string>
     <string name="journal_quick_log_insulin">记录胰岛素</string>
     <string name="journal_quick_log_food">记录食物</string>

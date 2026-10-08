@@ -1740,6 +1740,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Orari in cui è prevista questa dose</string>
     <string name="journal_reminder_add">Aggiungi orario</string>
     <string name="journal_reminder_remove">Rimuovi %1$s</string>
+    <string name="journal_reminders_not_shown">Le notifiche dei promemoria dell’insulina sono disattivate: i promemoria non verranno mostrati.</string>
+    <string name="journal_reminders_late">Le sveglie esatte non sono consentite: i promemoria possono arrivare con qualche minuto di ritardo.</string>
     <string name="journal_log_action">Registra</string>
     <string name="journal_quick_log_insulin">Registra insulina</string>
     <string name="journal_quick_log_food">Registra cibo</string>

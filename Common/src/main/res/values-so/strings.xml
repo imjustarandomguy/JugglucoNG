@@ -2016,6 +2016,8 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="journal_reminders_desc">Waqtiyada qiyaastan la qaato</string>
     <string name="journal_reminder_add">Ku dar waqti</string>
     <string name="journal_reminder_remove">Ka saar %1$s</string>
+    <string name="journal_reminders_not_shown">Ogeysiisyada xasuusinta insulinka waa dansan yihiin: xasuusinnadu ma muuqan doonaan.</string>
+    <string name="journal_reminders_late">Saacadaha saxda ah lama oggola: xasuusinnadu waxay iman karaan dhowr daqiiqo oo daahitaan ah.</string>
     <string name="journal_log_action">Diiwaangeli</string>
     <string name="journal_quick_log_insulin">Diiwaangeli insulin</string>
     <string name="journal_quick_log_food">Diiwaangeli cunto</string>

@@ -1825,6 +1825,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Час, коли треба ввести цю дозу</string>
     <string name="journal_reminder_add">Додати час</string>
     <string name="journal_reminder_remove">Видалити %1$s</string>
+    <string name="journal_reminders_not_shown">Сповіщення нагадувань про інсулін вимкнено: нагадування не показуватимуться.</string>
+    <string name="journal_reminders_late">Точні будильники заборонено: нагадування можуть надходити на кілька хвилин пізніше.</string>
     <string name="journal_log_action">Записати</string>
     <string name="journal_quick_log_insulin">Записати інсулін</string>
     <string name="journal_quick_log_food">Записати їжу</string>

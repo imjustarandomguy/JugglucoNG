@@ -1820,6 +1820,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Час, калі трэба ўвесці гэтую дозу</string>
     <string name="journal_reminder_add">Дадаць час</string>
     <string name="journal_reminder_remove">Выдаліць %1$s</string>
+    <string name="journal_reminders_not_shown">Апавяшчэнні напамінаў пра інсулін выключаны: напаміны не будуць паказвацца.</string>
+    <string name="journal_reminders_late">Дакладныя будзільнікі не дазволены: напаміны могуць спазняцца на некалькі хвілін.</string>
     <string name="journal_log_action">Запісаць</string>
     <string name="journal_quick_log_insulin">Запісаць інсулін</string>
     <string name="journal_quick_log_food">Запісаць ежу</string>

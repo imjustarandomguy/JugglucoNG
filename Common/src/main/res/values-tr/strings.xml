@@ -1778,6 +1778,8 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="journal_reminders_desc">Bu dozun alınacağı saatler</string>
     <string name="journal_reminder_add">Saat ekle</string>
     <string name="journal_reminder_remove">%1$s kaldır</string>
+    <string name="journal_reminders_not_shown">İnsülin hatırlatıcı bildirimleri kapalı: hatırlatıcılar gösterilmeyecek.</string>
+    <string name="journal_reminders_late">Tam zamanlı alarmlara izin verilmiyor: hatırlatıcılar birkaç dakika gecikebilir.</string>
     <string name="journal_log_action">Kaydet</string>
     <string name="journal_quick_log_insulin">İnsülin kaydet</string>
     <string name="journal_quick_log_food">Yiyecek kaydet</string>

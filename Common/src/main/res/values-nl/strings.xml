@@ -1793,6 +1793,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="journal_reminders_desc">Tijden waarop deze dosis gepland is</string>
     <string name="journal_reminder_add">Tijd toevoegen</string>
     <string name="journal_reminder_remove">%1$s verwijderen</string>
+    <string name="journal_reminders_not_shown">Meldingen voor insulineherinneringen staan uit: herinneringen worden niet getoond.</string>
+    <string name="journal_reminders_late">Exacte wekkers zijn niet toegestaan: herinneringen kunnen een paar minuten te laat komen.</string>
     <string name="journal_log_action">Invoeren</string>
     <string name="journal_quick_log_insulin">Insuline invoeren</string>
     <string name="journal_quick_log_food">Voeding invoeren</string>

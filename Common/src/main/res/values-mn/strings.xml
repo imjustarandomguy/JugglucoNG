@@ -1758,6 +1758,8 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="journal_reminders_desc">Энэ тунг хийх цагууд</string>
     <string name="journal_reminder_add">Цаг нэмэх</string>
     <string name="journal_reminder_remove">%1$s устгах</string>
+    <string name="journal_reminders_not_shown">Инсулины сануулгын мэдэгдэл унтраалттай: сануулга харагдахгүй.</string>
+    <string name="journal_reminders_late">Нарийн сэрүүлэг зөвшөөрөгдөөгүй: сануулга хэдэн минут хоцорч магадгүй.</string>
     <string name="journal_log_action">Бүртгэх</string>
     <string name="journal_quick_log_insulin">Инсулин бүртгэх</string>
     <string name="journal_quick_log_food">Хоол бүртгэх</string>

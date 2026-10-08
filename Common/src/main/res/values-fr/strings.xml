@@ -1756,6 +1756,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Heures auxquelles cette dose est due</string>
     <string name="journal_reminder_add">Ajouter une heure</string>
     <string name="journal_reminder_remove">Retirer %1$s</string>
+    <string name="journal_reminders_not_shown">Les notifications des rappels d’insuline sont désactivées : les rappels ne s’afficheront pas.</string>
+    <string name="journal_reminders_late">Les alarmes exactes ne sont pas autorisées : les rappels peuvent arriver avec quelques minutes de retard.</string>
     <string name="journal_log_action">Saisir</string>
     <string name="journal_quick_log_insulin">Saisir l’insuline</string>
     <string name="journal_quick_log_food">Saisir un aliment</string>

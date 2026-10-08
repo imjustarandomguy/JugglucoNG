@@ -1785,6 +1785,8 @@
     <string name="journal_reminders_desc">Godziny, o których należy podać tę dawkę</string>
     <string name="journal_reminder_add">Dodaj godzinę</string>
     <string name="journal_reminder_remove">Usuń %1$s</string>
+    <string name="journal_reminders_not_shown">Powiadomienia przypomnień o insulinie są wyłączone: przypomnienia nie będą wyświetlane.</string>
+    <string name="journal_reminders_late">Dokładne alarmy są niedozwolone: przypomnienia mogą przychodzić kilka minut później.</string>
     <string name="journal_log_action">Zapisz</string>
     <string name="journal_quick_log_insulin">Zapisz insulinę</string>
     <string name="journal_quick_log_food">Zapisz jedzenie</string>

@@ -1793,6 +1793,8 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="journal_reminders_desc">Время, когда нужно ввести эту дозу</string>
     <string name="journal_reminder_add">Добавить время</string>
     <string name="journal_reminder_remove">Удалить %1$s</string>
+    <string name="journal_reminders_not_shown">Уведомления напоминаний об инсулине выключены: напоминания не будут показаны.</string>
+    <string name="journal_reminders_late">Точные будильники не разрешены: напоминания могут приходить на несколько минут позже.</string>
     <string name="journal_log_action">Записать</string>
     <string name="journal_quick_log_insulin">Записать инсулин</string>
     <string name="journal_quick_log_food">Записать еду</string>
