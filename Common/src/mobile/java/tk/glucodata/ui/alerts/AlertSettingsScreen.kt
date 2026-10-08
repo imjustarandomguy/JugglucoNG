@@ -139,7 +139,7 @@ fun AlertSettingsScreen(
     }
 
     val lowAlerts = remember {
-        listOf(AlertType.LOW, AlertType.VERY_LOW)
+        listOf(AlertType.LOW, AlertType.VERY_LOW, AlertType.PERSISTENT_LOW)
     }
 
     val trendAlerts = remember {
@@ -1200,6 +1200,16 @@ private fun AlertSettingsExpanded(
                     }
                 }
 
+                // What the duration means in readings: the count is between reading
+                // times, so at the G7's 5-minute cadence it maps to whole readings.
+                if (config.type == AlertType.PERSISTENT_LOW) {
+                    Text(
+                        text = stringResource(R.string.persistent_low_explanation),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 // === Sensor-expiry pre-warnings (multi-select, this type only) ===
                 if (config.type == AlertType.SENSOR_EXPIRY) {
                     SensorExpiryThresholdSelector(
@@ -1220,10 +1230,13 @@ private fun AlertSettingsExpanded(
                 // margin is how far the measured value must recover before the episode
                 // ends and the alert may fire again; the interval (forecasts) is a hard
                 // floor between firings, whatever value and projection do.
+                // PERSISTENT_LOW: how far above the threshold a reading must be to
+                // restart its count.
                 val rearmMarginTypes = setOf(
                     AlertType.PRE_LOW, AlertType.PRE_HIGH,
                     AlertType.LOW, AlertType.HIGH,
-                    AlertType.VERY_LOW, AlertType.VERY_HIGH
+                    AlertType.VERY_LOW, AlertType.VERY_HIGH,
+                    AlertType.PERSISTENT_LOW
                 )
                 if (config.type in rearmMarginTypes) {
                     ThresholdSlider(
@@ -1279,6 +1292,21 @@ private fun AlertSettingsExpanded(
                                     }
                                 )
                             )
+                        }
+                    )
+                }
+                // The low-side mirror: a value climbing back out of a low (a
+                // compression dip ending) holds the alarm without restarting its
+                // count. Off by default: holding delays a due hypo alarm.
+                if (config.type == AlertType.PERSISTENT_LOW) {
+                    val riseRate = config.riseRateSuppress?.takeIf { it > 0f }
+                        ?: AlertDefaults.RISE_RATE_SUPPRESS_MGDL_PER_MIN
+                    ClickableToggleRow(
+                        title = stringResource(R.string.persistent_low_rise_hold_label),
+                        subtitle = formatRatePerMinute(riseRate, isMmol),
+                        checked = (config.riseRateSuppress ?: 0f) > 0f,
+                        onCheckedChange = { enabled ->
+                            onConfigChange(config.copy(riseRateSuppress = if (enabled) riseRate else 0f))
                         }
                     )
                 }
@@ -2062,6 +2090,7 @@ private fun getAlertIconAndColor(type: AlertType, isDark: Boolean): Pair<ImageVe
         AlertType.FALLING_FAST -> Icons.AutoMirrored.Filled.TrendingDown to Color(GlucoseRangeColors.veryLow(isDark))
         AlertType.RISING_FAST -> Icons.AutoMirrored.Filled.TrendingUp to Color(GlucoseRangeColors.veryHigh(isDark))
         AlertType.PERSISTENT_HIGH -> Icons.Default.Timer to Color(GlucoseRangeColors.veryHigh(isDark))
+        AlertType.PERSISTENT_LOW -> Icons.Default.Timer to Color(GlucoseRangeColors.veryLow(isDark))
         AlertType.MISSED_READING -> Icons.Default.SignalWifiOff to Color(0xFF78909C)
         AlertType.LOSS -> Icons.Default.BluetoothDisabled to Color(0xFF90A4AE)
         AlertType.SENSOR_EXPIRY -> Icons.Default.Schedule to Color(0xFF7E57C2)
@@ -2086,7 +2115,17 @@ private fun getThresholdRange(type: AlertType, isMmol: Boolean): ClosedFloatingP
         AlertType.PRE_LOW -> if (isMmol) 3f..7.0f else 63f..108f
         AlertType.PRE_HIGH -> if (isMmol) 5.0f..10.0f else 126f..252f
         AlertType.PERSISTENT_HIGH -> if (isMmol) 7.0f..15.0f else 126f..270f
+        AlertType.PERSISTENT_LOW -> if (isMmol) 3.0f..6.0f else 54f..108f
         else -> if (isMmol) 2.0f..20.0f else 36f..360f
+    }
+}
+
+/** "≥ 1 mg/dL/min" / "≥ 0.06 mmol/L/min": a rate kept in mg/dl per minute, shown in display units. */
+private fun formatRatePerMinute(mgdlPerMinute: Float, isMmol: Boolean): String {
+    return if (isMmol) {
+        String.format(java.util.Locale.getDefault(), "≥ %.2f mmol/L/min", mgdlPerMinute / 18.0182f)
+    } else {
+        String.format(java.util.Locale.getDefault(), "≥ %.0f mg/dL/min", mgdlPerMinute)
     }
 }
 

@@ -297,7 +297,9 @@ fun CommonAlertSettings(
                                         modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
                                         valueText = { seconds -> "$seconds ${stringResource(R.string.sec)}" }
                                     )
-                                    if (config.type == AlertType.LOW || config.type == AlertType.VERY_LOW) {
+                                    if (config.type == AlertType.LOW || config.type == AlertType.VERY_LOW ||
+                                        config.type == AlertType.PERSISTENT_LOW
+                                    ) {
                                         Row(
                                             modifier = Modifier.padding(horizontal = sectionHorizontalPadding),
                                             verticalAlignment = Alignment.CenterVertically,

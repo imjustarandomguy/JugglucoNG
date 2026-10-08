@@ -6,7 +6,7 @@ public final class AlertSoundDefaults {
 
     public static String cueFor(int type) {
         switch (type) {
-            case 0: return "low";
+            case 0: case 14: return "low";
             case 1: case 10: return "high";
             case 3: case 11: return "reminder";
             case 4: case 9: return "signal";

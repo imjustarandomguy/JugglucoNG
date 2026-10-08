@@ -831,6 +831,7 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="alert_loss">Дохио тасрах</string>
     <string name="alert_missed_reading">Уншилт тасрах</string>
     <string name="alert_persistent_high">Удаан хугацаанд өндөр байх</string>
+    <string name="alert_persistent_low">Удаан хугацаанд бага байх</string>
     <string name="alert_sensor_expiry">Мэдрэгчийн хугацаа дуусах</string>
     <string name="missed_reading_channel_description">Тохируулсан хугацаанд глюкозын уншилт ирэхгүй бол анхааруулна</string>
     <string name="sensor_expiry_channel_description">Одоогийн мэдрэгчийн хугацаа дуусахад дөхөхөд анхааруулна</string>
@@ -1133,6 +1134,8 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="tap_to_change">Дарж өөрчлөх</string>
     <string name="threshold_label">Босго</string>
     <string name="persistent_high_fall_suppress_label">Буурахад дуугүй</string>
+    <string name="persistent_low_rise_hold_label">Өсөхөд дуугүй</string>
+    <string name="persistent_low_explanation">Глюкоз энэ хугацаанд босгоос доош байвал дохио өгнө. 5 минут тутмын уншилттай (G7): 10 мин = дараалсан 3 уншилт, 15 мин = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Дууны түвшин/Чичиргээний профайл</string>
     <!-- Overlay/notification typography controls -->

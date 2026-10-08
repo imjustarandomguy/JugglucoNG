@@ -685,6 +685,8 @@
     <string name="tap_to_change">Натисніть, щоб змінити</string>
     <string name="threshold_label">Поріг</string>
     <string name="persistent_high_fall_suppress_label">Тихо при падінні</string>
+    <string name="persistent_low_rise_hold_label">Тихо при зростанні</string>
+    <string name="persistent_low_explanation">Спрацьовує, якщо глюкоза тримається нижче порогу стільки часу. При показах кожні 5 хв (G7): 10 хв = 3 покази поспіль, 15 хв = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Профіль гучності/вібрації</string>
     <string name="ICE">ICE</string>
@@ -721,6 +723,7 @@
     <string name="alert_missed_reading">Пропущене значення</string>
     <string name="alert_mode">Alert Mode</string>
     <string name="alert_persistent_high">Тривало високий</string>
+    <string name="alert_persistent_low">Тривало низький</string>
     <string name="alert_sensor_expiry">Завершення сенсора</string>
     <string name="missed_reading_channel_description">Alerts when no glucose reading arrives for the configured duration</string>
     <string name="sensor_expiry_channel_description">Alerts when the current sensor is nearing expiry</string>

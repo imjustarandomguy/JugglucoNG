@@ -904,6 +904,7 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="alert_loss">Signal lumay</string>
     <string name="alert_missed_reading">Akhris Seegtay</string>
     <string name="alert_persistent_high">Sare Joogto ah</string>
+    <string name="alert_persistent_low">Hoose Joogto ah</string>
     <string name="alert_sensor_expiry">Dareemuhu Dhacdo</string>
     <string name="missed_reading_channel_description">Ogeysiisyada marka akhriska gulukoosku aanu iman muddada la habeeyey</string>
     <string name="sensor_expiry_channel_description">Ogeysiis marka dareemaha hadda uu ku dhow yahay inuu dhaco</string>
@@ -1325,6 +1326,8 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="tap_to_change">Taabo si aad u bedesho</string>
     <string name="threshold_label">Xadka</string>
     <string name="persistent_high_fall_suppress_label">Aamus marka hoos u dhacayo</string>
+    <string name="persistent_low_rise_hold_label">Aamus marka kor u kacayo</string>
+    <string name="persistent_low_explanation">Wuu dhawaaqaa marka gulukoosku ka hooseeyo xadka muddadan. Akhrisyo 5-tii daqiiqo ah (G7): 10 daqiiqo = 3 akhris oo isku xiga, 15 daqiiqo = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Xogta Mugga/Gariirka</string>
 

@@ -765,6 +765,8 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="tap_to_change">Tik om te wijzigen</string>
     <string name="threshold_label">Drempel</string>
     <string name="persistent_high_fall_suppress_label">Stil bij daling</string>
+    <string name="persistent_low_rise_hold_label">Stil bij stijging</string>
+    <string name="persistent_low_explanation">Gaat af als de glucose zo lang onder de drempel blijft. Bij metingen om de 5 min (G7): 10 min = 3 metingen op rij, 15 min = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Volume-/trilprofiel</string>
     <string name="ICE">ICE</string>
@@ -802,6 +804,7 @@ Als je op OK drukt, wordt er een verbinding gemaakt op deze telefoon en wordt er
     <string name="alert_missed_reading">Gemiste meting</string>
     <string name="alert_mode">Alert Mode</string>
     <string name="alert_persistent_high">Aanhoudend hoog</string>
+    <string name="alert_persistent_low">Aanhoudend laag</string>
     <string name="alert_sensor_expiry">Sensor verloopt</string>
     <string name="missed_reading_channel_description">Alerts when no glucose reading arrives for the configured duration</string>
     <string name="sensor_expiry_channel_description">Alerts when the current sensor is nearing expiry</string>
