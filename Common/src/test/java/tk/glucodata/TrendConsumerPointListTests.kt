@@ -363,8 +363,150 @@ class TrendConsumerPointListTests {
             alertRate(rows, smoothingMinutes = 0),
             1e-6f
         )
-        // A live reading 30 s or more from every row is a reading of its own.
-        val later = DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTs + 30_000L, 6.2f, isMmol = true), null)
-        assertEquals(listOf(rows.last().timestamp, liveTs + 30_000L), later.takeLast(2).map { it.timestamp })
+        // On a five-minute series, a live reading under a minute from its row is that
+        // row's reading; a minute or more away, it is a reading of its own.
+        val same = DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTs + 30_000L, 6.2f, isMmol = true), null)
+        assertEquals(rows.map { it.timestamp }, same.map { it.timestamp })
+        val later = DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTs + 60_000L, 6.2f, isMmol = true), null)
+        assertEquals(listOf(rows.last().timestamp, liveTs + 60_000L), later.takeLast(2).map { it.timestamp })
+    }
+
+    // ---- One rule for "the same reading", on every cadence ----
+    //
+    // CurrentDisplaySource merges the live reading into the stored rows, then
+    // DisplayTrendSource.augmentHistory merges its snapshot into the same rows again for
+    // the trend. Both must agree on whether a row holds the live reading, or the reading
+    // is counted twice.
+
+    /** A one-minute sensor: [count] rows, oldest first, the newest at [newestTs], rising 1.5 mg/dL a minute. */
+    private fun oneMinuteRows(count: Int = 21): List<GlucosePoint> =
+        (count - 1 downTo 0).map { k -> GlucosePoint(newestTs - k * minute, 150f - 1.5f * k, 0f) }
+
+    /** The alert engine's rate for a live reading at [liveTime] over [rows]. */
+    private fun alertRateAt(rows: List<GlucosePoint>, liveTime: Long, liveValue: Float): Float {
+        val live = CurrentGlucoseSource.Snapshot.of(
+            reading = LiveReadingLanes.stock(liveValue, Float.NaN),
+            timeMillis = liveTime,
+            valueText = "",
+            rate = Float.NaN,
+            sensorId = serial,
+            sensorGen = 0,
+            index = 0,
+            source = "callback"
+        )
+        return requireNotNull(
+            CurrentDisplaySource.resolveSnapshot(
+                current = live,
+                recentPoints = rows,
+                historyStart = liveTime - DisplayTrendSource.TREND_WINDOW_MS,
+                viewMode = 0,
+                isMmol = false,
+                smoothingMode = CurrentDisplaySource.SmoothingMode(
+                    smoothAllData = false,
+                    smoothingMinutes = 0,
+                    collapseChunks = false
+                ),
+                sensorId = serial
+            )
+        ).rate
+    }
+
+    private fun mergedLive(rows: List<GlucosePoint>, liveTime: Long, liveValue: Float) =
+        CurrentDisplaySource.prepareRecentPointsForCurrent(
+            recentPoints = rows,
+            current = CurrentGlucoseSource.Snapshot.of(
+                reading = LiveReadingLanes.stock(liveValue, Float.NaN),
+                timeMillis = liveTime,
+                valueText = "",
+                rate = Float.NaN,
+                sensorId = serial,
+                sensorGen = 0,
+                index = 0,
+                source = "callback"
+            ),
+            historyStart = liveTime - DisplayTrendSource.TREND_WINDOW_MS,
+            viewMode = 0,
+            smoothAllData = false,
+            smoothingMinutes = 0,
+            collapseChunks = false
+        )
+
+    @Test
+    fun aLiveReadingOffItsRowIsCountedOnceOnAOneMinuteSeries() {
+        val rows = oneMinuteRows()
+        val stored = TrendEngine.calculateTrend(rows, useRaw = false, isMmol = false).velocity
+        for (offset in listOf(500L, 29_000L, 31_000L, 45_000L)) {
+            val liveTime = newestTs + offset
+            val liveValue = rows.last().value
+            val label = "live reading ${offset} ms after its row"
+
+            assertEquals(label, triples(rows), triples(mergedLive(rows, liveTime, liveValue)))
+            assertEquals(
+                label,
+                rows.map { it.timestamp },
+                DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTime, liveValue), serial).map { it.timestamp }
+            )
+            assertEquals(label, stored, alertRateAt(rows, liveTime, liveValue), 1e-6f)
+            if (offset >= 29_000L) {
+                // Beside its row, the same reading would have bent the slope.
+                val twice = TrendEngine.calculateTrend(rows + GlucosePoint(liveTime, liveValue, 0f), false, false)
+                assertTrue(label, kotlin.math.abs(twice.velocity - stored) > 1e-3f)
+            }
+        }
+    }
+
+    @Test
+    fun aNewReadingAMinuteAfterTheLastRowIsAReadingOfItsOwn() {
+        val rows = oneMinuteRows()
+        val liveTime = newestTs + minute
+        val liveValue = rows.last().value + 1.5f
+        val withNew = rows + GlucosePoint(liveTime, liveValue, 0f)
+
+        assertEquals(triples(withNew), triples(mergedLive(rows, liveTime, liveValue)))
+        assertEquals(
+            withNew.map { it.timestamp },
+            DisplayTrendSource.resolveTrendPoints(rows, snapshot(liveTime, liveValue), serial).map { it.timestamp }
+        )
+        assertEquals(
+            TrendEngine.calculateTrend(withNew, useRaw = false, isMmol = false).velocity,
+            alertRateAt(rows, liveTime, liveValue),
+            1e-6f
+        )
+    }
+
+    @Test
+    fun alertRateIsUnchangedWhenTheRoomTimestampMatches() {
+        for (rows in listOf(oneMinuteRows(), g7Rows(7) { k -> 140f - 2.75f * k })) {
+            val newest = rows.last()
+            assertEquals(triples(rows), triples(mergedLive(rows, newest.timestamp, newest.value)))
+            assertEquals(
+                TrendEngine.calculateTrend(rows, useRaw = false, isMmol = false).velocity,
+                alertRateAt(rows, newest.timestamp, newest.value),
+                1e-6f
+            )
+        }
+    }
+
+    @Test
+    fun theSameReadingWindowFollowsTheCadence() {
+        assertEquals(48_000L, DisplayTrendSource.sameReadingWindowMs(oneMinuteRows()))
+        assertEquals(60_000L, DisplayTrendSource.sameReadingWindowMs(g7Rows(7) { 120f }))
+        assertEquals("unknown cadence counts as one minute",
+            48_000L, DisplayTrendSource.sameReadingWindowMs(oneMinuteRows(1)))
+        val missedOne = oneMinuteRows().filterIndexed { index, _ -> index != 18 }
+        assertEquals("one missed reading does not widen it", 48_000L, DisplayTrendSource.sameReadingWindowMs(missedOne))
+        val storedTwice = oneMinuteRows() + GlucosePoint(newestTs + 400L, 150f, 0f)
+        assertEquals("a reading stored twice is no cadence", 48_000L, DisplayTrendSource.sameReadingWindowMs(storedTwice))
+    }
+
+    @Test
+    fun onlyTheNewestRowsCanHoldTheLiveReading() {
+        val rows = oneMinuteRows()
+        assertEquals(rows.lastIndex, DisplayTrendSource.storedRowIndex(rows, newestTs + 45_000L))
+        assertEquals("a row stored just after it",
+            rows.lastIndex - 1, DisplayTrendSource.storedRowIndex(rows, newestTs - minute + 2_000L))
+        assertEquals(-1, DisplayTrendSource.storedRowIndex(rows, newestTs - 5 * minute + 1_000L))
+        assertEquals(-1, DisplayTrendSource.storedRowIndex(rows, newestTs + minute))
+        assertEquals(-1, DisplayTrendSource.storedRowIndex(emptyList(), newestTs))
     }
 }
