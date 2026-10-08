@@ -52,9 +52,9 @@ internal fun multiSensorValues(
 
 internal fun multiSensorText(values: List<MultiSensorValue>, arrows: Boolean): String =
     values.joinToString(" · ") { value ->
-        val rate = value.reading?.rate
+        val rate = if (arrows) value.reading?.rate else null
         val rotation = rate?.let { -TrendArrowAngle.rotationDegrees(it) } ?: 0f
-        val arrow = if (!arrows || rate == null || !rate.isFinite()) "" else when {
+        val arrow = if (rate == null || !rate.isFinite()) "" else when {
             rate > 2f -> "↑↑"
             rotation >= 67.5f -> "↑"
             rotation >= 22.5f -> "↗"

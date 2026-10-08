@@ -66,7 +66,7 @@ abstract class ChartComplicationBase : SuspendingComplicationDataSourceService()
             isMmol = ComplicationRenderer.isMmol(),
             valueText = reading?.text.takeIf { showValue },
             value = reading?.value ?: Float.NaN,
-            rate = reading?.rate ?: Float.NaN,
+            rate = reading?.takeIf { showArrow }?.rate ?: Float.NaN,
             timeMillis = reading?.timeMillis ?: 0L,
             showArrow = showArrow && reading != null,
             showTime = showTime && reading != null,
