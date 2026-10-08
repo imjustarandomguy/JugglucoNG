@@ -101,6 +101,19 @@
                 android:resource="@xml/expressive_widget_info" />
         </receiver>
 
+        <!-- Per-widget settings. Exported: some hosts start a widget's configuration
+             activity themselves rather than through the system. -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/widget_settings_title"
+            android:taskAffinity="">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".receivers.AapsJournalReceiver"
             android:enabled="true"
