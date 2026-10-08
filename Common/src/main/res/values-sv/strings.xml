@@ -2895,4 +2895,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Gör det flytande glukosvärdet tryckbart över statusfältet. Läser inte skärmen.</string>
     <string name="floating_mirrored">Spegla layouten</string>
     <string name="floating_mirrored_desc">Pilen först, sedan värdet</string>
+    <string name="floating_restricted_settings_hint">Säger Android ”Begränsad inställning”: tryck på ⋮ → Tillåt begränsade inställningar i Appinfo och slå sedan på tjänsten.</string>
+    <string name="floating_open_app_info">Appinfo</string>
 </resources>

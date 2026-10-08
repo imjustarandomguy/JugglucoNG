@@ -24,6 +24,13 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         // Re-arm the nightly backup chain from process start, not only from the
         // settings screen: a chain that died stays dead until someone re-enqueues it.
         ScheduledBackupWorker.initialize(application);
+        // Offered only while floating glucose and its options want it, whatever an
+        // earlier version left.
+        try {
+            tk.glucodata.service.FloatingAccessibilityService.syncAvailability(application);
+        } catch (Throwable th) {
+            Log.stack("MobileVariantBootstrap", "floating accessibility", th);
+        }
     }
 
     @Override

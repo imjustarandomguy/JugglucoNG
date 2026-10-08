@@ -2964,4 +2964,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="clone_network_summary">Kiszolgálók és helyi felderítés</string>
     <string name="clone_connections_empty">Még nincs párosított eszköz.</string>
     <string name="clone_background_desc">Nagyobb akkumulátorfogyasztás</string>
+    <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
+    <string name="floating_open_app_info">Alkalmazásinformáció</string>
 </resources>

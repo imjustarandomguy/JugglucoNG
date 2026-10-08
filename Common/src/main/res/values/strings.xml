@@ -3147,4 +3147,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Lets the floating glucose be tapped over the status bar. Does not read the screen.</string>
     <string name="floating_mirrored">Mirror layout</string>
     <string name="floating_mirrored_desc">Arrow first, then the value</string>
+    <string name="floating_restricted_settings_hint">If Android says “Restricted setting”: in App info, tap ⋮ → Allow restricted settings, then turn the service on.</string>
+    <string name="floating_open_app_info">App info</string>
 </resources>

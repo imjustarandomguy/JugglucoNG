@@ -2937,4 +2937,6 @@
     <string name="floating_accessibility_service_desc">Pozwala dotykać pływającej glukozy nad paskiem stanu. Nie odczytuje ekranu.</string>
     <string name="floating_mirrored">Odwróć układ</string>
     <string name="floating_mirrored_desc">Najpierw strzałka, potem wartość</string>
+    <string name="floating_restricted_settings_hint">Jeśli Android pokazuje „Ustawienie z ograniczonym dostępem”: w informacjach o aplikacji dotknij ⋮ → Zezwól na ustawienia z ograniczonym dostępem, a potem włącz usługę.</string>
+    <string name="floating_open_app_info">Informacje o aplikacji</string>
 </resources>

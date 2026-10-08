@@ -2923,4 +2923,6 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="floating_accessibility_service_desc">Yüzen glikozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekranı okumaz.</string>
     <string name="floating_mirrored">Düzeni aynala</string>
     <string name="floating_mirrored_desc">Önce ok, sonra değer</string>
+    <string name="floating_restricted_settings_hint">Android “Kısıtlanmış ayar” diyorsa: Uygulama bilgilerinde ⋮ → Kısıtlanmış ayarlara izin ver seçeneğine dokunun, ardından hizmeti açın.</string>
+    <string name="floating_open_app_info">Uygulama bilgileri</string>
 </resources>

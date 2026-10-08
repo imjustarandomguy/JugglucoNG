@@ -2996,4 +2996,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="floating_accessibility_service_desc">Хөвөгч глюкозыг төлөвийн мөрийн дээр дарах боломжтой болгоно. Дэлгэцийг уншихгүй.</string>
     <string name="floating_mirrored">Толин байршил</string>
     <string name="floating_mirrored_desc">Эхлээд сум, дараа нь утга</string>
+    <string name="floating_restricted_settings_hint">Android «Хязгаарлагдсан тохиргоо» гэж мэдэгдвэл: Аппын мэдээлэл дотор ⋮ → Хязгаарлагдсан тохиргоог зөвшөөрөх-ийг дарж, дараа нь үйлчилгээг асаана уу.</string>
+    <string name="floating_open_app_info">Аппын мэдээлэл</string>
 </resources>

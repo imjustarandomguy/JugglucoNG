@@ -585,6 +585,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         serviceScope.launch {
             settingsRepository.isEnabled.collectLatest { enabled ->
                 if (!enabled) {
+                    FloatingAccessibilityService.syncAvailability(this@FloatingGlucoseService)
                     stopSelf()
                 }
             }
@@ -598,7 +599,8 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
                 FloatingAccessibilityService.windowManager,
             ) { island, tapShowsDetails, aboveStatusBar, accessibilityWm ->
                 // "Over the status bar" is there to open the details card from the status bar.
-                val wanted = tapShowsDetails && aboveStatusBar
+                // This service runs only while floating glucose is on.
+                val wanted = FloatingAccessibilityAvailability.wanted(enabled = true, tapShowsDetails, aboveStatusBar)
                 FloatingAccessibilityService.setAvailable(this@FloatingGlucoseService, wanted)
                 island to (if (wanted && accessibilityWm != null) accessibilityWm else windowManager)
             }.distinctUntilChanged().collect { (island, host) ->

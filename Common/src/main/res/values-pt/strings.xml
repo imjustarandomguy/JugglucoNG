@@ -2896,4 +2896,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Permite tocar na glicose flutuante sobre a barra de estado. Não lê o ecrã.</string>
     <string name="floating_mirrored">Inverter disposição</string>
     <string name="floating_mirrored_desc">Primeiro a seta, depois o valor</string>
+    <string name="floating_restricted_settings_hint">Se o Android indicar «Definição restrita»: em Informações da app, toque em ⋮ → Permitir definições restritas e depois ative o serviço.</string>
+    <string name="floating_open_app_info">Informações da app</string>
 </resources>

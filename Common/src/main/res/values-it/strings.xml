@@ -2885,4 +2885,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
     <string name="floating_mirrored">Layout speculare</string>
     <string name="floating_mirrored_desc">Prima la freccia, poi il valore</string>
+    <string name="floating_restricted_settings_hint">Se Android indica «Impostazione con limitazioni»: in Informazioni app tocca ⋮ → Consenti impostazioni con limitazioni, poi attiva il servizio.</string>
+    <string name="floating_open_app_info">Informazioni app</string>
 </resources>

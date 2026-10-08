@@ -2171,7 +2171,9 @@ class DashboardViewModel(
     fun toggleFloatingGlucose(enabled: Boolean) {
         val context = tk.glucodata.Applic.app
         floatingRepository.setEnabled(enabled)
-        
+        // Its accessibility service goes with it.
+        tk.glucodata.service.FloatingAccessibilityService.syncAvailability(context)
+
         val intent = android.content.Intent(context, tk.glucodata.service.FloatingGlucoseService::class.java)
         if (enabled) {
             // Check permission before starting? Service will likely fail or just not show if no permission.

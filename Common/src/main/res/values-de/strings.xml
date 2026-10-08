@@ -3011,4 +3011,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="floating_accessibility_service_desc">Macht den schwebenden Glukosewert über der Statusleiste antippbar. Liest den Bildschirm nicht.</string>
     <string name="floating_mirrored">Layout spiegeln</string>
     <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert</string>
+    <string name="floating_restricted_settings_hint">Meldet Android „Eingeschränkte Einstellung“: in der App-Info auf ⋮ → Eingeschränkte Einstellungen zulassen tippen, dann den Dienst aktivieren.</string>
+    <string name="floating_open_app_info">App-Info</string>
 </resources>
