@@ -18,6 +18,7 @@ import tk.glucodata.GlucoseRangeColors
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.R
+import tk.glucodata.UiRefreshBus
 import kotlin.math.max
 import kotlin.math.min
 
@@ -27,11 +28,24 @@ internal object GlucoseComplicationData {
         val text: String,
         val isMmol: Boolean,
         val timeMillis: Long,
-        val rate: Float,
+        private val rateSource: () -> Float,
         val index: Int,
         /** Drawn by the watch face under the value. */
         val sensorId: String? = null,
-    )
+    ) {
+        constructor(
+            value: Float,
+            text: String,
+            isMmol: Boolean,
+            timeMillis: Long,
+            rate: Float,
+            index: Int,
+            sensorId: String? = null,
+        ) : this(value, text, isMmol, timeMillis, { rate }, index, sensorId)
+
+        /** The display arrow's rate, resolved when read: a surface drawing no arrow never loads it. */
+        val rate: Float get() = rateSource()
+    }
 
     private data class Thresholds(
         val low: Float,
@@ -66,7 +80,7 @@ internal object GlucoseComplicationData {
             text = snapshot.primaryStr,
             isMmol = snapshot.isMmol,
             timeMillis = snapshot.timeMillis,
-            rate = displayRate(snapshot),
+            rateSource = { displayRate(snapshot) },
             index = snapshot.index,
             sensorId = snapshot.sensorId,
         )
@@ -102,7 +116,7 @@ internal object GlucoseComplicationData {
             text = resolved.primaryStr,
             isMmol = resolved.isMmol,
             timeMillis = resolved.timeMillis,
-            rate = displayRate(resolved),
+            rateSource = { displayRate(resolved) },
             index = resolved.index,
             sensorId = resolved.sensorId,
         )
@@ -114,7 +128,21 @@ internal object GlucoseComplicationData {
      * near the flat band it drew a flat arrow here beside a rising one on the phone.
      */
     fun displayRate(snapshot: CurrentDisplaySource.Snapshot): Float =
-        runCatching { DisplayTrendSource.loadDisplayArrowRate(snapshot) }.getOrDefault(snapshot.rate)
+        rateCache.rate(rateKey(snapshot, UiRefreshBus.revision.value)) {
+            runCatching { DisplayTrendSource.loadDisplayArrowRate(snapshot) }.getOrDefault(snapshot.rate)
+        }
+
+    private val rateCache = DisplayRateCache()
+
+    internal fun rateKey(snapshot: CurrentDisplaySource.Snapshot, dataRevision: Long) = DisplayRateCache.Key(
+        sensorId = snapshot.sensorId,
+        timeMillis = snapshot.timeMillis,
+        viewMode = snapshot.viewMode,
+        isMmol = snapshot.isMmol,
+        autoValue = snapshot.autoValue,
+        rawValue = snapshot.rawValue,
+        dataRevision = dataRevision,
+    )
 
     fun previewReading(): Reading {
         currentReading()?.let { return it }
