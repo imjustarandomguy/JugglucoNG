@@ -133,13 +133,46 @@ object DisplayTrendSource {
         activeSensorSerial: String?,
         viewMode: Int,
         isMmol: Boolean
-    ): Float = resolveArrowRate(
-        resolveTrendPoints(historyPoints, current, activeSensorSerial),
-        current,
-        viewMode,
-        isMmol,
-        Float.NaN
-    )
+    ): Float {
+        val live = current?.let { atStoredTime(historyPoints, it) }
+        return resolveArrowRate(
+            resolveTrendPoints(historyPoints, live, activeSensorSerial),
+            live,
+            viewMode,
+            isMmol,
+            Float.NaN
+        )
+    }
+
+    /**
+     * Closer than this, two rows are one reading: half the shortest interval any
+     * sensor reads at (one minute).
+     */
+    private const val SAME_READING_MS = 30_000L
+
+    /**
+     * [current] under the time of its own stored row, when it has one.
+     *
+     * On the phone a live reading and its Room row share a timestamp, so
+     * [augmentHistory] merges the two. A native row keeps whole seconds while a G7
+     * read on the watch keeps the milliseconds it arrived at, so the same reading
+     * went in twice, under a second apart. With local smoothing the snapshot's value
+     * differs from the measured one, TrendEngine took the step for a > 20 mg/dL/min
+     * artifact and measured the newest point alone: a flat arrow on any rise.
+     */
+    private fun atStoredTime(
+        historyPoints: List<GlucosePoint>?,
+        current: CurrentDisplaySource.Snapshot
+    ): CurrentDisplaySource.Snapshot {
+        val stored = historyPoints
+            ?.minByOrNull { kotlin.math.abs(it.timestamp - current.timeMillis) }
+            ?.timestamp
+            ?: return current
+        if (stored == current.timeMillis || kotlin.math.abs(stored - current.timeMillis) >= SAME_READING_MS) {
+            return current
+        }
+        return current.copy(timeMillis = stored)
+    }
 
     /**
      * [resolveDisplayArrowRate] for [current], over the rows stored for its sensor: for
