@@ -14,6 +14,7 @@ import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedEditPlan
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentUrl
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditHold
+import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditFailureAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditPlan
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditWriteAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditWriteUrl
@@ -529,15 +530,45 @@ class JournalNightscoutReceivedEditTests {
     }
 
     @Test
-    fun aRefusedOrUnansweredWriteKeepsTheEditPending() {
-        // Offline, refused or not Nightscout at all: the edit is neither lost nor reverted, and
-        // goes again under the same backoff as any other upload.
-        for (code in listOf(400, 401, 403, 422, 500, 503)) {
+    fun anUnansweredOrFailedWriteKeepsTheEditPending() {
+        // Offline, a server error or not Nightscout at all: the edit is neither lost nor reverted,
+        // and goes again under the same backoff as any other upload.
+        for (code in listOf(408, 429, 500, 503)) {
             assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(code, answeredByNightscout = true))
         }
         assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(-1, answeredByNightscout = false))
         assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(200, answeredByNightscout = false))
         assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(404, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.FAIL, receivedEditWriteAction(403, answeredByNightscout = false))
+    }
+
+    @Test
+    fun aRefusedWriteKeepsTheEditHereWithoutAskingAgain() {
+        // A token that may create treatments but not change them answers 403 to every attempt;
+        // retried, it held every later upload back.
+        for (code in listOf(400, 401, 403, 422)) {
+            assertEquals(ReceivedEditAction.KEEP_LOCAL, receivedEditWriteAction(code, answeredByNightscout = true))
+        }
+    }
+
+    @Test
+    fun aRefusedReadOfTheDocumentKeepsTheEditHereToo() {
+        assertEquals(ReceivedEditAction.KEEP_LOCAL, receivedEditFailureAction(403, answeredByNightscout = true))
+        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(403, answeredByNightscout = false))
+        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(500, answeredByNightscout = true))
+        assertEquals(ReceivedEditAction.FAIL, receivedEditFailureAction(-1, answeredByNightscout = false))
+    }
+
+    @Test
+    fun anEditKeptHereIsNotMarkedSentAndAFurtherEditIsSentAgain() {
+        // Kept, it is still the user's unconfirmed edit: never settled as if the server had it.
+        assertTrue(hasPendingNightscoutEdit(nightscout, editedAt, NIGHTSCOUT_EDIT_KEPT_LOCAL))
+        val later = editedAt + 60_000L
+        val mark = nightscoutUploadedAtAfterWrite(
+            nightscout, nightscout, editedAt, NIGHTSCOUT_EDIT_KEPT_LOCAL, JournalEntrySource.MANUAL, later
+        )!!
+        assertFalse(isNightscoutEditKeptLocal(nightscout, mark))
+        assertTrue(hasPendingNightscoutEdit(nightscout, later, mark))
     }
 
     // -- other sources are unchanged ----------------------------------------------------------
