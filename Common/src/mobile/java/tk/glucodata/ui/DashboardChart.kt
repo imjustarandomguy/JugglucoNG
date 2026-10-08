@@ -2913,7 +2913,7 @@ fun InteractiveGlucoseChart(
                                     drawReadingDots(
                                         reusablePeerDots,
                                         brush ?: SolidColor(laneColor),
-                                        tk.glucodata.ChartReadingsStyle.dotRadius(laneWidth, currentDur),
+                                        tk.glucodata.ChartReadingsStyle.dotRadius(laneWidth, currentDur, dataWidth, reusablePeerDots.spacing()),
                                         readingDotPaint,
                                         alpha = if (brush != null) 0.68f else 1f
                                     )
@@ -2948,7 +2948,9 @@ fun InteractiveGlucoseChart(
                                     drawPath(path = reusablePeerPath, brush = gradientBrush, alpha = readingLineAlpha, style = style)
                                 }
                                 if (readingDots) {
-                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(mainStroke, currentDur)
+                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(
+                                        mainStroke, currentDur, dataWidth, reusablePeerDots.spacing()
+                                    )
                                     drawReadingDots(reusablePeerDots, gradientBrush, radius, readingDotPaint)
                                 } else {
                                     peerRun.isolatedPoints.forEach { dot -> drawCircle(color = primaryColor, radius = mainStroke / 2f, center = dot) }
@@ -2972,7 +2974,9 @@ fun InteractiveGlucoseChart(
                                     }
                                 }
                                 if (readingDots) {
-                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(peerStroke, currentDur)
+                                    val radius = tk.glucodata.ChartReadingsStyle.dotRadius(
+                                        peerStroke, currentDur, dataWidth, reusablePeerDots.spacing()
+                                    )
                                     drawReadingDots(
                                         reusablePeerDots,
                                         brush ?: SolidColor(dotColor),
@@ -3092,7 +3096,7 @@ fun InteractiveGlucoseChart(
                             drawReadingDots(
                                 dots,
                                 brush,
-                                tk.glucodata.ChartReadingsStyle.dotRadius(strokeWidth, currentDur),
+                                tk.glucodata.ChartReadingsStyle.dotRadius(strokeWidth, currentDur, dataWidth, dots.spacing()),
                                 readingDotPaint
                             )
                         } else {
