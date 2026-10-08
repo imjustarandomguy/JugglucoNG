@@ -47,6 +47,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import tk.glucodata.HealthActivityImportPolicy.ImportedRow
 import tk.glucodata.HealthActivityImportPolicy.Interval
+import tk.glucodata.data.journal.JournalEntry
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntrySource
 import tk.glucodata.data.journal.JournalEntryType
@@ -171,8 +172,8 @@ private suspend fun requestMissing(act: MainActivity?, glucoseTurnedOn: Boolean,
 
 /**
  * [userTurnedOn]: the import switch was just turned on, which may bring up the dialog again.
- * A run that stops for lack of permission is not a run: only a finished one sets
- * [lastActivityImportMillis], which spaces the foreground runs.
+ * A run that stops for lack of permission is not a run: only a finished one sets the last run
+ * ([HealthActivityImportPolicy.Memory]), which spaces the foreground runs, across process starts.
  */
 private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
     if (activityImportActive.getAndSet(true)) {
@@ -192,7 +193,8 @@ private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
             val start = now.minusSeconds(daysBack.coerceIn(1, 30) * 24L * 60L * 60L)
             val range = TimeRangeFilter.between(start, now)
             val repository = JournalRepository()
-            var imported = 0
+            // Each record to import, with when it ended, which bounds how long it is remembered.
+            val records = ArrayList<Pair<JournalEntryInput, Long>>()
 
             val sessions = HealthActivityImportPolicy.readAllPages { token ->
                 client.readRecords(
@@ -208,19 +210,16 @@ private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
                 val startMillis = session.startTime.toEpochMilli()
                 val endMillis = session.endTime.toEpochMilli()
                 val durationMinutes = ((endMillis - startMillis) / 60_000L).toInt().coerceAtLeast(1)
-                repository.upsertEntry(
-                    JournalEntryInput(
-                        timestamp = startMillis,
-                        type = JournalEntryType.ACTIVITY,
-                        title = session.title?.takeIf { it.isNotBlank() } ?: "Health activity",
-                        note = session.notes,
-                        durationMinutes = durationMinutes,
-                        intensity = durationMinutes.inferredHealthIntensity(),
-                        source = JournalEntrySource.HEALTH_CONNECT,
-                        sourceRecordId = session.stableHealthRecordId("exercise", startMillis, endMillis)
-                    )
-                )
-                imported++
+                records += JournalEntryInput(
+                    timestamp = startMillis,
+                    type = JournalEntryType.ACTIVITY,
+                    title = session.title?.takeIf { it.isNotBlank() } ?: "Health activity",
+                    note = session.notes,
+                    durationMinutes = durationMinutes,
+                    intensity = durationMinutes.inferredHealthIntensity(),
+                    source = JournalEntrySource.HEALTH_CONNECT,
+                    sourceRecordId = session.stableHealthRecordId("exercise", startMillis, endMillis)
+                ) to endMillis
             }
 
             val steps = HealthActivityImportPolicy.readAllPages { token ->
@@ -244,29 +243,49 @@ private fun importActivityIns(daysBack: Int, userTurnedOn: Boolean) {
                     if (!HealthActivityImportPolicy.importsSteps(record.count, interval, sessionIntervals))
                         return@forEach
                     val durationMinutes = ((endMillis - startMillis) / 60_000L).toInt().coerceAtLeast(1)
-                    repository.upsertEntry(
-                        JournalEntryInput(
-                            timestamp = startMillis,
-                            type = JournalEntryType.ACTIVITY,
-                            title = "Steps",
-                            note = "${record.count} steps",
-                            amount = record.count.toFloat(),
-                            durationMinutes = durationMinutes,
-                            intensity = record.count.inferredStepIntensity(durationMinutes),
-                            source = JournalEntrySource.HEALTH_CONNECT,
-                            sourceRecordId = sourceRecordId
-                        )
-                    )
-                    imported++
+                    records += JournalEntryInput(
+                        timestamp = startMillis,
+                        type = JournalEntryType.ACTIVITY,
+                        title = "Steps",
+                        note = "${record.count} steps",
+                        amount = record.count.toFloat(),
+                        durationMinutes = durationMinutes,
+                        intensity = record.count.inferredStepIntensity(durationMinutes),
+                        source = JournalEntrySource.HEALTH_CONNECT,
+                        sourceRecordId = sourceRecordId
+                    ) to endMillis
                 }
+
+            // Only what is new or changed in Health Connect is written: an unchanged row is not
+            // touched, a row the user edited keeps the edit, one they deleted stays deleted.
+            val memory = activityImportMemory()
+            val importedBefore = memory.imported()
+            val existing = repository.entriesBySourceRecordIds(records.mapNotNull { it.first.sourceRecordId })
+            val counts = HashMap<HealthActivityImportPolicy.ImportAction, Int>()
+            for ((input, _) in records) {
+                val name = input.sourceRecordId ?: continue
+                val action = HealthActivityImportPolicy.importAction(
+                    existing = existing[name]?.let {
+                        HealthActivityImportPolicy.ExistingRow(it.source == JournalEntrySource.HEALTH_CONNECT, it.activityContent())
+                    },
+                    incoming = input.activityContent(),
+                    importedBefore = name in importedBefore,
+                )
+                if (action == HealthActivityImportPolicy.ImportAction.WRITE)
+                    repository.upsertEntry(input)
+                counts[action] = (counts[action] ?: 0) + 1
+            }
+
             // Step rows an earlier import wrote next to the session they belong to.
             val rows = repository.entriesFromSourceBetween(
                 JournalEntrySource.HEALTH_CONNECT, start.toEpochMilli(), now.toEpochMilli()
             ).map { ImportedRow(it.id, it.sourceRecordId, it.timestamp, it.durationMinutes) }
             val doubled = HealthActivityImportPolicy.stepRowsToRemove(rows, sessionIntervals, stepIntervals)
             doubled.forEach { repository.deleteEntry(it) }
-            lastActivityImportMillis = System.currentTimeMillis()
-            Log.i(LOG_ID, "Imported $imported Health Connect activity records, removed ${doubled.size} steps within sessions")
+            val finished = System.currentTimeMillis()
+            memory.remember(records.mapNotNull { (input, end) -> input.sourceRecordId?.let { it to end } }.toMap(), finished)
+            memory.lastRunMillis = finished
+            Log.i(LOG_ID, "Health Connect activity records: $counts; removed ${doubled.size} steps within sessions")
         } catch (se: SecurityException) {
             hasActivityPermission = false
             Log.stack(LOG_ID, "importActivity", se)
@@ -302,15 +321,21 @@ companion object {
     private val glucoseAsked = AtomicBoolean(false)
     private val activityAsked = AtomicBoolean(false)
     private val permissionLock = Mutex()
-    // When the activity import last finished: the foreground runs keep 15 minutes from it.
-    @Volatile
-    private var lastActivityImportMillis = 0L
     private const val ACTIVITY_DAYS_BACK = 14
     private const val LOG_ID = "HealthConnection"
    @Volatile
         private var instance:HealthConnection? = null
 
     private fun glucoseExportOn(): Boolean = Natives.gethealthConnect()
+
+    /** When the activity import last finished and what it imported, kept across process starts. */
+    private fun activityImportMemory() = HealthActivityImportPolicy.Memory(object : HealthActivityImportPolicy.Store {
+        private val prefs = Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE)
+        override fun getLong(key: String): Long = prefs.getLong(key, 0L)
+        override fun putLong(key: String, value: Long) = prefs.edit().putLong(key, value).apply()
+        override fun getString(key: String): String? = prefs.getString(key, null)
+        override fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
+    })
 
     /**
      * The journal's "Import Health Connect activity" switch, which the journal switch hides
@@ -410,7 +435,7 @@ fun writeAll(sensorptr:Long,sensorname:String) {
     fun onForeground(context: MainActivity) {
         if (Build.VERSION.SDK_INT < 28 || !activityImportOn())
             return
-        if (!HealthActivityImportPolicy.foregroundImportDue(System.currentTimeMillis(), lastActivityImportMillis))
+        if (!HealthActivityImportPolicy.foregroundImportDue(System.currentTimeMillis(), activityImportMemory().lastRunMillis))
             return
         GlobalScope.launch {
             // Not to the Play Store from here: opening the app should not keep doing that.
@@ -461,3 +486,11 @@ private fun androidx.health.connect.client.records.Record.stableHealthRecordId(
     val id = metadata.id.takeIf { it.isNotBlank() }
     return "health_connect:$type:${id ?: "$startMillis:$endMillis"}"
 }
+
+private fun JournalEntryInput.activityContent() = HealthActivityImportPolicy.ActivityContent.of(
+    timestamp, title, note, amount, durationMinutes, intensity?.storageValue
+)
+
+private fun JournalEntry.activityContent() = HealthActivityImportPolicy.ActivityContent.of(
+    timestamp, title, note, amount, durationMinutes, intensity?.storageValue
+)
