@@ -35,12 +35,12 @@ class InsulinPresetDosingMigrationTests {
             .first { it.getString("tableName") == "journal_insulin_presets" }
     }
 
-    /** The SQL MIGRATION_32_33 runs, read from the production source. */
+    /** The SQL MIGRATION_32_33 runs, in order, read from the production source. */
     private fun migrationStatements(): List<String> {
         val block = file("src/mobile/java/tk/glucodata/data/HistoryDatabase.kt").readText()
             .substringAfter("private val MIGRATION_32_33")
             .substringBefore("internal val ALL_MIGRATIONS")
-        return Regex("\"(ALTER TABLE [^\"]+)\"").findAll(block).map { it.groupValues[1] }.toList()
+        return Regex("\"((?:ALTER TABLE|UPDATE) [^\"]+)\"").findAll(block).map { it.groupValues[1] }.toList()
     }
 
     private data class Column(val type: String, val notNull: Boolean, val defaultValue: String?)
@@ -86,7 +86,7 @@ class InsulinPresetDosingMigrationTests {
 
     @Test
     fun theStepAddsExactlyTheThreeDosingColumns() {
-        val statements = migrationStatements()
+        val statements = migrationStatements().filter { it.startsWith("ALTER TABLE") }
         assertEquals(3, statements.size)
         assertTrue(statements.all { it.startsWith("ALTER TABLE journal_insulin_presets ADD COLUMN") })
     }
@@ -99,14 +99,14 @@ class InsulinPresetDosingMigrationTests {
     }
 
     @Test
-    fun existingPresetsGetAWholeUnitStepNoDefaultDoseAndNoReminders() = v32Database().use { db ->
+    fun existingPresetsKeepTheHalfUnitStepAndGetNoDefaultDoseOrReminders() = v32Database().use { db ->
         migrationStatements().forEach { db.exec(it) }
         db.createStatement().use { statement ->
             statement.executeQuery(
                 "SELECT doseStep, defaultDose, reminderTimes, displayName FROM journal_insulin_presets WHERE id = 6"
             ).use { row ->
                 assertTrue(row.next())
-                assertEquals(1.0, row.getDouble(1), 0.0)
+                assertEquals(0.5, row.getDouble(1), 0.0)
                 row.getDouble(2)
                 assertTrue("no default dose, rather than 0", row.wasNull())
                 assertEquals("", row.getString(3))

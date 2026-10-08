@@ -14,10 +14,11 @@ import kotlinx.coroutines.CancellationException
  */
 object JournalInsulinDosing {
     /**
-     * Whole units: what the common disposable pens (FlexTouch, KwikPen, SoloStar) dial in. Every
-     * preset starts here, built-in or not; a half-unit pen is set to 0.5 in the library.
+     * Half units: what the entry sheet's -/+ moved by before the step was set per insulin, so a
+     * preset keeps that until it is changed, built-in or not. A whole-unit pen (FlexTouch,
+     * KwikPen, SoloStar) is set to 1 in the library.
      */
-    const val DEFAULT_STEP = 1f
+    const val DEFAULT_STEP = 0.5f
 
     /** The steps the library offers: syringe tenths, half-unit pens, whole units, U200 pens. */
     val STEP_CHOICES: List<Float> = listOf(0.1f, 0.5f, 1f, 2f)
