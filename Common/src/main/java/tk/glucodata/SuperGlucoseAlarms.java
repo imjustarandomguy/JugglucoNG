@@ -67,6 +67,7 @@ public  void setLossAlarm() {
     @Override
 public void setagealarm(final long numsec,long showtime) {
     Notify.stoplossalarm();
+    tk.glucodata.alerts.AlarmSilenceSync.onLossOver();
 
     saidloss = false;
     SuperGattCallback.lastfoundL=numsec;

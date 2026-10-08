@@ -143,6 +143,27 @@ object AlarmSilenceSync {
         lossAlarmStartedAtMs = System.currentTimeMillis()
     }
 
+    /** True once the other device's dismissal took the signal loss held here, until a reading. */
+    @Volatile
+    private var lossAnswered = false
+
+    /** Notify held the signal-loss alarm for the other device: dated at its first hold. */
+    @JvmStatic
+    fun onLossAlarmHeld() {
+        if (lossAlarmStartedAtMs == 0L) lossAlarmStartedAtMs = System.currentTimeMillis()
+    }
+
+    /** Whether the signal loss running here was dismissed on the other device. */
+    @JvmStatic
+    fun lossAnsweredOnPeer(): Boolean = lossAnswered
+
+    /** A reading arrived: the signal loss is over. */
+    @JvmStatic
+    fun onLossOver() {
+        lossAnswered = false
+        lossAlarmStartedAtMs = 0L
+    }
+
     // ------------------------------------------------------------ transport
 
     /** Discovery found, or lost, the other device. Coming into reach is when to catch up. */
@@ -389,7 +410,10 @@ object AlarmSilenceSync {
             }
             Notify.cancelRetrySession(type.id, "peer-dismiss")
         }
-        if (!tracked) lossAlarmStartedAtMs = 0L
+        if (!tracked) {
+            lossAlarmStartedAtMs = 0L
+            lossAnswered = true
+        }
         stopRinging(type, kindBefore, "peer-dismiss")
         Log.i(LOG_ID, "dismissed ${type.name} from the other device")
     }
