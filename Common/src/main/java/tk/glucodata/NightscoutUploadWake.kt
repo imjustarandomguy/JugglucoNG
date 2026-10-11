@@ -27,6 +27,28 @@ object NightscoutUploadWake {
         }
     }
 
+    /**
+     * The app came to the front.
+     *
+     * Treatments entered on the server are read back only by a treatment pass, and the readings
+     * that wake the uploader all day do not run one: opening the app to look would show nothing
+     * new until a pass came by for another reason (leaving the app, a journal change, a network
+     * change). This is the treatments' own wake, not a full pass: a full "Send now" pass also
+     * ends the backoff after a refusal, and this is no reason to. The receive interval still
+     * bounds the read itself, so coming back to the app again and again costs one read per
+     * interval at most. Does nothing unless the server is set up and treatments are received.
+     */
+    @JvmStatic
+    fun afterAppToFront() {
+        if (!runCatching { Natives.getuseuploader() }.getOrDefault(false)) return
+        if (!JournalTreatmentUploadAccess.getReceiveTreatments()) return
+        runCatching {
+            Natives.waketreatments()
+        }.onFailure {
+            Log.stack(TAG, "app-to-front wake failed", it)
+        }
+    }
+
     @JvmStatic
     fun afterLiveNativeWrite(source: String, timestampMillis: Long) {
         if (timestampMillis <= 0L || !Natives.getuseuploader()) return
