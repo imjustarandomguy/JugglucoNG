@@ -1337,20 +1337,34 @@ public class Notify {
     /**
      * A publish of the current reading ({@link CurrentReadingHub}), on its worker: the ongoing
      * notification follows it. Only a new reading is delivered as one, at once and alerting
-     * again for alertwatch. A reading gone stale, a backfill or a setting redraws it quietly
-     * through the bounded debounce of data changes: a backfill can publish many times a
-     * second, and Android drops a package's notification updates past a few a second.
+     * again for alertwatch. A reading gone stale and a setting are drawn at once too, quietly:
+     * the stale moment comes from an alarm that keeps the phone awake only until that drawing
+     * is done ({@link #afterPendingRefresh}), and a delay counted in uptime would wait out the
+     * sleep that follows. A backfill redraws it through the bounded debounce of data changes:
+     * it can publish many times a second, and Android drops a package's notification updates
+     * past a few a second.
      */
     public static void onReadingPublished(DisplayedReading reading) {
         final Notify noti = onenot;
         if (noti == null || isWearable) {
             return;
         }
-        if (reading.getReason() == DisplayedReading.Reason.NEW_READING) {
+        final DisplayedReading.Reason reason = reading.getReason();
+        if (reason == DisplayedReading.Reason.NEW_READING) {
             noti.scheduleVisualNotificationRefresh(alertwatch);
+        } else if (reason == DisplayedReading.Reason.STALE_TICK || reason == DisplayedReading.Reason.SETTINGS) {
+            noti.scheduleVisualNotificationRefresh(false);
         } else {
             noti.scheduleDataChangedNotificationRefresh();
         }
+    }
+
+    /**
+     * Runs {@code task} on the notification's thread after the redraws already asked for: a
+     * wake that keeps the phone awake for a publish lets go once its notification is drawn.
+     */
+    static void afterPendingRefresh(Runnable task) {
+        glucoseRefreshHandler.post(task);
     }
 
     private final Runnable visualRefreshRunnable = new Runnable() {

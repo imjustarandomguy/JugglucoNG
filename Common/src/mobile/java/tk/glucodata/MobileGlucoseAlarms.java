@@ -42,8 +42,8 @@ public    void handlealarm() {
         }
     // The current reading goes stale on every surface at once, the notification included:
     // this wake brings it up to date, and stands in for the reading clock's own when the
-    // two fall together (PhoneReadingClock).
-    CurrentReadingHub.onClockChanged();
+    // two fall together (PhoneReadingClock). The phone is held awake until that is drawn.
+    PhoneReadingClock.reconcileAwake();
     final boolean haslossalarm=hasalarmloss();
     long wastime = SuperGattCallback.lastfoundL;
     if(wastime==0L) {
