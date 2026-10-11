@@ -52,7 +52,8 @@ object WearSync2 {
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "WearSync2").apply { isDaemon = true }
     }
-    private val lastPushMs = AtomicLong(0L)
+    private val pushGate = WearPushGate(PUSH_THROTTLE_MS)
+    private val takenReadings = ConcurrentHashMap<String, Pair<String, TakenReading>>()
     private val lastServedMs = AtomicLong(0L)
     private val lastServedChunkCount = AtomicLong(0L)
     private val calibrationWireRevision = AtomicLong(0L)
@@ -61,15 +62,46 @@ object WearSync2 {
 
     // ---- phone side ----
 
-    /** Called from the reading dispatch path; throttled tail push. */
+    /**
+     * Called from the reading dispatch path after a reading of [serial] taken at
+     * [readingMs]: pushes the tail at once for a newer reading ([WearPushGate]).
+     */
     @JvmStatic
-    fun pushTail() {
+    fun pushTail(serial: String?, readingMs: Long) {
+        if (!wearCompanionEnabled()) return
         val now = System.currentTimeMillis()
-        val last = lastPushMs.get()
-        if (now - last < PUSH_THROTTLE_MS || !lastPushMs.compareAndSet(last, now)) return
+        if (!pushGate.shouldPush(sensorKey(serial).orEmpty(), readingMs, now)) {
+            if (doLog) Log.i(LOG_ID, "push after $serial ${readingMs / 1000L} left out: no newer reading")
+            return
+        }
+        if (doLog) Log.i(LOG_ID, "push after $serial ${readingMs / 1000L}, ${now - readingMs} ms after the reading")
         executor.execute {
             runCatching { serveSince(tailStartSec(), routine = true) }.onFailure { Log.stack(LOG_ID, "pushTail", it) }
         }
+    }
+
+    /**
+     * The newest reading this device took of [serial], in mg/dL as it stores
+     * them, so a serve right after it carries it ([WearPushGate.withReading]).
+     */
+    @JvmStatic
+    fun noteLocalReading(serial: String?, timeMs: Long, autoMgdl: Float, rawMgdl: Float) {
+        val name = serial?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val key = sensorKey(name) ?: return
+        if (timeMs <= 0L) return
+        takenReadings.merge(key, name to TakenReading(timeMs, autoMgdl, rawMgdl)) { old, new ->
+            if (new.second.timeMs >= old.second.timeMs) new else old
+        }
+    }
+
+    private fun takenReading(serial: String): TakenReading? {
+        sensorKey(serial)?.let { key -> takenReadings[key]?.let { return it.second } }
+        return takenReadings.values.firstOrNull { SensorIdentity.matches(it.first, serial) }?.second
+    }
+
+    private fun sensorKey(serial: String?): String? {
+        val trimmed = serial?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return (runCatching { SensorIdentity.canonicalSensorId(trimmed) }.getOrNull() ?: trimmed).lowercase()
     }
 
     /** Tell the watch a sensor was removed on the phone. */
@@ -344,11 +376,12 @@ object WearSync2 {
         // native stream. For a managed driver native storage can begin after
         // Room history, which otherwise truncates the watch chart. Calibration
         // remains a display operation and is reproduced from the payload.
-        val points = runCatching {
+        val stored = runCatching {
             NotificationHistorySource.getRawHistory(fromSec * 1000L, serial)
         }.getOrDefault(emptyList())
             .filter { it.timestamp > 0L && GlucoseValuePlausibility.isPlausibleMgdl(it.value) }
             .sortedBy { it.timestamp }
+        val points = WearPushGate.withReading(stored, takenReading(serial), fromSec * 1000L)
         if (unlessWatchReadIt) {
             val newestMs = points.lastOrNull()?.timestamp ?: 0L
             val watch = SensorOwnershipRuntime.peerDirectReading(serial)

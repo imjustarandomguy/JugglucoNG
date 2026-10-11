@@ -73,7 +73,29 @@ class WearSyncAlongsidePushTests {
     @Test
     fun aReadingTheDriverHandsOnIsStillPushed() {
         val gatt = source("Common/src/main/java/tk/glucodata/SuperGattCallback.java")
-        assertTrue(gatt.contains("if (pushToPeer)\n            WearSync2.pushTail();"))
-        assertTrue(after(sync, "fun pushTail() {").contains("serveSince(tailStartSec(), routine = true)"))
+        assertTrue(gatt.contains("if (pushToPeer)\n            WearSync2.pushTail(SerialNumber, timmsec);"))
+        assertTrue(after(sync, "fun pushTail(serial: String?, readingMs: Long) {").contains("serveSince(tailStartSec(), routine = true)"))
+    }
+
+    @Test
+    fun thePushCarriesTheReadingItFollows() {
+        val gatt = source("Common/src/main/java/tk/glucodata/SuperGattCallback.java")
+        val accepted = after(gatt, "markLocalReadingAccepted(timmsec);\n            // The push that follows")
+            .substringBefore("dowithglucose(")
+        assertTrue(
+            accepted,
+            accepted.contains("WearSync2.noteLocalReading(SerialNumber, nativeReadingTimeMs(SerialNumber, timmsec), autoMgdl, rawMgdl);"),
+        )
+        val serve = body(
+            sync,
+            "private fun serveSensorSince(serial: String, fromSec: Long, unlessWatchReadIt: Boolean = false)",
+        )
+        // Merged before the newest is taken, so "the watch read it" is decided on this reading.
+        val merged = serve.indexOf("val points = WearPushGate.withReading(stored, takenReading(serial), fromSec * 1000L)")
+        assertTrue(serve, merged >= 0 && merged < serve.indexOf("val newestMs = points.lastOrNull()?.timestamp ?: 0L"))
+        // The gate decides before anything is queued: no more dropped pushes for newer readings.
+        val push = body(sync, "fun pushTail(serial: String?, readingMs: Long)")
+        assertTrue(push, push.contains("pushGate.shouldPush(sensorKey(serial).orEmpty(), readingMs, now)"))
+        assertFalse(push, push.contains("compareAndSet"))
     }
 }

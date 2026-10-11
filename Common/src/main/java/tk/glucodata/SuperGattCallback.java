@@ -711,6 +711,18 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         return match != null ? match.rawMgdl : Float.NaN;
     }
 
+    /**
+     * The time native storage keeps a live reading under, which can be just ahead
+     * of the callback's ({@link RealtimeReadingPolicy}); the history the other
+     * device gets later carries that one.
+     */
+    private static long nativeReadingTimeMs(String sensorSerial, long timmsec) {
+        final SensorHistoryMatch match = findSensorHistoryMatchNear(sensorSerial, timmsec / 1000L);
+        return match != null && RealtimeReadingPolicy.isNativeCopy(timmsec, match.timestampMs)
+                ? match.timestampMs
+                : timmsec;
+    }
+
     private static boolean shouldUseRawAsPrimary(int viewMode) {
         // Mode 2 is Auto+Raw, not Raw-primary. Live publishing must only
         // substitute the primary value when raw is actually the primary lane.
@@ -1025,7 +1037,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // watch pushes too when it is the one reading. A reading that arrived
         // from the peer is not sent straight back.
         if (pushToPeer)
-            WearSync2.pushTail();
+            WearSync2.pushTail(SerialNumber, timmsec);
         if (!isWearable) {
             app.numdata.sendglucose(SerialNumber, tim, gl, thresholdchange(rate), alarm | 0x10);
             GlucoseWidget.update();
@@ -1254,6 +1266,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
             }
 
             markLocalReadingAccepted(timmsec);
+            // The push that follows reads history written asynchronously: hand it the reading.
+            WearSync2.noteLocalReading(SerialNumber, nativeReadingTimeMs(SerialNumber, timmsec), autoMgdl, rawMgdl);
             dowithglucose(SerialNumber, mgdlToUse, glucoseToUse, rate, alarm, timmsec, sensorstartmsec, showtime,
                     sensorgen, reading);
 
