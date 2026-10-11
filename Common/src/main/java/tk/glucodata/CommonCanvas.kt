@@ -27,7 +27,9 @@ import android.graphics.Paint
 import android.graphics.Paint.Align
 import android.graphics.Path
 import android.graphics.Rect
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
 
     
@@ -38,6 +40,34 @@ public class CommonCanvas {
 
 	companion object {
 		private const val LOG_ID = "CommonCanvas"
+
+		/**
+		 * The arrow's rotation for a rate in mg/dL per minute, in whatever unit glucose is
+		 * shown: [TrendArrowAngle], flat below 0.5 and vertical from 2, like the dashboard,
+		 * notification and widget arrows. This one used to turn 25 degrees per unit and
+		 * scaled the rate by 18 in mmol/L, so in mmol/L the floating glucose drew anything
+		 * over 0.2 mg/dL per minute as a vertical double arrow.
+		 */
+		internal fun arrowRotationDegrees(rateMgdlPerMin: Float): Float =
+			TrendArrowAngle.rotationDegrees(rateMgdlPerMin)
+
+		/** A double head past 2 mg/dL per minute, as every other arrow draws. */
+		internal fun showsDoubleArrow(rateMgdlPerMin: Float): Boolean =
+			kotlin.math.abs(rateMgdlPerMin) > 2.0f
+
+		/**
+		 * Tail and tip (x1, y1, x2, y2) of the round complication's arrow: through the
+		 * centre at [arrowRotationDegrees], reaching the ellipse inscribed in the canvas.
+		 */
+		internal fun circleArrowEnds(width: Double, height: Double, rateMgdlPerMin: Float): DoubleArray {
+			val radians = Math.toRadians(arrowRotationDegrees(rateMgdlPerMin).toDouble())
+			val dx = cos(radians)
+			val dy = sin(radians)
+			val halfW = width * .5
+			val halfH = height * .5
+			val reach = 1.0 / sqrt((dx / halfW).pow(2.0) + (dy / halfH).pow(2.0))
+			return doubleArrayOf(halfW - reach * dx, halfH - reach * dy, halfW + reach * dx, halfH + reach * dy)
+		}
 
 		@JvmStatic
         @JvmOverloads
@@ -53,24 +83,20 @@ public class CommonCanvas {
 			if (!ratein.isNaN()) {
 				// Optical Stroke Arrow (Notification Version)
 				// Matches TrendIndicator.kt logic (Detached Chevrons)
-				
-				// 0. Normalize Rate
-                val unit = Natives.getunit()
-                val normalizedRate = if (unit == 1) ratein * 18.0182f else ratein
 
-				// 1. Rotation (User Tuned 25f)
-				val rotation = (-normalizedRate * 25f).coerceIn(-90f, 90f)
+				// 1. Rotation and double head: the shared arrow's
+				val rotation = arrowRotationDegrees(ratein)
 
 				// 2. Scale
-				val speed = kotlin.math.abs(normalizedRate)
+				val speed = kotlin.math.abs(ratein)
 				val scale = (1.0f + (speed * 0.12f).coerceAtMost(0.5f)) * extraScale
 
 				// 3. Specs (User Tuned + Visible Shaft)
 				val baseSize = density * 24f
 				val strokeWidth = baseSize * 0.12f // 12%
-                
-                val showDouble = speed > 2.0f
-                
+
+                val showDouble = showsDoubleArrow(ratein)
+
                 // Dynamic Length: Longer for Double Heads
                 // Fast: Shortened Arrow (~0.35w) + Gap + HeadDepth
                 val lenFactor = if (showDouble) 0.35f else 0.6f
@@ -255,11 +281,6 @@ private fun paintArrow( canvas: Canvas, paint: Paint, density: Float, rate: Floa
 		paintArrow(canvas, paint, density, rate, 0.0, half, height, half);
 		}
 
-/*{{x -> -((2 h w)/Sqrt[16 h^2 + 9 rate^2 w^2]), 
-  y -> -((3 h rate w)/(2 Sqrt[16 h^2 + 9 rate^2 w^2]))}, {x -> (
-   2 h w)/Sqrt[16 h^2 + 9 rate^2 w^2], 
-  y -> (3 h rate w)/(2 Sqrt[16 h^2 + 9 rate^2 w^2])}} */
-
 		@JvmStatic
 		public fun drawarrowcircle(
 			canvas: Canvas,
@@ -268,20 +289,8 @@ private fun paintArrow( canvas: Canvas, paint: Paint, density: Float, rate: Floa
 			ratein: Float
 		): Boolean {
 			if (!ratein.isNaN()) {
-				val height: Double = canvas.height.toDouble();
-				val width: Double = canvas.width.toDouble()
-				val rate = Natives.thresholdchange(ratein)
-//				val common = 1.0 / sqrt(16.0 + 9.0 * rate.pow(2));
-				val common =  width*height/sqrt(16*height.pow(2.0)+9 * rate.pow(2)*width.pow(2))
-				val xcom = (2.0 * common);
-				val halfW = width * .5;
-				val x1 = halfW - xcom;
-				val x2 = halfW + xcom;
-				val ycom = (1.5 * rate * common);
-				val halfH = height * .5;
-				val y1 = halfH + ycom;
-				val y2 = halfH - ycom;
-				paintArrow(canvas, paint, density, rate, x1, y1, x2, y2);
+				val (x1, y1, x2, y2) = circleArrowEnds(canvas.width.toDouble(), canvas.height.toDouble(), ratein)
+				paintArrow(canvas, paint, density, ratein, x1, y1, x2, y2);
 				return true
 			}
 			return false
