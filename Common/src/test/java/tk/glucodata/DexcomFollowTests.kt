@@ -77,6 +77,19 @@ class DexcomFollowTests {
     }
 
     @Test
+    fun switchingOnHandsTheNewestPairedG7NotTheSelectedOne() {
+        // The old G7 still selected after a sensor change: the new one goes.
+        assertEquals(new, DexcomFollow.onSwitchOn(listOf(old, new)) { true })
+        // An ended record is not among the active ones: nothing is left to hand.
+        assertNull(DexcomFollow.onSwitchOn(emptyList()) { true })
+        // Not before the phone paired the newest, and not the old one meanwhile:
+        // the follow hands the new one once it is paired.
+        assertNull(DexcomFollow.onSwitchOn(listOf(old, new.copy(deviceName = ""))) { true })
+        // Switched on while another kind of sensor is selected: no G7.
+        assertNull(DexcomFollow.onSwitchOn(listOf(old, new)) { false })
+    }
+
+    @Test
     fun onlyAnExportableRecordIsAG7() {
         assertEquals(
             new,

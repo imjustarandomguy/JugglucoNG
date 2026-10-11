@@ -68,6 +68,20 @@ internal object DexcomFollow {
         return Decision.HAND
     }
 
+    /**
+     * The G7 a watch is handed when "Direct sensor on watch" or automatic
+     * switching is turned on: what [decide] hands a watch never handed one, from
+     * the [active] records, while the phone's selected sensor is a G7
+     * ([selectedIsDexcom]). Not the selected record itself: after a sensor change
+     * that can be the old G7, ended, or forgotten on the watch, and the watch
+     * would pair with it again. Null when there is none to hand yet; the newest
+     * follows once the phone has paired it.
+     */
+    fun onSwitchOn(active: Iterable<Record>, selectedIsDexcom: () -> Boolean): Record? {
+        val newest = newest(active) ?: return null
+        return newest.takeIf { decide(null, selectedIsDexcom, it) == Decision.HAND }
+    }
+
     private fun isHanded(handed: String?, record: Record): Boolean {
         val value = handed?.trim()?.takeIf { it.isNotEmpty() } ?: return false
         val separator = value.lastIndexOf(HANDED_START_SEPARATOR)
