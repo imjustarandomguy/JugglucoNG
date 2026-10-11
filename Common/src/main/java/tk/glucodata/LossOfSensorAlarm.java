@@ -50,6 +50,18 @@ public void onReceive(Context context, Intent intent) {
         }
 
 static private PendingIntent onalarm=null ;
+
+/** When the alarm is due (wall clock), 0 while none is set. */
+static private volatile long scheduledAtMillis = 0L;
+
+/**
+ * When this alarm is due, or 0. Its wake also brings the current reading's freshness up
+ * to date, so a staleness wake due at about the same moment can ride on it.
+ */
+public static long scheduledAtMillis() {
+    return scheduledAtMillis;
+    }
+
 static void mkintents(Context context) {
     if(onalarm==null) {
         final int alarmrequest = 4;
@@ -67,6 +79,7 @@ static    void setalarm(Context context, long alarmtime) {
     try {
         alarmtime+=20*1000;
         mkintents(context);
+        scheduledAtMillis = alarmtime;
         {if(doLog) {Log.i(LOG_ID,"setalarm "+alarmtime);};};
         final int type=RTC_WAKEUP;
 
@@ -94,6 +107,7 @@ static    void setalarm(Context context, long alarmtime) {
 static void cancelalarm() {
     if(onalarm!=null) {
         {if(doLog) {Log.i(LOG_ID,"cancelalarm");};};
+        scheduledAtMillis = 0L;
         Notify.shownovalue();
         AlarmManager manager= (AlarmManager) Applic.app.getSystemService(ALARM_SERVICE);
         manager.cancel(onalarm);

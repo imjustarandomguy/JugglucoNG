@@ -21,6 +21,8 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         Specific.registerBridges();
         watchdrip.set(Natives.getwatchdrip());
         SuperGattCallback.doGadgetbridge = Natives.getgadgetbridge();
+        // After the natives are loaded, so the first reading it publishes is a real one.
+        PhoneSurfaces.start(application);
         // Re-arm the nightly backup chain from process start, not only from the
         // settings screen: a chain that died stays dead until someone re-enqueues it.
         ScheduledBackupWorker.initialize(application);

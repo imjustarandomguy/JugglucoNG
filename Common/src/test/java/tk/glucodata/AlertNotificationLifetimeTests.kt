@@ -209,6 +209,7 @@ class AlertNotificationLifetimeTests {
                             PendingIntent intent = new PendingIntent();
                             float glvalue = 63;
                             notGlucose glucose = new notGlucose();
+                            float displayRate = -1.2f;
                             $configuration
                         }
                     }
