@@ -42,6 +42,7 @@ import tk.glucodata.ui.overlay.OverlayScreenArea
 import tk.glucodata.ui.overlay.clampOverlayPixels
 import tk.glucodata.ui.overlay.overlayPixels
 import tk.glucodata.ui.overlay.overlayPosition
+import tk.glucodata.ui.overlay.FloatingIsland
 import tk.glucodata.Natives
 
 class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
@@ -136,8 +137,11 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
 
     // State for Dynamic Island
     data class CutoutData(
+        /** The cutout's extent along the docked edge: the gap between the pill's two labels. */
         val size: androidx.compose.ui.unit.Dp,
-        val edge: CutoutEdge
+        val edge: CutoutEdge,
+        /** Distance from the docked edge to the middle of the cutout, 0 when not known. */
+        val centre: androidx.compose.ui.unit.Dp = 0.dp
     )
     private val cutoutData = kotlinx.coroutines.flow.MutableStateFlow(CutoutData(0.dp, CutoutEdge.NONE))
     private var dynamicIslandEnabled = false
@@ -322,12 +326,22 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             CutoutEdge.BOTTOM -> cutout?.boundingRects?.maxByOrNull { it.bottom }
             else -> cutout?.boundingRects?.minByOrNull { it.top }
         }
-        val gapPx = cutoutRect?.width()?.takeIf { it > 0 }
-            ?: cutoutRect?.height()?.takeIf { it > 0 }
-            ?: 0
+        val rectWidth = cutoutRect?.width() ?: 0
+        val rectHeight = cutoutRect?.height() ?: 0
+        // The label gap is the cutout's extent along the docked edge: in landscape the
+        // rect's height, not its width, which runs across the edge.
+        val gapPx = FloatingIsland.alongEdge(edge, rectWidth, rectHeight)
+        val safeInset = when (edge) {
+            CutoutEdge.LEFT -> cutout?.safeInsetLeft
+            CutoutEdge.RIGHT -> cutout?.safeInsetRight
+            CutoutEdge.BOTTOM -> cutout?.safeInsetBottom
+            else -> cutout?.safeInsetTop
+        } ?: 0
+        val centrePx = FloatingIsland.cutoutCentre(safeInset, FloatingIsland.acrossEdge(edge, rectWidth, rectHeight))
         return CutoutData(
             size = if (gapPx > 0) (gapPx / density).dp else 0.dp,
-            edge = edge
+            edge = edge,
+            centre = (centrePx / density).dp
         )
     }
 
