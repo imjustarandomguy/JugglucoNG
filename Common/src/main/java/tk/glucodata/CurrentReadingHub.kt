@@ -65,6 +65,17 @@ class ReadingHub internal constructor(
          * readings into chunks shows the end of the last full chunk, up to a chunk behind.
          */
         val newestReadingMillis: Long = 0L,
+        /** The other sensors the device shows beside this one, in their order. */
+        val others: List<Other> = emptyList(),
+    )
+
+    /** Another sensor shown beside the device's own: enough to know when it goes stale. */
+    class Other(
+        val sensorId: String,
+        /** When its newest reading was taken, or 0 for none. */
+        val newestReadingMillis: Long,
+        val recentTimes: List<Long>,
+        val declaredIntervalMillis: Long,
     )
 
     /** Reads the [Inputs] at a moment. Runs on the hub's worker. */
@@ -300,9 +311,25 @@ class ReadingHub internal constructor(
                 staleAtMillis = if (hasTime) ReadingCadence.staleAt(lastReadingMillis, interval) else 0L,
                 noValueAtMillis = if (hasTime) ReadingCadence.noValueAt(lastReadingMillis) else 0L,
                 lastReadingMillis = lastReadingMillis,
+                otherSensors = inputs.others.map { composeOther(it, nowMillis) },
                 origin = if (hasTime) originOf(lastReadingMillis) else Origin.STORED,
                 reason = Reason.STARTUP,
                 revision = 0L,
+            )
+        }
+
+        /** [other] at [nowMillis], under the same stale rule as the sensor shown first. */
+        private fun composeOther(other: Other, nowMillis: Long): DisplayedReading.OtherSensor {
+            val at = other.newestReadingMillis
+            val interval = ReadingCadence.intervalMillis(
+                other.declaredIntervalMillis,
+                if (at > 0L) other.recentTimes + at else other.recentTimes,
+            )
+            return DisplayedReading.OtherSensor(
+                sensorId = other.sensorId,
+                freshness = ReadingCadence.freshness(true, at, interval, nowMillis),
+                staleAtMillis = if (at > 0L) ReadingCadence.staleAt(at, interval) else 0L,
+                noValueAtMillis = if (at > 0L) ReadingCadence.noValueAt(at) else 0L,
             )
         }
 
@@ -424,6 +451,17 @@ object CurrentReadingHub {
         source.displaySensor = resolver
         hub.onDisplayInputsChanged(Reason.SETTINGS)
     }
+
+    /**
+     * The other sensors this device shows beside the one it displays (the watch's
+     * selection). Their stale moments wake the clock and are published too
+     * ([DisplayedReading.otherSensors]), so a surface showing them needs no clock of its own.
+     */
+    @JvmStatic
+    fun setOtherSensors(resolver: () -> List<String>) {
+        source.otherSensors = resolver
+        hub.onDisplayInputsChanged(Reason.SETTINGS)
+    }
 }
 
 /**
@@ -440,10 +478,19 @@ internal class StoredReadingSource : ReadingHub.Source {
     @Volatile
     var displayRate: (List<GlucosePoint>, CurrentDisplaySource.Snapshot) -> Float = ::dashboardRate
 
-    override fun read(nowMillis: Long): ReadingHub.Inputs =
-        read(nowMillis, runCatching { displaySensor() }.getOrNull())
+    /** The other sensors shown beside [displaySensor], in their order; none by default. */
+    @Volatile
+    var otherSensors: () -> List<String> = { emptyList() }
 
-    fun read(nowMillis: Long, sensorId: String?): ReadingHub.Inputs {
+    override fun read(nowMillis: Long): ReadingHub.Inputs {
+        val sensor = runCatching { displaySensor() }.getOrNull()
+        val others = runCatching { otherSensors() }.getOrDefault(emptyList())
+            .filterNot { sensor != null && SensorIdentity.matches(it, sensor) }
+            .map { readOther(nowMillis, it) }
+        return read(nowMillis, sensor, others)
+    }
+
+    fun read(nowMillis: Long, sensorId: String?, others: List<ReadingHub.Other> = emptyList()): ReadingHub.Inputs {
         val sensor = sensorId?.takeIf { it.isNotBlank() }
         val isMmol = Applic.unit == 1
         val history = runCatching {
@@ -475,6 +522,23 @@ internal class StoredReadingSource : ReadingHub.Source {
             declaredIntervalMillis = declaredIntervalMillis(snapshot?.sensorId ?: sensor),
             latestTimeMillis = latest,
             newestReadingMillis = newestReadingMillis(history, liveMillis, nowMillis),
+            others = others,
+        )
+    }
+
+    /** What the clock needs of a sensor shown beside the first: its reading times, no value. */
+    private fun readOther(nowMillis: Long, sensorId: String): ReadingHub.Other {
+        val rows = runCatching {
+            NotificationHistorySource.getDisplayHistory(nowMillis - HISTORY_MS, Applic.unit == 1, sensorId)
+        }.getOrDefault(emptyList()).let { notAhead(it, nowMillis) }
+        val liveMillis = runCatching {
+            CurrentGlucoseSource.getFresh(ReadingCadence.NO_VALUE_AFTER_MS, sensorId)?.timeMillis
+        }.getOrNull() ?: 0L
+        return ReadingHub.Other(
+            sensorId = sensorId,
+            newestReadingMillis = newestReadingMillis(rows, liveMillis, nowMillis),
+            recentTimes = rows.map { it.timestamp },
+            declaredIntervalMillis = declaredIntervalMillis(sensorId),
         )
     }
 
