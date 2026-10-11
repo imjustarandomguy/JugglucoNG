@@ -749,7 +749,7 @@ object SensorOwnershipRuntime {
         yieldStartedAt.clear()
         assignedSensors.forEach { serial ->
             releaseState.resume(serial)
-            findGatt(serial)?.let { gatt ->
+            releasedGatts(serial).forEach { gatt ->
                 gatt.setPause(false)
             }
         }
@@ -786,8 +786,9 @@ object SensorOwnershipRuntime {
 
     private fun resume(serial: String, reason: String = "the other device is no longer reading it") {
         releaseState.resume(serial)
-        val gatt = findGatt(serial)
-        if (gatt == null) {
+        // Every callback release() paused: one left paused never dials again.
+        val gatts = releasedGatts(serial)
+        if (gatts.isEmpty()) {
             // Nothing to reconnect: this device has no driver for the sensor, so
             // arbitration handing it over here achieves nothing. On a watch that
             // means Bluetooth was never brought up, or the sensor's record never
@@ -796,10 +797,12 @@ object SensorOwnershipRuntime {
             return
         }
         Log.i(LOG_ID, "taking $serial back: $reason")
-        runCatching {
-            gatt.setPause(false)
-            gatt.connectDevice(RESUME_DELAY_MS)
-        }.onFailure { Log.stack(LOG_ID, "resume($serial)", it) }
+        gatts.forEach { gatt ->
+            runCatching {
+                gatt.setPause(false)
+                gatt.connectDevice(RESUME_DELAY_MS)
+            }.onFailure { Log.stack(LOG_ID, "resume($serial)", it) }
+        }
     }
 
     /**
