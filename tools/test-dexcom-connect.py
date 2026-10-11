@@ -35,7 +35,9 @@ methods = '\n'.join(method(s) for s in [
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
     'static private PendingIntent mkintents(', 'static  PendingIntent  setalarm(',
-    'private void cancelalarm(',
+    'private void cancelalarm(', 'private void waitShortReconnect(', 'private void runShortReconnect(',
+    'protected void pendingConnectEnded(', 'private synchronized void cancelShortReconnect(',
+    'private synchronized void releaseReconnectLock(',
     'public synchronized void onDescriptorWrite(', 'public synchronized void onServicesDiscovered(',
     'public synchronized void onCharacteristicChanged(' if 'public synchronized void onCharacteristicChanged(' in source
     else 'public void onCharacteristicChanged(',
@@ -91,6 +93,7 @@ class SuperGattCallback {
     protected boolean useAutoConnect(){return defaultAuto;}
     protected long connectionAttemptTimeoutMillis(){return 0;}
     protected void onConnectionAttemptTimeout(){}
+    protected boolean connectScheduled(){return false;}protected void pendingConnectEnded(){}
     public synchronized boolean connectDevice(long delay){directCalls++;executorDelay=delay;mBluetoothGatt=new BluetoothGatt();return true;}
     public void close(){closes++;mBluetoothGatt=null;}
     public void setPause(boolean pause){stop=pause;}
@@ -204,7 +207,12 @@ class Prefs {
 class Applic extends Context {
     static boolean isWearable;static Applic app=new Applic();static Prefs prefs=new Prefs();static AlarmManager alarms=new AlarmManager();
     static PowerManager power=new PowerManager();
-    static class Scheduler {void schedule(Runnable r,long delay,TimeUnit unit){}}
+    static class Scheduler {
+        List<Runnable> tasks=new ArrayList<>();List<Long> delays=new ArrayList<>();
+        void schedule(Runnable r,long delay,TimeUnit unit){tasks.add(r);delays.add(unit.toMillis(delay));}
+        long lastDelay(){return delays.isEmpty()?-1:delays.get(delays.size()-1);}
+        Runnable lastTask(){return tasks.get(tasks.size()-1);}
+    }
     static Scheduler scheduler=new Scheduler();
     void redraw(){}
     static List<Runnable> ui=new ArrayList<>();static void RunOnUiThread(Runnable r){ui.add(r);}
@@ -222,9 +230,38 @@ public class DexGattCallback extends SuperGattCallback {
     private final byte[] random8=new byte[8];
 '''+fields+methods+r'''
     static void check(boolean b,String message){if(!b)throw new AssertionError(message);}
+    static boolean waitsUnderLock(DexGattCallback cb,long delay){
+        PowerManager.WakeLock lock=cb.reconnectlock;
+        return Applic.scheduler.lastDelay()==delay&&cb.shortReconnectPending&&lock!=null&&lock.held
+            &&lock.timeout==delay+2000&&!lock.referenceCounted&&Applic.alarms.pending==null;
+    }
+    static boolean shortWaitEnded(DexGattCallback cb){
+        return !cb.shortReconnectPending&&(cb.reconnectlock==null||!cb.reconnectlock.held);
+    }
+    static void shortReconnectWaits() {
+        DexGattCallback cb=fresh();cb.close();int calls=cb.directCalls;
+        check(cb.connectDevice(5000)&&waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==calls,"short reconnect used an alarm clock or connected at once");
+        Applic.scheduler.lastTask().run();
+        check(cb.directCalls==calls+1&&shortWaitEnded(cb),"short wait did not connect or kept its wake lock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);Runnable replaced=Applic.scheduler.lastTask();
+        cb.connectDevice(6000);check(waitsUnderLock(cb,6000),"later short wait did not replace the first");
+        replaced.run();check(cb.directCalls==calls&&cb.reconnectlock.held,"replaced short wait connected or released its successor's lock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);Runnable cancelled=Applic.scheduler.lastTask();
+        cb.connectDevice(0);check(cb.directCalls==calls+1&&shortWaitEnded(cb),"immediate connect did not cancel the short wait");
+        cancelled.run();check(cb.directCalls==calls+1,"cancelled short wait connected");
+        cb=fresh();cb.close();cb.connectDevice(5000);cb.connectDevice(300000);
+        check(Applic.alarms.scheduled==1&&shortWaitEnded(cb),"long delay kept the short wait");
+        cb=fresh();cb.close();cb.connectDevice(300000);cb.connectDevice(5000);
+        check(waitsUnderLock(cb,5000),"short wait kept the alarm clock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);cancelled=Applic.scheduler.lastTask();cb.setPause(true);
+        check(shortWaitEnded(cb),"pause kept the short wait or its wake lock");
+        cancelled.run();check(cb.directCalls==calls,"paused callback connected after its short wait");
+        cb=fresh();cb.close();cb.connectDevice(7001);
+        check(Applic.alarms.scheduled==1&&shortWaitEnded(cb),"a wait past the cap skipped the alarm clock");
+    }
     static DexGattCallback fresh(){
         Applic.prefs=new Prefs();Applic.alarms=new AlarmManager();
-        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();
+        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();Applic.scheduler=new Applic.Scheduler();
         defaultAuto=false;alarmClock=false;isWearable=false;CloneSensorRegistry.clone=false;SensorOwnershipRuntime.blocked=false;
         Natives.lastGlucose=-1;Natives.aesSuccess=true;Natives.resets=0;Natives.authenticated=true;
         Natives.sampleAge=0;Natives.result=100;Natives.saveName=false;System.now=1_760_000_000_000L;
@@ -361,29 +398,30 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.datatime==received&&cb.sampletime==received-120000,"response/sample clocks were mixed");
             check(cb.lastPublishedTime==received-120000,"published glucose lost its actual timestamp");
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+7000&&cb.directCalls==1,"old sample caused immediate post-reading reconnect");
+            check(waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"old sample caused immediate post-reading reconnect, or an alarm clock for its quiet period");
             check(cb.useAutoConnect()&&cb.wakelock==null,"post-reading policy/wake lock regressed");
             cb.connectDevice(0);gatt=cb.mBluetoothGatt;
+            check(shortWaitEnded(cb),"immediate connect left the quiet wait or its wake lock");
             cb.onConnectionStateChange(gatt,0,2);
             check(!cb.connected&&cb.wakelock==null,"old sample bypassed recent-response guard");
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==2,"recent-response link loss redialled immediately");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==2,"recent-response link loss redialled immediately");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,0,2);Natives.sampleAge=120000;
             cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             System.now+=10000;cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==1,"elapsed quiet period bypassed reconnect floor");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"elapsed quiet period bypassed reconnect floor");
 
             cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
             Natives.sampleAge=120000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+152500,"next-slot alarm followed reception instead of sample age");
+            check(Applic.alarms.at==System.now+152500&&shortWaitEnded(cb),"next-slot alarm followed reception instead of sample age");
 
             cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
             Natives.sampleAge=280000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000,"past slot alarm bypassed reconnect floor");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0,"past slot alarm bypassed reconnect floor");
 
             cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
             cb.datatime=System.now;cb.justdata=true;cb.sampletime=0;
@@ -392,13 +430,13 @@ public class DexGattCallback extends SuperGattCallback {
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,0,2);cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==1&&!cb.useAutoConnect(),"empty live session redialled immediately or changed direct policy");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==1&&!cb.useAutoConnect(),"empty live session redialled immediately or changed direct policy");
             cb.setPause(true);
-            check(Applic.alarms.pending==null,"pause retained empty-session reconnect alarm");
+            check(Applic.alarms.pending==null&&shortWaitEnded(cb),"pause retained empty-session reconnect wait");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,133,0);
-            check(cb.directCalls==2&&Applic.alarms.scheduled==0&&cb.useAutoConnect(),"failed dial acquired a quiet delay");
+            check(cb.directCalls==2&&Applic.alarms.scheduled==0&&shortWaitEnded(cb)&&cb.useAutoConnect(),"failed dial acquired a quiet delay");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             Natives.result=0;cb.sensorstartmsec=System.now-600000;
@@ -496,7 +534,7 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();first=cb.mBluetoothGatt;cb.onConnectionStateChange(first,0,2);cb.close();cb.connectDevice(0);cb.onConnectionStateChange(cb.mBluetoothGatt,147,0);
         check(cb.useAutoConnect(),"missing old disconnect prevented new-attempt fallback");
         cb=fresh();first=cb.mBluetoothGatt;cb.datatime=System.currentTimeMillis();cb.justdata=true;cb.onConnectionStateChange(first,19,0);
-        check(cb.useAutoConnect()&&Applic.alarms.scheduled==1&&cb.directCalls==1,"data reconnect did not use wakeup alarm");
+        check(cb.useAutoConnect()&&waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"data reconnect did not wait its quiet period under a wake lock");
         cb=fresh();first=cb.mBluetoothGatt;cb.justdata=true;cb.lastDataInvalidDuringWarmup=true;cb.lastWarmupRetryAt=System.currentTimeMillis()+600000;cb.onConnectionStateChange(first,19,0);
         check(Applic.alarms.scheduled==1&&cb.directCalls==1,"warmup used executor timer");
         cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(300000);
@@ -536,10 +574,10 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();cb.mActiveBluetoothDevice=null;cb.bonded();check(Applic.ui.isEmpty(),"bonded without device queued discovery");
         cb=fresh();current=cb.mBluetoothGatt;current.discoveryResult=false;cb.bonded();Applic.runUi();check(cb.disconnects==1,"current discovery failure lost recovery");
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
-        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();
+        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();
         authSlots();
         challengeReplies();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
