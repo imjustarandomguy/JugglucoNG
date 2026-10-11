@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tk.glucodata.ui.util.GlucoseFormatter
 
 class StandardGlucoseAlertEvaluatorTests {
 
@@ -65,6 +66,61 @@ class StandardGlucoseAlertEvaluatorTests {
 
         assertTrue(lowBoundary.isEmpty())
         assertTrue(highBoundary.isEmpty())
+    }
+
+    private fun mmol(mgdl: Int): Float = GlucoseFormatter.displayFromMgDl(mgdl.toFloat(), true)
+
+    private fun isActive(
+        type: AlertType,
+        threshold: Float,
+        value: Float,
+        isMmol: Boolean,
+        wasActive: Boolean = false,
+        rearmMargin: Float? = null
+    ): Boolean = type in StandardGlucoseAlertEvaluator.resolveActive(
+        glucoseValue = value,
+        rate = 0f,
+        configs = mapOf(type to AlertConfig(type, enabled = true, threshold = threshold, rearmMargin = rearmMargin)),
+        alertTypes = listOf(type),
+        isMmol = isMmol,
+        isConfigActive = activeConfig,
+        wasConditionActive = { wasActive }
+    )
+
+    @Test
+    fun aReadingShownAsTheLowThresholdDoesNotAlarm() {
+        for (type in listOf(AlertType.LOW, AlertType.VERY_LOW)) {
+            // 72 mg/dL is 3.996 mmol/L: every surface shows 4.0.
+            assertFalse(type.name, isActive(type, 4.0f, mmol(72), isMmol = true))
+            // 71 mg/dL is 3.94, shown 3.9.
+            assertTrue(type.name, isActive(type, 4.0f, mmol(71), isMmol = true))
+            assertFalse(type.name, isActive(type, 70f, 70f, isMmol = false))
+            assertTrue(type.name, isActive(type, 70f, 69f, isMmol = false))
+            // A calibrated 69.6 is shown 70.
+            assertFalse(type.name, isActive(type, 70f, 69.6f, isMmol = false))
+        }
+    }
+
+    @Test
+    fun aReadingShownAsTheHighThresholdDoesNotAlarm() {
+        for (type in listOf(AlertType.HIGH, AlertType.VERY_HIGH)) {
+            // 181 mg/dL is 10.05 mmol/L, shown 10.0; 182 is 10.10, shown 10.1.
+            assertFalse(type.name, isActive(type, 10.0f, mmol(181), isMmol = true))
+            assertTrue(type.name, isActive(type, 10.0f, mmol(182), isMmol = true))
+            assertFalse(type.name, isActive(type, 180f, 180f, isMmol = false))
+            assertTrue(type.name, isActive(type, 180f, 181f, isMmol = false))
+            assertFalse(type.name, isActive(type, 180f, 180.4f, isMmol = false))
+        }
+    }
+
+    @Test
+    fun anEpisodeEndsWhenTheReadingIsShownPastTheRearmMargin() {
+        // Low 4.0 + 0.5: 80 mg/dL (4.44, shown 4.4) is still low, 81 (4.4955, shown 4.5) is over.
+        assertTrue(isActive(AlertType.LOW, 4.0f, mmol(80), isMmol = true, wasActive = true, rearmMargin = 0.5f))
+        assertFalse(isActive(AlertType.LOW, 4.0f, mmol(81), isMmol = true, wasActive = true, rearmMargin = 0.5f))
+        // High 10.0 - 0.5: 173 mg/dL (9.60, shown 9.6) is still high, 172 (9.546, shown 9.5) is over.
+        assertTrue(isActive(AlertType.HIGH, 10.0f, mmol(173), isMmol = true, wasActive = true, rearmMargin = 0.5f))
+        assertFalse(isActive(AlertType.HIGH, 10.0f, mmol(172), isMmol = true, wasActive = true, rearmMargin = 0.5f))
     }
 
     @Test
