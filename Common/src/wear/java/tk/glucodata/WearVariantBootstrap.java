@@ -32,6 +32,8 @@ public class WearVariantBootstrap implements VariantBootstrap {
     @Override
     public void start(Application application) {
         Specific.registerBridges();
+        // After the natives are loaded, so the first reading it publishes is a real one.
+        WatchSurfaces.start();
     }
 
     @Override

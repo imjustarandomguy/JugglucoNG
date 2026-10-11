@@ -198,6 +198,8 @@ internal object ComplicationRenderer {
         offsetX: Float = 0f,
         offsetY: Float = 0f,
     ) {
+        // No rate, no arrow: TrendArrowAngle draws NaN flat, which reads as a steady trend.
+        if (!rateMgdlPerMin.isFinite()) return
         val cx = offsetX + width / 2f
         val cy = offsetY + height / 2f
         val span = minOf(width, height)
@@ -375,8 +377,33 @@ internal object ComplicationRenderer {
         return paint.measureText(text)
     }
 
-    /** A blank of the right shape, for a slot with nothing to show. */
-    fun noValueBitmap(size: Int): Bitmap = bitmap(size, size).first
+    /**
+     * [tk.glucodata.DisplayedReading.NO_VALUE_TEXT] in a slot of the right shape: what every image
+     * complication shows without a value, as the text ones do.
+     */
+    @JvmOverloads
+    fun noValueBitmap(size: Int, color: Int = neutral(), icon: Boolean = false): Bitmap {
+        val (bmp, canvas) = bitmap(size, size)
+        val inset = size * (if (icon) ICON_INSET else PHOTO_INSET)
+        val content = size - inset * 2f
+        // Half the height: a dash line fitted to the whole slot would be a bar.
+        drawFittedText(
+            canvas, tk.glucodata.DisplayedReading.NO_VALUE_TEXT, color,
+            inset, inset + content / 4f, content, content / 2f,
+        )
+        return bmp
+    }
+
+    /** [color] as a stale reading is drawn: the same tone, half as strong. */
+    fun dimmed(color: Int): Int = (color and 0x00FFFFFF) or (((color ushr 24) / 2) shl 24)
+
+    /** The colour of [reading]'s value: its range colour, dimmed once it is stale. */
+    fun readingColor(reading: GlucoseComplicationData.Reading): Int =
+        valueColor(reading.value, reading.isMmol).let { if (reading.stale) dimmed(it) else it }
+
+    /** The mask colour of an ICON drawing [reading]: the face tints it, a stale one at half strength. */
+    fun iconTint(reading: GlucoseComplicationData.Reading?): Int =
+        if (reading?.stale == true) dimmed(ICON_TINT) else ICON_TINT
 
     // -------------------------------------------------------------- sparkline
 
@@ -497,6 +524,8 @@ internal object ComplicationRenderer {
         showTime: Boolean = false,
         inset: Boolean = true,
         allowSynthetic: Boolean = false,
+        /** The reading is stale: its value and time are drawn dimmed. */
+        stale: Boolean = false,
     ): Bitmap? {
         val points = sparkPoints(isMmol).takeIf { it.size >= 2 }
             ?: if (allowSynthetic) syntheticPoints(isMmol) else emptyList()
@@ -507,7 +536,7 @@ internal object ComplicationRenderer {
         val marginY = if (inset) height * PHOTO_INSET else 0f
         val contentW = width - marginX * 2f
         val contentH = height - marginY * 2f
-        val color = valueColor(value, isMmol)
+        val color = valueColor(value, isMmol).let { if (stale) dimmed(it) else it }
 
         // The header takes a share of the height only when there is something
         // to put in it. With nothing above or below, the trace would run the

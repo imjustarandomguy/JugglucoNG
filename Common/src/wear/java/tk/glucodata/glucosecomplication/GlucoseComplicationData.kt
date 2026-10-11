@@ -12,40 +12,32 @@ import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageType
 import tk.glucodata.Applic
-import tk.glucodata.CurrentDisplaySource
-import tk.glucodata.DisplayTrendSource
+import tk.glucodata.CurrentReadingHub
+import tk.glucodata.DisplayedReading
 import tk.glucodata.GlucoseRangeColors
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.R
-import tk.glucodata.UiRefreshBus
 import kotlin.math.max
 import kotlin.math.min
 
 internal object GlucoseComplicationData {
+    /** The current reading as the complications draw it: only while a value is shown. */
     data class Reading(
         val value: Float,
         val text: String,
         val isMmol: Boolean,
         val timeMillis: Long,
-        private val rateSource: () -> Float,
+        /** The arrow's rate in mg/dL per minute; NaN draws none (a stale reading has none). */
+        val rate: Float,
         val index: Int,
         /** Drawn by the watch face under the value. */
         val sensorId: String? = null,
-    ) {
-        constructor(
-            value: Float,
-            text: String,
-            isMmol: Boolean,
-            timeMillis: Long,
-            rate: Float,
-            index: Int,
-            sensorId: String? = null,
-        ) : this(value, text, isMmol, timeMillis, { rate }, index, sensorId)
-
-        /** The display arrow's rate, resolved when read: a surface drawing no arrow never loads it. */
-        val rate: Float get() = rateSource()
-    }
+        /** The next reading is overdue: the value is drawn dimmed. */
+        val stale: Boolean = false,
+        /** The hub's revision it was drawn from, 0 for a sample. */
+        val revision: Long = 0L,
+    )
 
     private data class Thresholds(
         val low: Float,
@@ -56,93 +48,34 @@ internal object GlucoseComplicationData {
 
     fun tapAction(): PendingIntent = Notify.mkpending()
 
-    /** The sensor the phone shows first; the complications follow it too. */
-    private fun displaySensor(): String? =
-        runCatching { tk.glucodata.ui.WearSensorSelection.resolve() }.getOrNull()
-
-    /** The display sensor's reading; showing it arms the alarm that takes it down once stale. */
-    fun currentReading(): Reading? =
-        currentReading(displaySensor())?.also { ComplicationFreshness.onReadingShown(it.timeMillis) }
-
-    fun currentReading(sensor: String?): Reading? {
-        val snapshot = runCatching {
-            CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, sensor)
-        }.getOrNull() ?: return syncedReading(sensor)
-        val now = System.currentTimeMillis()
-        if (snapshot.timeMillis <= 0L || now - snapshot.timeMillis >= Notify.glucosetimeout) {
-            return syncedReading(sensor)
-        }
-        if (!snapshot.primaryValue.isFinite() || snapshot.primaryValue <= 0.0f || snapshot.primaryStr.isBlank()) {
-            return syncedReading(sensor)
-        }
-        return Reading(
-            value = snapshot.primaryValue,
-            text = snapshot.primaryStr,
-            isMmol = snapshot.isMmol,
-            timeMillis = snapshot.timeMillis,
-            rateSource = { displayRate(snapshot) },
-            index = snapshot.index,
-            sensorId = snapshot.sensorId,
-        )
-    }
+    /** The watch's current reading ([CurrentReadingHub]); null while no value is shown. */
+    fun currentReading(): Reading? = reading(CurrentReadingHub.current())
 
     /**
-     * On a companion watch readings arrive over the Data Layer and land in the
-     * native store, which the live resolver may not have picked up — the app's own
-     * screens read the merged history for the same reason. Without this the watch
-     * face and every complication sat blank on a watch that had current data.
+     * [sensor]'s reading under the same rules: the hub's when it is the sensor the watch
+     * displays, else resolved for it (the multi-sensor complication's other sensors).
      */
-    private fun syncedReading(sensor: String?): Reading? {
-        val isMmol = runCatching { Applic.unit == 1 }.getOrDefault(false)
-        val newest = runCatching {
-            tk.glucodata.NotificationHistorySource
-                .getDisplayHistory(System.currentTimeMillis() - Notify.glucosetimeout, isMmol, sensor)
-                .lastOrNull()
-        }.getOrNull() ?: return null
-        if (!newest.value.isFinite() || newest.value <= 0f) return null
-        if (System.currentTimeMillis() - newest.timestamp >= Notify.glucosetimeout) return null
-        // Resolve the synced lanes through the same calibration, smoothing and
-        // sensor view mode as live data; raw-primary peers must not become auto.
-        val resolved = runCatching {
-            CurrentDisplaySource.resolveIncomingReading(
-                reading = tk.glucodata.LiveReadingLanes.stock(newest.value, newest.rawValue),
-                rate = Float.NaN,
-                targetTimeMillis = newest.timestamp,
-                preferredSensorId = sensor,
-            )
-        }.getOrNull() ?: return null
-        return Reading(
-            value = resolved.primaryValue,
-            text = resolved.primaryStr,
-            isMmol = resolved.isMmol,
-            timeMillis = resolved.timeMillis,
-            rateSource = { displayRate(resolved) },
-            index = resolved.index,
-            sensorId = resolved.sensorId,
-        )
+    fun currentReading(sensor: String): Reading? {
+        val shown = CurrentReadingHub.current()
+        if (tk.glucodata.SensorIdentity.matches(sensor, shown.sensorId)) return reading(shown)
+        return reading(runCatching { CurrentReadingHub.resolveFor(sensor) }.getOrNull() ?: return null)
     }
 
-    /**
-     * The arrow the phone's dashboard and notification show for this reading. The
-     * snapshot's own rate is the alert engine's, measured over the smoothed series:
-     * near the flat band it drew a flat arrow here beside a rising one on the phone.
-     */
-    fun displayRate(snapshot: CurrentDisplaySource.Snapshot): Float =
-        rateCache.rate(rateKey(snapshot, UiRefreshBus.revision.value)) {
-            runCatching { DisplayTrendSource.loadDisplayArrowRate(snapshot) }.getOrDefault(snapshot.rate)
-        }
-
-    private val rateCache = DisplayRateCache()
-
-    internal fun rateKey(snapshot: CurrentDisplaySource.Snapshot, dataRevision: Long) = DisplayRateCache.Key(
-        sensorId = snapshot.sensorId,
-        timeMillis = snapshot.timeMillis,
-        viewMode = snapshot.viewMode,
-        isMmol = snapshot.isMmol,
-        autoValue = snapshot.autoValue,
-        rawValue = snapshot.rawValue,
-        dataRevision = dataRevision,
-    )
+    /** What a complication draws of [shown]: its value while one is shown, the arrow while fresh. */
+    fun reading(shown: DisplayedReading): Reading? {
+        if (!shown.showsValue) return null
+        return Reading(
+            value = shown.value,
+            text = shown.valueText,
+            isMmol = shown.isMmol,
+            timeMillis = shown.timeMillis,
+            rate = shown.shownRate,
+            index = shown.index,
+            sensorId = shown.sensorId,
+            stale = shown.isDimmed,
+            revision = shown.revision,
+        )
+    }
 
     fun previewReading(): Reading {
         currentReading()?.let { return it }
@@ -175,7 +108,7 @@ internal object GlucoseComplicationData {
         title: String? = null,
     ): ShortTextComplicationData {
         val builder = ShortTextComplicationData.Builder(
-            text = text(reading?.text ?: noValueText()),
+            text = text(shownText(reading)),
             contentDescription = text(contentDescription),
         ).setTapAction(tapAction)
         title?.let { builder.setTitle(text(it)) }
@@ -201,7 +134,7 @@ internal object GlucoseComplicationData {
         title: String? = null,
     ): LongTextComplicationData {
         val builder = LongTextComplicationData.Builder(
-            text = text(reading?.text ?: noValueText()),
+            text = text(shownText(reading)),
             contentDescription = text(contentDescription),
         ).setTapAction(tapAction)
         title?.let { builder.setTitle(text(it)) }
@@ -223,7 +156,7 @@ internal object GlucoseComplicationData {
                 value = 0.0f,
                 min = 0.0f,
                 max = 1.0f,
-                contentDescription = text(noValueText()),
+                contentDescription = text(noValueDescription()),
             ).setText(text(noValueText()))
         } else {
             val thresholds = thresholds(reading.isMmol)
@@ -292,5 +225,10 @@ internal object GlucoseComplicationData {
     private fun text(value: String): ComplicationText =
         PlainComplicationText.Builder(text = value).build()
 
-    private fun noValueText(): String = Applic.app.getString(R.string.novalue)
+    /** What the text forms show for [reading]: its value, or the no-value mark every surface shows. */
+    internal fun shownText(reading: Reading?): String = reading?.text ?: noValueText()
+
+    private fun noValueText(): String = DisplayedReading.NO_VALUE_TEXT
+
+    private fun noValueDescription(): String = Applic.app.getString(R.string.novalue)
 }

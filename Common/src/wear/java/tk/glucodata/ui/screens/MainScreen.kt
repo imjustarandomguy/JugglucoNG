@@ -50,43 +50,65 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import java.util.Date
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tk.glucodata.Applic
-import tk.glucodata.CurrentDisplaySource
-import tk.glucodata.DisplayDataState
+import tk.glucodata.CurrentReadingHub
+import tk.glucodata.DisplayedReading
 import tk.glucodata.GlucosePoint
 import tk.glucodata.Natives
 import tk.glucodata.NotificationHistorySource
 import tk.glucodata.R
+import tk.glucodata.ReadingCadence
 import tk.glucodata.TrendAccess
 import tk.glucodata.UiRefreshBus
 import tk.glucodata.ui.WearGlucoseStore
 import tk.glucodata.ui.WearNavigationRow
 import tk.glucodata.ui.components.TrendArrowCanvas
 
-private const val TICK_MS = 30_000L
-
-// Resolved for the selection's primary, not for whatever native calls current:
-// with two sensors syncing the latter changed with every chunk.
-private fun currentSnapshot(): CurrentDisplaySource.Snapshot? =
-    runCatching {
-        CurrentDisplaySource.resolveCurrent(
-            preferredSensorId = tk.glucodata.ui.WearSensorSelection.resolve(),
-        )
-    }.getOrNull()
-
-private fun sensorPresent(): Boolean = runCatching {
-    Natives.activeSensors()?.isNotEmpty() == true
-}.getOrDefault(false)
-
 /**
  * The band colour for an alarm's value, or null while it is in range so the
  * caller keeps its own neutral tone. An alarm is worth colouring outright —
  * unlike the routine readouts, which follow the phone's value-colour setting.
  */
-internal fun glucoseColor(snapshot: CurrentDisplaySource.Snapshot): Color? =
-    tk.glucodata.ui.WearGlucoseColors.bandColorOrNull(snapshot.primaryValue, snapshot.isMmol)
+internal fun glucoseColor(reading: DisplayedReading): Color? =
+    if (reading.showsValue) tk.glucodata.ui.WearGlucoseColors.bandColorOrNull(reading.value, reading.isMmol) else null
+
+/**
+ * What the hero shows of the watch's current reading: the value (dimmed once stale, "---"
+ * once taken down), the lanes of the view mode while there is a value, and the arrow only
+ * while the reading is fresh. Null while there is no reading at all.
+ */
+internal data class HeroReading(
+    val text: String,
+    val secondaryText: String?,
+    val tertiaryText: String?,
+    val value: Float,
+    val isMmol: Boolean,
+    /** NaN draws no arrow. */
+    val rate: Float,
+    val stale: Boolean,
+    val timeMillis: Long,
+    val revision: Long,
+)
+
+internal fun heroReading(reading: DisplayedReading): HeroReading? {
+    if (reading.freshness == DisplayedReading.Freshness.NO_SENSOR ||
+        reading.freshness == DisplayedReading.Freshness.AWAITING
+    ) {
+        return null
+    }
+    return HeroReading(
+        text = reading.shownText,
+        secondaryText = reading.secondaryText.takeIf { reading.showsValue },
+        tertiaryText = reading.tertiaryText.takeIf { reading.showsValue },
+        value = reading.value,
+        isMmol = reading.isMmol,
+        rate = reading.shownRate,
+        stale = reading.isDimmed || !reading.showsValue,
+        timeMillis = reading.timeMillis,
+        revision = reading.revision,
+    )
+}
 
 /** The lane a view mode shows first, which is what a colour rule must judge. */
 internal fun primaryLaneValue(point: GlucosePoint, viewMode: Int): Float =
@@ -110,21 +132,28 @@ internal fun rowVelocities(
     isMmol: Boolean,
 ): Map<Long, Float> = tk.glucodata.TrendWindows.velocities(history, rows, useRaw, isMmol)
 
+/** A row and the current reading this close together are one reading stored apart. */
+private const val SAME_READING_MS = 30_000L
+
 /**
- * [rowVelocities] for [rows] of the store's primary series, except the newest reading,
- * which takes [WearGlucoseStore.Snapshot.trendRate]: the arrow the hero, the
- * complications and the phone show for it. The sweep reads the drawn series, smoothed
- * and without the live reading, and near the flat band it tilted differently.
+ * [rowVelocities] for [rows] of the store's primary series, except the row of the
+ * [current] reading, which takes its rate: the arrow the hero, the complications and
+ * the phone show for it. The sweep reads the drawn series, smoothed and without the live
+ * reading, and near the flat band it tilted differently.
  */
 internal fun readingVelocities(
     snapshot: WearGlucoseStore.Snapshot,
     rows: List<GlucosePoint>,
     isMmol: Boolean,
+    current: DisplayedReading,
 ): Map<Long, Float> {
     val swept = rowVelocities(snapshot.points, rows, snapshot.isRawMode, isMmol)
-    val newest = snapshot.points.lastOrNull()?.timestamp ?: return swept
-    if (!snapshot.trendRate.isFinite() || newest !in swept) return swept
-    return swept + (newest to snapshot.trendRate)
+    if (!current.rate.isFinite() || current.timeMillis <= 0L) return swept
+    val own = swept.keys
+        .filter { kotlin.math.abs(it - current.timeMillis) < SAME_READING_MS }
+        .minByOrNull { kotlin.math.abs(it - current.timeMillis) }
+        ?: return swept
+    return swept + (own to current.rate)
 }
 
 @Composable
@@ -137,7 +166,9 @@ fun MainScreen(
     onCalibrateReading: (GlucosePoint) -> Unit = {},
     onAddJournalAt: ((GlucosePoint) -> Unit)? = null,
 ) {
-    var snapshot by remember { mutableStateOf(currentSnapshot()) }
+    // The watch's one current reading: the hero draws exactly what the face and the
+    // complications draw, and goes stale with them, on the hub's clock.
+    val current by CurrentReadingHub.readings.collectAsState()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var chartRangeIndex by remember { mutableIntStateOf(0) }
     var chartOwnsDrag by remember { mutableStateOf(false) }
@@ -161,23 +192,25 @@ fun MainScreen(
 
     LaunchedEffect(Unit) {
         WearGlucoseStore.start()
-        launch { UiRefreshBus.revision.collect { snapshot = currentSnapshot(); now = System.currentTimeMillis() } }
-        while (true) { delay(TICK_MS); snapshot = currentSnapshot(); now = System.currentTimeMillis() }
+        // No timer of its own: what changes by itself (the reading going stale) is
+        // published by the hub, and everything else is a data change.
+        launch { UiRefreshBus.revision.collect { now = System.currentTimeMillis() } }
+        CurrentReadingHub.readings.collect { now = System.currentTimeMillis() }
     }
 
     // Readings come from the shared snapshot: the home list used to run its own
     // main-thread history read on every refresh, on top of the chart's.
     val storeSnapshot by WearGlucoseStore.snapshot.collectAsState()
-    val isMmol = snapshot?.isMmol ?: storeSnapshot.isMmol
+    val isMmol = if (current.showsValue) current.isMmol else storeSnapshot.isMmol
     val viewMode = storeSnapshot.viewMode
     val recent = remember(storeSnapshot) { WearGlucoseStore.recent(count = 6) }
-    val newestReading = recent.firstOrNull()
     // One pass over the shared history gives every row its own arrow, instead of
-    // each row walking the snapshot again on the main thread. The hero shares the
-    // newest row's.
-    val velocities = remember(storeSnapshot, recent, isMmol) {
-        readingVelocities(storeSnapshot, recent, isMmol)
+    // each row walking the snapshot again on the main thread. The current reading's
+    // row shares the hero's.
+    val velocities = remember(storeSnapshot, recent, isMmol, current) {
+        readingVelocities(storeSnapshot, recent, isMmol, current)
     }
+    val hero = remember(current) { heroReading(current) }
     val rowPeers = remember(storeSnapshot, recent, isMmol) {
         readingPeers(recent, storeSnapshot.peers, isMmol)
     }
@@ -186,7 +219,7 @@ fun MainScreen(
         else tk.glucodata.ui.WearSensorSelection.colorOf(storeSnapshot.sensorId)
     }
     // The other shown sensors' newest readings, for the hero's peer chips.
-    val peerReadings = remember(storeSnapshot, isMmol, now / TICK_MS) {
+    val peerReadings = remember(storeSnapshot, isMmol, now) {
         peerReadings(storeSnapshot.peers, isMmol, now)
     }
     // Calibration off on the phone hides it here; readings stay tappable while the journal is on.
@@ -203,13 +236,6 @@ fun MainScreen(
             userScrollEnabled = !chartOwnsDrag,
         ) {
             item {
-                val snap = snapshot
-                val status = DisplayDataState.resolve(
-                    sensorPresent = sensorPresent() || snap != null || newestReading != null,
-                    currentTimestampMillis = newestReading?.timestamp ?: 0L,
-                    latestHistoryTimestampMillis = 0L,
-                    nowMillis = now,
-                )
                 // The chart IS the first screen: it takes the entire viewport
                 // and the hero floats over it instead of stacking above.
                 Box(Modifier.fillParentMaxHeight(0.86f).fillMaxWidth()) {
@@ -231,16 +257,15 @@ fun MainScreen(
                         headlineTopPadding = heroBottom,
                         modifier = Modifier.fillMaxSize(),
                     )
-                    if (newestReading != null && status.hasData) {
+                    if (hero != null) {
+                        // Tapping the hero acts on the row of the reading it shows.
+                        val heroRow = recent.firstOrNull {
+                            kotlin.math.abs(it.timestamp - hero.timeMillis) < SAME_READING_MS
+                        }
                         HeroCard(
-                            point = newestReading,
-                            isMmol = isMmol,
-                            viewMode = viewMode,
-                            stale = status.isStale,
-                            sensorId = snap?.sensorId,
-                            velocity = velocities[newestReading.timestamp] ?: 0f,
+                            reading = hero,
                             peers = peerReadings,
-                            onClick = onReadingTap?.let { tap -> { tap(newestReading) } },
+                            onClick = heroRow?.let { row -> onReadingTap?.let { tap -> { tap(row) } } },
                             // As on the phone's hero: a peer's chip promotes it.
                             onPeerClick = { tk.glucodata.ui.WearSensorSelection.makePrimary(it) },
                             // Sits as high as the clock allows so the big value
@@ -265,7 +290,7 @@ fun MainScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                         ) {
                             Text(
-                                stringResource(if (status.kind == DisplayDataState.Kind.NO_SENSOR) R.string.no_sensor_title else R.string.nodata),
+                                stringResource(if (current.freshness == DisplayedReading.Freshness.NO_SENSOR) R.string.no_sensor_title else R.string.nodata),
                                 style = MaterialTheme.typography.titleMedium,
                                 textAlign = TextAlign.Center,
                             )
@@ -301,7 +326,7 @@ fun MainScreen(
             }
             item {
                 SensorCard(
-                    snapshot?.sensorId,
+                    current.sensorId ?: storeSnapshot.sensorId,
                     now,
                     onOpenSensor,
                     modifier = Modifier.padding(horizontal = 18.dp),
@@ -518,34 +543,30 @@ internal val HERO_TOP_OFFSET = 18.dp
 
 @Composable
 internal fun HeroCard(
-    point: GlucosePoint,
-    isMmol: Boolean,
-    viewMode: Int,
-    stale: Boolean,
-    sensorId: String?,
-    velocity: Float,
+    reading: HeroReading,
     peers: List<PeerReading> = emptyList(),
     onClick: (() -> Unit)? = null,
     onPeerClick: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
-    // The big number must be the same value the readings row below shows: the
-    // hero used to resolve its own snapshot through CurrentDisplaySource while
-    // the list came from NotificationHistorySource, so the two disagreed and
-    // the hero looked stale against its own list.
-    val primaryValue = remember(point.value, point.rawValue, viewMode) {
-        primaryLaneValue(point, viewMode)
-    }
+    // The big number is the watch's current reading, the one the face and every
+    // complication show. It used to be the newest row of the graph's history, which
+    // with "smooth graph only" was a smoothed value beside an unsmoothed face.
+    val stale = reading.stale
     val neutral = MaterialTheme.colorScheme.onSurface
     // Same rule as the phone hero: the number is neutral unless the user has
     // value range colours on, and the container carries the band tint instead.
     val valueColor = if (stale) {
         MaterialTheme.colorScheme.onSurfaceVariant
     } else {
-        tk.glucodata.ui.WearGlucoseColors.valueColor(primaryValue, isMmol, neutral)
+        tk.glucodata.ui.WearGlucoseColors.valueColor(reading.value, reading.isMmol, neutral)
     }
     val scrim = MaterialTheme.colorScheme.background.copy(alpha = 0.60f)
-    val tint = tk.glucodata.ui.WearGlucoseColors.heroTint(primaryValue, isMmol, isFresh = !stale)
+    val tint = if (reading.value.isFinite()) {
+        tk.glucodata.ui.WearGlucoseColors.heroTint(reading.value, reading.isMmol, isFresh = !stale)
+    } else {
+        null
+    }
     val background = tint?.let { (tone, fraction) ->
         androidx.compose.ui.graphics.lerp(scrim, tone.copy(alpha = scrim.alpha), fraction)
     } ?: scrim
@@ -565,16 +586,8 @@ internal fun HeroCard(
         modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val dvs = remember(point.timestamp, point.value, point.rawValue, viewMode, isMmol) {
-            tk.glucodata.ui.DisplayValueResolver.resolve(
-                autoValue = point.value,
-                rawValue = point.rawValue,
-                viewMode = viewMode,
-                isMmol = isMmol,
-            )
-        }
         Text(
-            dvs.primaryStr,
+            reading.text,
             style = MaterialTheme.typography.displayLarge.copy(
                 fontSize = 44.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -585,7 +598,7 @@ internal fun HeroCard(
         // The extra lanes ride alongside rather than inline at hero size: nine
         // characters at 44sp run off the side of a round screen, and the point
         // of the secondary lane is comparison, not prominence.
-        val extraLanes = listOfNotNull(dvs.secondaryStr, dvs.tertiaryStr)
+        val extraLanes = listOfNotNull(reading.secondaryText, reading.tertiaryText)
         if (extraLanes.isNotEmpty()) {
             Column(
                 Modifier.padding(start = 5.dp),
@@ -602,12 +615,15 @@ internal fun HeroCard(
                 }
             }
         }
-        TrendArrowCanvas(
-            velocity = velocity,
-            pulseKey = point.timestamp,
-            modifier = Modifier.size(28.dp).padding(start = 4.dp),
-            color = valueColor,
-        )
+        // No arrow once the reading is stale: its direction is no longer news.
+        if (reading.rate.isFinite()) {
+            TrendArrowCanvas(
+                velocity = reading.rate,
+                pulseKey = reading.timeMillis,
+                modifier = Modifier.size(28.dp).padding(start = 4.dp),
+                color = valueColor,
+            )
+        }
     }
     if (peers.isNotEmpty()) {
         HeroPeerStrip(
@@ -625,14 +641,16 @@ internal data class PeerReading(
     val sensorId: String,
     val primaryStr: String,
     val secondaryStr: String?,
+    /** NaN once the peer's next reading is overdue: the chip then has no arrow. */
     val velocity: Float,
     val colorArgb: Int,
+    val stale: Boolean = false,
 )
 
 /**
- * The newest reading of each peer that has one inside the staleness window,
- * formatted in that peer's own view mode. Nothing is shown for a peer that has
- * gone quiet — the phone's hero drops those chips too.
+ * The newest reading of each peer, formatted in that peer's own view mode, under the
+ * current reading's rules ([ReadingCadence]): dimmed without arrow once its next reading
+ * is overdue, gone once its value is taken down — the phone's hero drops those chips too.
  */
 internal fun peerReadings(
     peers: List<WearGlucoseStore.PeerSeries>,
@@ -640,15 +658,24 @@ internal fun peerReadings(
     now: Long,
 ): List<PeerReading> = peers.mapNotNull { peer ->
     val newest = peer.points.lastOrNull() ?: return@mapNotNull null
-    if (now - newest.timestamp >= tk.glucodata.Notify.glucosetimeout) return@mapNotNull null
+    val interval = ReadingCadence.intervalMillis(0L, peer.points.map { it.timestamp })
+    val freshness = ReadingCadence.freshness(true, newest.timestamp, interval, now)
+    if (freshness != DisplayedReading.Freshness.FRESH && freshness != DisplayedReading.Freshness.STALE) {
+        return@mapNotNull null
+    }
+    val stale = freshness == DisplayedReading.Freshness.STALE
     val dvs = tk.glucodata.ui.DisplayValueResolver.resolve(
         autoValue = newest.value,
         rawValue = newest.rawValue,
         viewMode = peer.viewMode,
         isMmol = isMmol,
     )
-    val velocity = rowVelocities(peer.points, listOf(newest), peer.isRawMode, isMmol)[newest.timestamp] ?: 0f
-    PeerReading(peer.sensorId, dvs.primaryStr, dvs.secondaryStr, velocity, peer.colorArgb)
+    val velocity = if (stale) {
+        Float.NaN
+    } else {
+        rowVelocities(peer.points, listOf(newest), peer.isRawMode, isMmol)[newest.timestamp] ?: 0f
+    }
+    PeerReading(peer.sensorId, dvs.primaryStr, dvs.secondaryStr, velocity, peer.colorArgb, stale)
 }
 
 /**
@@ -674,7 +701,7 @@ private fun HeroPeerStrip(
                 contentColor,
                 identity,
                 tk.glucodata.SensorVisuals.PEER_TEXT_BLEND,
-            )
+            ).let { if (peer.stale) it.copy(alpha = it.alpha * 0.5f) else it }
             Row(
                 Modifier
                     .clip(RoundedCornerShape(50))
@@ -708,12 +735,14 @@ private fun HeroPeerStrip(
                         maxLines = 1,
                     )
                 }
-                TrendArrowCanvas(
-                    velocity = peer.velocity,
-                    pulseKey = null,
-                    modifier = Modifier.size(12.dp).padding(start = 3.dp),
-                    color = textColor,
-                )
+                if (peer.velocity.isFinite()) {
+                    TrendArrowCanvas(
+                        velocity = peer.velocity,
+                        pulseKey = null,
+                        modifier = Modifier.size(12.dp).padding(start = 3.dp),
+                        color = textColor,
+                    )
+                }
             }
         }
     }
