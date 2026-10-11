@@ -1152,8 +1152,32 @@ public synchronized boolean changeAuthSlot(int slot) {
         releaselock();
         cancelalarm();
         cancelShortReconnect();
-        unbond();
+        if (!dialledByAnotherCallback())
+            unbond();
         super.free();
+    }
+
+    /** The address this callback dials: its device's, else the stored one. */
+    private String dialledAddress() {
+        final var device = mActiveBluetoothDevice;
+        return device != null ? device.getAddress() : mActiveDeviceAddress;
+    }
+
+    /**
+     * Whether another callback still dials this G7. A roster rebuild that finds
+     * two callbacks for one sensor frees one of them: the sensor is not going,
+     * and its bond is what the other one reaches it with.
+     */
+    private boolean dialledByAnotherCallback() {
+        final String address = dialledAddress();
+        if (address == null)
+            return false;
+        for (SuperGattCallback other : SensorBluetooth.mygatts()) {
+            if (other != this && other instanceof DexGattCallback && !other.stop
+                    && address.equalsIgnoreCase(((DexGattCallback) other).dialledAddress()))
+                return true;
+        }
+        return false;
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");
