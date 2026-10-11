@@ -388,16 +388,29 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     private static final Object realtimeReadingOrderLock = new Object();
     private static String realtimeReadingSensorId = null;
     private static long realtimeReadingTimeMs = 0L;
+    private static boolean realtimeReadingFromPeer = false;
 
     static long lastfound() {
         return lastfoundL;
     }
 
-    private static boolean acceptRealtimeReading(String sensorId, long readingTimeMs) {
+    private static boolean acceptRealtimeReading(String sensorId, long readingTimeMs, boolean fromPeer) {
         synchronized (realtimeReadingOrderLock) {
             final boolean sameInMemorySensor = realtimeReadingSensorId != null
                     && SensorIdentity.matches(sensorId, realtimeReadingSensorId);
             final long inMemoryHighWaterMs = sameInMemorySensor ? realtimeReadingTimeMs : 0L;
+
+            // Phone and watch both read a G7: the copy the other device pushed can
+            // come before this device's own session has read the same reading.
+            if (sameInMemorySensor && RealtimeReadingPolicy.isOtherDevicesCopy(readingTimeMs, fromPeer,
+                    realtimeReadingTimeMs, realtimeReadingFromPeer)) {
+                if (doLog) {
+                    Log.i(LOG_ID, "Ignoring realtime reading sensor=" + sensorId + " time=" + readingTimeMs
+                            + (fromPeer ? " from the other device" : "") + ": handled already at "
+                            + realtimeReadingTimeMs);
+                }
+                return false;
+            }
 
             long nativeHighWaterMs = 0L;
             try {
@@ -421,6 +434,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
 
             realtimeReadingSensorId = sensorId;
             realtimeReadingTimeMs = Math.max(readingTimeMs, inMemoryHighWaterMs);
+            realtimeReadingFromPeer = fromPeer;
             return true;
         }
     }
@@ -638,6 +652,66 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         return (Float.isFinite(auto) && auto > 0.1f) ? auto : reading.getStockRaw();
     }
 
+    /**
+     * A reading the other device took, stored here by the sync and newer than any
+     * this device had: handled as one read here, at once and once.
+     *
+     * Only the 15 s alert check took such a reading up, and not while the previous
+     * reading still filled the live slot (330 s): for a five-minute sensor, half a
+     * minute after it arrived. Until then every surface resolving the current
+     * reading showed the previous one, the watch face was not redrawn and the loss
+     * alarm still counted from the previous reading. It is not pushed back.
+     *
+     * @param autoValue the sensor's auto lane in display units, before calibration; NaN when absent
+     * @param rawValue  its raw lane, the same way
+     */
+    public static void processPeerReading(String sensorSerial, long timmsec, float autoValue, float rawValue) {
+        final LiveReadingLanes reading = LiveReadingLanes.stock(autoValue, rawValue);
+        if (sensorSerial == null || sensorSerial.isEmpty() || timmsec <= 0L || !reading.getHasValue()) {
+            return;
+        }
+        if (glucosealarms == null) {
+            glucosealarms = GlucoseAlarmsAccess.create(Applic.app);
+        }
+        CurrentDisplaySource.Snapshot shown = null;
+        try {
+            shown = CurrentDisplaySource.resolveIncomingReading(reading, Float.NaN, timmsec, sensorSerial);
+        } catch (Throwable error) {
+            Log.stack(LOG_ID, "processPeerReading", error);
+        }
+        final float lane = Float.isFinite(autoValue) && autoValue > 0f ? autoValue : rawValue;
+        final float gl = shown != null && Float.isFinite(shown.getPrimaryValue()) && shown.getPrimaryValue() > 0f
+                ? shown.getPrimaryValue()
+                : lane;
+        final float rate = shown != null && Float.isFinite(shown.getRate()) ? shown.getRate() : 0f;
+        final int mgdl = Math.round(gl * (Applic.unit == 1 ? mgdLmult : 1.0f));
+        if (doLog) {
+            Log.i(LOG_ID, sensorSerial + " " + timmsec / 1000L + " from the other device, "
+                    + (System.currentTimeMillis() - timmsec) + " ms after it was taken");
+        }
+        dowithglucose(sensorSerial, mgdl, gl, rate, 0, timmsec, sensorStartMs(sensorSerial),
+                showtimeFor(sensorSerial), 0, reading, true);
+    }
+
+    /** The loss-alarm delay of a reading of this sensor: its driver's here, as for one read here. */
+    private static long showtimeFor(String sensorSerial) {
+        for (var callback : SensorBluetooth.gattcallbacks) {
+            if (callback != null && SensorIdentity.matches(callback.SerialNumber, sensorSerial)) {
+                return callback.showtime;
+            }
+        }
+        return Notify.glucosetimeout;
+    }
+
+    private static long sensorStartMs(String sensorSerial) {
+        try {
+            final long sensorptr = Natives.str2sensorptr(sensorSerial);
+            return sensorptr != 0L ? Natives.getSensorStartmsecFromSensorptr(sensorptr) : 0L;
+        } catch (Throwable error) {
+            return 0L;
+        }
+    }
+
     private static long[] loadRecentSensorHistory(String sensorSerial, long startTimeSec) {
         long[] history = null;
         if (sensorSerial != null && !sensorSerial.isEmpty()
@@ -775,14 +849,22 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                 LiveReadingLanes.stock(gl, Float.NaN));
     }
 
+    static void dowithglucose(String SerialNumber, int mgdl, float gl, float rate, int alarm, long timmsec,
+            long sensorstartmsec, long showtime, int sensorgen, LiveReadingLanes reading) {
+        dowithglucose(SerialNumber, mgdl, gl, rate, alarm, timmsec, sensorstartmsec, showtime, sensorgen, reading,
+                false);
+    }
+
     /**
      * @param reading what {@code gl} was made of. {@code gl} itself is what the user
      *                is shown; the alert engines resolve {@code reading} instead,
      *                because CurrentDisplaySource calibrates what it is given and
      *                {@code gl} may already be calibrated (#431).
+     * @param fromPeer the other device took the reading ({@link #processPeerReading}):
+     *                 it is not pushed back to it.
      */
-    static void dowithglucose(String SerialNumber, int mgdl, float gl, float rate, int alarm, long timmsec,
-            long sensorstartmsec, long showtime, int sensorgen, LiveReadingLanes reading) {
+    private static void dowithglucose(String SerialNumber, int mgdl, float gl, float rate, int alarm, long timmsec,
+            long sensorstartmsec, long showtime, int sensorgen, LiveReadingLanes reading, boolean fromPeer) {
 
         if (gl == 0.0)
             return;
@@ -836,7 +918,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
 
         // History/replay rows are already persisted before this method. They must not
         // move notifications, glucose alerts, or the signal-loss deadline backwards.
-        if (!acceptRealtimeReading(SerialNumber, timmsec)) {
+        if (!acceptRealtimeReading(SerialNumber, timmsec, fromPeer)) {
             Applic.updatescreen();
             UiRefreshBus.requestDataRefresh();
             return;
@@ -946,7 +1028,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         }
 
         emitExchangeOutputs(SerialNumber, gl, rate, alarm, timmsec, sensorstartmsec, tim, sensorgen,
-                sglucose.value, true);
+                sglucose.value, !fromPeer);
     }
 
     /**
