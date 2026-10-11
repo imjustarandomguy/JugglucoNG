@@ -44,4 +44,11 @@ object JournalTreatmentUploadAccess {
         runCatching { bridge?.sendAsFollower() }
             .onFailure { Log.stack(TAG, "sendAsFollower failed", it) }
     }
+
+    /** False without a journal: a reading has nothing to read back into. */
+    @JvmStatic
+    fun readingReceiveDue(useV3: Boolean): Boolean =
+        runCatching { bridge?.readingReceiveDue(useV3) }
+            .onFailure { Log.stack(TAG, "readingReceiveDue failed", it) }
+            .getOrNull() ?: false
 }

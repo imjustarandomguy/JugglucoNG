@@ -110,6 +110,72 @@ class JournalTreatmentUploaderTests {
         assertEquals(0L, floor.waitMillis(key, 900_000L))
     }
 
+    // -- a new reading asking for a read -------------------------------------
+
+    private val ageMillis = JournalTreatmentUploader.READING_RECEIVE_MIN_AGE_MILLIS
+
+    private fun readingTriggers(
+        floor: JournalTreatmentUploader.ReceiveFloor,
+        nowMillis: Long,
+        key: String = "v1 https://ns.example.com",
+        receiveEnabled: Boolean = true
+    ) = JournalTreatmentUploader.readingTriggersReceive(receiveEnabled, floor, key, nowMillis)
+
+    @Test
+    fun aReadingAsksForNothingWithReceiveTreatmentsOff() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        assertFalse(readingTriggers(floor, 1_000_000L, receiveEnabled = false))
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertFalse(readingTriggers(floor, 1_000_000L + 3 * ageMillis, receiveEnabled = false))
+    }
+
+    @Test
+    fun theFirstReadingAsksAtOnce() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        assertTrue(readingTriggers(floor, 1_000_000L))
+    }
+
+    @Test
+    fun readingsAskOncePerFifteenMinutesNotOncePerReading() {
+        // Each read is the newest 240 documents: a reading every minute must not read every
+        // minute, and neither must a reading past the 5-minute floor (it only says a read may go).
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        val key = "v1 https://ns.example.com"
+        floor.recordRead(key, 1_000_000L)
+        for (minute in 1..14) {
+            assertFalse("minute $minute", readingTriggers(floor, 1_000_000L + minute * 60_000L))
+        }
+        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis - 1))
+        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis))
+        assertEquals(0L, floor.waitMillis(key, 1_000_000L + ageMillis))
+    }
+
+    @Test
+    fun aReadStartsTheFifteenMinutesAgain() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        val key = "v1 https://ns.example.com"
+        floor.recordRead(key, 1_000_000L)
+        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis))
+        floor.recordRead(key, 1_000_000L + ageMillis)
+        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis + 60_000L))
+        assertTrue(readingTriggers(floor, 1_000_000L + 2 * ageMillis))
+    }
+
+    @Test
+    fun anotherServerOrApiVersionIsAskedForAtOnce() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertTrue(readingTriggers(floor, 1_001_000L, key = "v3 https://ns.example.com"))
+        assertTrue(readingTriggers(floor, 1_001_000L, key = "v1 https://other.example.com"))
+    }
+
+    @Test
+    fun aClockThatWentBackwardsDoesNotHoldReadingsOff() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertTrue(readingTriggers(floor, 900_000L))
+    }
+
     // -- what a refusal reports --------------------------------------------
 
     @Test

@@ -94,6 +94,40 @@ class NightscoutUploaderWiringTests {
     }
 
     /**
+     * A reading wakes the uploader for glucose only. It also gets treatments read back, but
+     * through the treatments' own branch and only where that branch would run anyway: after the
+     * Wi-Fi gate, outside the hold after a refusal, not on the heels of a failed glucose upload,
+     * and never as a full pass.
+     */
+    @Test
+    fun aReadingRaisesATreatmentReadNotAFullPass() {
+        val text = uploader()
+        val thread = text.substring(text.indexOf("static void uploaderthread()"))
+        val ask = thread.indexOf("treatmentReadDueViaJava(useV3)")
+        assertTrue("the uploader thread does not ask whether a reading should read treatments", ask >= 0)
+        assertTrue(
+            "the question is asked before the network is",
+            ask > thread.indexOf("if(!uploadNetworkAllowed())")
+        )
+        val start = thread.lastIndexOf("if(treatmentsdue", ask)
+        assertTrue("the question is asked outside the treatment hold", start >= 0 && ask - start < 300)
+        val condition = thread.substring(start, ask)
+        for (part in listOf("!glucosefailed", "(current&Backup::wakestream)")) {
+            assertTrue("a reading raises the read without $part", condition.contains(part))
+        }
+        val raised = thread.substring(ask, thread.indexOf("}", ask))
+        assertTrue("a reading raises the treatments' own wake", raised.contains("current|=Backup::waketreatments"))
+        assertFalse("a reading raises a full pass", raised.contains("wakeall"))
+
+        val post = File(moduleRoot, "src/main/java/tk/glucodata/NightPost.java").readText()
+        assertTrue(
+            "the Java side of treatmentReadDue(Z)Z is gone",
+            Regex("""static\s+public\s+boolean\s+treatmentReadDue\(boolean\s+useV3\)""").containsMatchIn(post) &&
+                text.contains("\"treatmentReadDue\",\"(Z)Z\""),
+        )
+    }
+
+    /**
      * Treatments entered on the server were read only when something else raised a treatment
      * pass, so opening the app to look found nothing new. Coming to the front raises one, and
      * the treatments' own wake: a full "Send now" pass would also end the backoff after a
