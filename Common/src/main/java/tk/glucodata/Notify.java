@@ -896,6 +896,8 @@ public class Notify {
     private boolean pendingVisualAlerting = false;
     private long publicationRetryGeneration = 0L;
     private Service publicationRetryService;
+    /** The failed publication being retried delivered a new reading, for alertwatch. */
+    private boolean publicationRetryAlerting = false;
 
     void showglucose(notGlucose strgl, float gl) {
         var message = format(usedlocale, glucoseformat, gl);
@@ -1401,8 +1403,12 @@ public class Notify {
         }
         synchronized (foregroundPublicationLock) {
             ++foregroundVisualGeneration;
+            // A failed publication waiting for its retry is drawn by this run instead,
+            // its new reading still delivered as one.
+            final boolean retryAlerting = publicationRetryGeneration != 0L && publicationRetryAlerting;
             publicationRetryGeneration = 0L;
             publicationRetryService = null;
+            publicationRetryAlerting = false;
             glucoseRefreshHandler.removeCallbacks(failedPublicationRetryRunnable);
             // Coalesce: at most one visual task is queued. The pending task always
             // renders the latest generation, so continuous events cannot starve the
@@ -1410,7 +1416,7 @@ public class Notify {
             pendingVisualGeneration = foregroundVisualGeneration;
             pendingVisualService = keeprunning.theservice;
             // A new reading folded into a quiet redraw is still delivered as one.
-            pendingVisualAlerting |= alerting;
+            pendingVisualAlerting |= alerting || retryAlerting;
             if (visualRefreshPending) {
                 return;
             }
@@ -1433,6 +1439,7 @@ public class Notify {
             if (generation != foregroundVisualGeneration) {
                 // Superseded before any heavy work: a newer schedule (or a genuine
                 // publication) owns the next render.
+                keepAlertingLocked(alerting);
                 return;
             }
         }
@@ -1452,12 +1459,29 @@ public class Notify {
             Log.stack(LOG_ID, "reconcileRender", th);
             return;
         }
-        publishVisualNotification(generation, capturedService, notification);
+        publishVisualNotification(generation, capturedService, notification, alerting);
+    }
+
+    /**
+     * A render superseded before it published leaves its new reading to the run that
+     * superseded it, still queued behind it: alertwatch gets the reading as one there,
+     * rather than never. Called under {@link #foregroundPublicationLock}.
+     */
+    private void keepAlertingLocked(boolean alerting) {
+        if (alerting && visualRefreshPending) {
+            pendingVisualAlerting = true;
+        }
     }
 
     private void publishVisualNotification(long generation, Service capturedService, Notification notification) {
+        publishVisualNotification(generation, capturedService, notification, false);
+    }
+
+    private void publishVisualNotification(long generation, Service capturedService, Notification notification,
+            boolean alerting) {
         synchronized (foregroundPublicationLock) {
             if (generation != foregroundVisualGeneration || !shouldKeepForegroundGlucoseNotification()) {
+                keepAlertingLocked(alerting);
                 return;
             }
             if (capturedService != keeprunning.theservice) {
@@ -1474,11 +1498,12 @@ public class Notify {
                 // One delayed retry is allowed for this generation; it cannot spin if
                 // publication keeps failing.
                 Log.stack(LOG_ID, "publishVisual", th);
-                scheduleFailedPublicationRetryLocked(generation, capturedService);
+                scheduleFailedPublicationRetryLocked(generation, capturedService, alerting);
                 return;
             }
             publicationRetryGeneration = 0L;
             publicationRetryService = null;
+            publicationRetryAlerting = false;
             glucoseRefreshHandler.removeCallbacks(failedPublicationRetryRunnable);
             if (startupPendingService == capturedService) {
                 startupPendingTicket = 0L;
@@ -1488,11 +1513,17 @@ public class Notify {
     }
 
     private void scheduleFailedPublicationRetryLocked(long generation, Service service) {
+        scheduleFailedPublicationRetryLocked(generation, service, false);
+    }
+
+    /** @param alerting the failed publication delivered a new reading: so does its retry. */
+    private void scheduleFailedPublicationRetryLocked(long generation, Service service, boolean alerting) {
         if (generation != foregroundVisualGeneration || service != keeprunning.theservice) return;
         if (generation == 0L) generation = ++foregroundVisualGeneration;
         if (NotificationRefreshPolicy.shouldSchedulePublicationRetry(publicationRetryGeneration, generation)) {
             publicationRetryGeneration = generation;
             publicationRetryService = service;
+            publicationRetryAlerting = alerting;
             glucoseRefreshHandler.removeCallbacks(failedPublicationRetryRunnable);
             glucoseRefreshHandler.postDelayed(failedPublicationRetryRunnable, FAILED_NOTIFICATION_RETRY_DELAY_MS);
         }
@@ -1503,17 +1534,20 @@ public class Notify {
         public void run() {
             final long generation;
             final Service service;
+            final boolean alerting;
             synchronized (foregroundPublicationLock) {
                 generation = publicationRetryGeneration;
                 service = publicationRetryService;
+                alerting = publicationRetryAlerting;
                 publicationRetryService = null;
+                publicationRetryAlerting = false;
                 if (generation == 0L || generation != foregroundVisualGeneration
                         || service != keeprunning.theservice) {
                     publicationRetryGeneration = 0L;
                     return;
                 }
             }
-            reconcileOngoingPhoneNotification(generation, service, false);
+            reconcileOngoingPhoneNotification(generation, service, alerting);
         }
     };
 
@@ -1545,6 +1579,7 @@ public class Notify {
             glucoseRefreshHandler.removeCallbacks(storedGlucoseRefresh);
             noti.publicationRetryGeneration = 0L;
             noti.publicationRetryService = null;
+            noti.publicationRetryAlerting = false;
         }
     }
 
