@@ -563,6 +563,18 @@ object SensorOwnershipRuntime {
         return resolveReadsAlongside(findGatt(target)?.readsAlongside()) { recordReadsAlongside(target) }
     }
 
+    /**
+     * Whether both devices are set to read a sensor this device has: one read
+     * alongside ([readsAlongside]) with "Direct sensor on watch" on for it.
+     * Neither then pushes the other its readings; a device that misses one
+     * asks for it from its loss alarm.
+     */
+    @JvmStatic
+    fun anySetToReadAlongside(): Boolean = runCatching {
+        if (!Applic.isWearable && !MessageSender.outgoingAllowed()) return@runCatching false
+        localSensorNames().filterNotNull().any { directOnWatch(it) && readsAlongside(it) }
+    }.getOrDefault(false)
+
     /** A Dexcom record: its driver, DexGattCallback, is the one that reads alongside. */
     private fun recordReadsAlongside(serial: String): Boolean =
         runCatching { Natives.dexHandoff(serial) != null }.getOrDefault(false)
@@ -665,6 +677,8 @@ object SensorOwnershipRuntime {
                     peerSerials.clear()
                     yieldStartedAt.clear()
                     watchUntimedSinceMs.clear()
+                    // Switched on again, it greets the watch as after a start.
+                    peerHeardSinceStart = false
                     resumeReleasedSensors("WearOS companion disabled")
                 }
                 reconcile()
@@ -702,6 +716,8 @@ object SensorOwnershipRuntime {
         val report = decodeReport(data) ?: return
         // Hearing from the peer is proof it is there, whatever the last send said.
         peerDeliverable = true
+        val firstSinceStart = !peerHeardSinceStart
+        peerHeardSinceStart = true
         val receivedAt = System.currentTimeMillis()
         // Filed under this device's key for the sensor, whichever name the peer
         // used: an older watch names a G7 by its six-character listing.
@@ -722,6 +738,17 @@ object SensorOwnershipRuntime {
         }
         bumpRevision()
         executor.execute { runCatching { reconcile() }.onFailure { Log.stack(LOG_ID, "reconcile", it) } }
+        if (firstSinceStart) {
+            executor.execute {
+                runCatching { requestMissedWhileDown() }.onFailure { Log.stack(LOG_ID, "missed while down", it) }
+            }
+        }
+        if (report.answerRequested && receivedAt - lastAnsweredAtMs >= ANSWER_MIN_INTERVAL_MS) {
+            // The peer has just started and heard nothing from here yet.
+            lastAnsweredAtMs = receivedAt
+            Log.i(LOG_ID, "the other device has not heard from this one since it started: answering")
+            executor.execute { runCatching { announce(answering = true) }.onFailure { Log.stack(LOG_ID, "answer", it) } }
+        }
         if (!report.owns) {
             // An unchanged owns=false is only repeated at the heartbeat, and the
             // tick is a minute: reconcile again when the confirmation window
@@ -734,6 +761,31 @@ object SensorOwnershipRuntime {
                 )
             }
         }
+    }
+
+    /** Whether a report from the peer has arrived since this process started. */
+    @Volatile private var peerHeardSinceStart = false
+
+    /** When this device last answered a report that asked for it; see [announce]. */
+    @Volatile private var lastAnsweredAtMs = 0L
+
+    /** A peer that just started sends one report per sensor; one answer covers them all. */
+    private const val ANSWER_MIN_INTERVAL_MS = 30_000L
+
+    /**
+     * The first word from the peer since this process started. For a sensor
+     * both read, neither device pushes the other its readings: one that misses
+     * a reading asks for it from its loss alarm. A reading missed while this
+     * device was down (an install, a reboot) had no alarm left to ask for it,
+     * so the watch showed "No value" until its app was opened, and the phone
+     * waited for the sensor's own backfill. Ask once, now: only for what came
+     * after this device's newest reading, and only the slots it lacks are
+     * taken ([WearSync2.onChunk]).
+     */
+    private fun requestMissedWhileDown() {
+        val alongside = sensors().firstOrNull { readsAlongside(it) } ?: return
+        Log.i(LOG_ID, "first report from the other device since starting: asking it for what $alongside missed")
+        WearSync2.requestSync()
     }
 
     /** The peer's name for a sensor to keep: the fuller of two names of it, else the newer. */
@@ -816,12 +868,20 @@ object SensorOwnershipRuntime {
      *
      * A change is sent immediately; an unchanged state is repeated at
      * [ANNOUNCE_HEARTBEAT_MS] so a peer that missed one still converges.
+     * [answering] sends every sensor's state whatever changed: the peer asked.
+     *
+     * Until the peer has been heard from since this process started, every
+     * report asks it to answer at once. Otherwise a device that has just
+     * started hears nothing until the peer's next change or heartbeat, and it
+     * cannot ask for the readings it missed while it was down
+     * ([onPeerReport]).
      */
-    private fun announce() {
+    private fun announce(answering: Boolean = false) {
         if (!MessageSender.outgoingAllowed()) return
         val now = System.currentTimeMillis()
         val autoSwitch = autoSwitchEnabled()
         val heartbeat = if (autoSwitch) AUTO_SWITCH_HEARTBEAT_MS else ANNOUNCE_HEARTBEAT_MS
+        val askAnswer = !peerHeardSinceStart
         // At most one blocking send per pass: an unreachable peer costs the send
         // its full timeout, and doing that once per sensor would starve the tick
         // this runs on.
@@ -845,8 +905,8 @@ object SensorOwnershipRuntime {
                 lastReportedAtMs = lastAt,
                 nowMs = now,
             )
-            if (previous == owns && !dueForHeartbeat && !directNews) return@forEach
-            val payload = encode(serial, owns, newest, DirectReadingStatus.wireAge(direct, now))
+            if (!answering && previous == owns && !dueForHeartbeat && !directNews) return@forEach
+            val payload = encode(serial, owns, newest, DirectReadingStatus.wireAge(direct, now), askAnswer)
             if (autoSwitch && !probed) {
                 probed = true
                 val delivered = MessageSender.sendSyncMessageAwait(
@@ -1233,24 +1293,35 @@ object SensorOwnershipRuntime {
 
     //   [u8 ver=1][u8 owns][u8 len][serial utf8][i64 lastReadingMs]
     //   [i64 directAgeMs]  appended later; -1 = never read it itself
+    //   [u8 flags]         appended later, only when one is set:
+    //                      bit 0 = answer this report (Report.answerRequested)
     //
-    // The appended field leaves the version alone: every build reads the fields
-    // it knows and ignores what follows them, and a report without it reads as
-    // "unknown". A version bump would instead have made each side drop the
-    // other's reports, and with them the arbitration.
+    // The appended fields leave the version alone: every build reads the fields
+    // it knows and ignores what follows them, and a report without one reads as
+    // "unknown" (no flags). A version bump would instead have made each side
+    // drop the other's reports, and with them the arbitration.
 
     private const val VERSION = 1
+    private const val FLAG_ANSWER_REQUESTED = 1
 
-    internal fun encode(serial: String, owns: Boolean, lastReadingMs: Long, directAgeMs: Long): ByteArray {
+    internal fun encode(
+        serial: String,
+        owns: Boolean,
+        lastReadingMs: Long,
+        directAgeMs: Long,
+        answerRequested: Boolean = false,
+    ): ByteArray {
         val serialBytes = serial.toByteArray(StandardCharsets.UTF_8)
-        return ByteBuffer.allocate(1 + 1 + 1 + serialBytes.size + 8 + 8)
+        val flags = if (answerRequested) FLAG_ANSWER_REQUESTED else 0
+        val buffer = ByteBuffer.allocate(1 + 1 + 1 + serialBytes.size + 8 + 8 + if (flags != 0) 1 else 0)
             .put(VERSION.toByte())
             .put(if (owns) 1 else 0)
             .put(serialBytes.size.toByte())
             .put(serialBytes)
             .putLong(lastReadingMs)
             .putLong(directAgeMs)
-            .array()
+        if (flags != 0) buffer.put(flags.toByte())
+        return buffer.array()
     }
 
     /** One ownership report as read off the wire. */
@@ -1260,6 +1331,8 @@ object SensorOwnershipRuntime {
         val lastReadingMs: Long,
         /** Null when the sender did not include it (an older build); -1 for never. */
         val directAgeMs: Long?,
+        /** The sender has heard nothing from this device since it started: answer now. */
+        val answerRequested: Boolean = false,
     )
 
     /** [serial, owns, lastReadingMs], or null when malformed. */
@@ -1280,6 +1353,7 @@ object SensorOwnershipRuntime {
         if (!SensorIdentity.isUsableSensorId(serial)) return null
         val lastReadingMs = buffer.long
         val directAgeMs = if (buffer.remaining() >= 8) buffer.long else null
-        return Report(serial, owns, lastReadingMs, directAgeMs)
+        val flags = if (directAgeMs != null && buffer.remaining() >= 1) buffer.get().toInt() else 0
+        return Report(serial, owns, lastReadingMs, directAgeMs, (flags and FLAG_ANSWER_REQUESTED) != 0)
     }
 }
