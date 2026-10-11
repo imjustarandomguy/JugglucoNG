@@ -107,6 +107,12 @@ void free() {
         else
             init();
     }
+
+    /** Libre 3 sends one reading a minute. */
+    @Override
+    public long readingIntervalMillis() {
+        return 60_000L;
+    }
 private final void checkBluetoothGatt(BluetoothGatt bluetoothGatt) {
     if(doLog) {
         if(bluetoothGatt!=mBluetoothGatt) {
