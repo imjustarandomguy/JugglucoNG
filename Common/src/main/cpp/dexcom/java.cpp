@@ -668,7 +668,8 @@ fromjava(dexHandoff)(JNIEnv *env, jclass cl, jstring jsensor) {
 
 // Makes the record this device keeps for a G7 (found by full name or short
 // alias, created if missing) one its Dexcom driver can connect with: the
-// sensor's real start, its scanned code and its Bluetooth name.
+// sensor's real start, its scanned code and its Bluetooth name. A record the
+// user removed here is left removed: false.
 extern "C" JNIEXPORT jboolean JNICALL
 fromjava(dexAdoptSensor)(JNIEnv *env, jclass cl, jstring jsensor, jstring jcode,
                          jlong startsec, jstring jdeviceName) {
@@ -685,6 +686,16 @@ fromjava(dexAdoptSensor)(JNIEnv *env, jclass cl, jstring jsensor, jstring jcode,
     return false;
   destruct releasecode([env, jcode, code] { env->ReleaseStringUTFChars(jcode, code); });
 
+  // The record ensureDirectStreamShell would take. One the user removed must
+  // not come back with a handoff: its driver would be rebuilt and pair the
+  // sensor again, an expired one included.
+  int listedind = sensors->sensorindex(sensorname);
+  if (listedind < 0)
+    listedind = sensors->sensorindexshort(sensorname);
+  if (listedind >= 0 && sensors->getsensor(listedind)->wasRemovedByUser()) {
+    LOGGER("dexAdoptSensor %s: removed by the user, not adopted\n", sensorname);
+    return false;
+  }
   SensorGlucoseData *hist = sensors->ensureDirectStreamShell(sensorname);
   if (!hist)
     return false;
