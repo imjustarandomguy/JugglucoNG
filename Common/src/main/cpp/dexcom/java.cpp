@@ -690,9 +690,21 @@ fromjava(dexAdoptSensor)(JNIEnv *env, jclass cl, jstring jsensor, jstring jcode,
     return false;
   auto *info = hist->getinfo();
   const uint32_t start = startsec;
-  if (!hist->isDexcom() || info->starttime != start) {
-    LOGGER("dexAdoptSensor %s: Dexcom record from %u\n", sensorname, start);
+  if (hist->isDexcom() && !hist->hasDexcomCode(code)) {
+    LOGGER("dexAdoptSensor %s: another sensor's record, Dexcom record from %u\n",
+           sensorname, start);
     hist->becomeDexcom(code, start);
+  } else if (!hist->isDexcom() || info->starttime != start) {
+    // This sensor's readings stay, each in the slot its time falls in from the
+    // handed start; a Dexcom record keeps its header.
+    LOGGER("dexAdoptSensor %s: Dexcom record from %u, readings kept\n",
+           sensorname, start);
+    const auto kept = hist->keptPolls();
+    if (hist->isDexcom())
+      hist->moveDexcomStart(start);
+    else
+      hist->becomeDexcom(code, start);
+    hist->restoreDexcomPolls(kept);
   }
   // A Dexcom record kept as it was takes the code's lifetime too, so one made
   // with 10 days for a 15-day sensor gets the rest.
