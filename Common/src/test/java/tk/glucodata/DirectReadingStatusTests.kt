@@ -1,5 +1,6 @@
 package tk.glucodata
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -234,5 +235,120 @@ class DirectReadingStatusTests {
         assertTrue(due(now - DirectReadingStatus.REPORT_MIN_INTERVAL_MS))
         // Often enough that the other side never sees a reading device as stale.
         assertTrue(DirectReadingStatus.REPORT_MIN_INTERVAL_MS + 5 * minute < DIRECT_READING_FRESH_MS)
+    }
+
+    @Test
+    fun aFirstDirectReadingIsReportedAtOnce() {
+        // The watch said it holds the G7 ten seconds ago, before its first
+        // reading was noted: the phone has to hear about that reading now, not
+        // five minutes later with the next one.
+        assertTrue(
+            DirectReadingStatus.reportDue(
+                directOnWatch = true,
+                directReadingMs = now,
+                lastReportedDirectMs = 0L,
+                lastReportedAtMs = now - 10_000L,
+                nowMs = now,
+            ),
+        )
+    }
+
+    @Test
+    fun theFirstReadingAfterAPauseIsReportedAtOnce() {
+        assertTrue(
+            DirectReadingStatus.reportDue(
+                directOnWatch = true,
+                directReadingMs = now,
+                lastReportedDirectMs = now - 40 * minute,
+                lastReportedAtMs = now - minute,
+                nowMs = now,
+            ),
+        )
+        // Still nothing extra with direct off.
+        assertFalse(
+            DirectReadingStatus.reportDue(
+                directOnWatch = false,
+                directReadingMs = now,
+                lastReportedDirectMs = 0L,
+                lastReportedAtMs = now - 10_000L,
+                nowMs = now,
+            ),
+        )
+    }
+
+    // ---------------------------------------------------------- noting it
+
+    @Test
+    fun aDirectReadingCountsAtItsOwnTimeNotWhenItArrived() {
+        // A G7 answering with the reading before: five minutes old on arrival.
+        assertEquals(now - 5 * minute, DirectReadingStatus.directReadingTime(now - 5 * minute, now))
+        // Never ahead of this device's clock, and now when the driver gave no time.
+        assertEquals(now, DirectReadingStatus.directReadingTime(now + 5_000L, now))
+        assertEquals(now, DirectReadingStatus.directReadingTime(0L, now))
+    }
+
+    private fun isNew(readingMs: Long, lastDirectMs: Long, lastSyncedMs: Long = 0L) =
+        DirectReadingStatus.isNewDirectReading(readingMs, now, lastDirectMs, lastSyncedMs)
+
+    @Test
+    fun theReadingBeforeServedAgainIsNotANewDirectReading() {
+        // 2026-10-09 21:22: the phone read 21:17 itself, then asked a moment
+        // early and the G7 answered with 21:17 again (age=300), stamped a
+        // second either side of the first time. It said "reading, last 1 min ago".
+        val last = now - 5 * minute
+        assertFalse(isNew(last + 900L, last))
+        assertFalse(isNew(last - 900L, last))
+        assertFalse(isNew(last - 5 * minute, last))
+        assertTrue(isNew(now - 4_000L, last))
+    }
+
+    @Test
+    fun theReadingBeforeThatCameFromTheOtherDeviceIsNotNewEither() {
+        // The phone missed T, the watch read it and the phone was given it; asked
+        // a moment early, the G7 then answers the phone with T.
+        val missed = now - 5 * minute
+        assertFalse(isNew(missed + 700L, lastDirectMs = missed - 5 * minute, lastSyncedMs = missed))
+        // One nobody gave it is a reading it lacked: it counts, at its own time.
+        assertTrue(isNew(missed, lastDirectMs = missed - 5 * minute, lastSyncedMs = missed - 5 * minute))
+    }
+
+    @Test
+    fun aLiveReadingTheOtherDeviceDeliveredFirstStillCounts() {
+        // The phone pushed the watch the reading a few seconds before the
+        // watch's own session got it: the watch read it too.
+        val reading = now - 7_000L
+        assertTrue(isNew(reading, lastDirectMs = 0L, lastSyncedMs = reading))
+    }
+
+    @Test
+    fun aOneMinuteSensorsEveryReadingIsNew() {
+        assertTrue(isNew(now, now - minute))
+        assertTrue(DirectReadingStatus.SAME_READING_MS < minute)
+        assertTrue(DirectReadingStatus.LATE_READING_MS < 4 * minute)
+    }
+
+    @Test
+    fun theFirstDirectReadingEverIsNew() {
+        assertTrue(isNew(now, 0L))
+        assertFalse(isNew(0L, 0L))
+    }
+
+    @Test
+    fun theDriverHandsOverTheReadingTimeNotTheArrivalTime() {
+        val source = File(repoRoot(), "Common/src/main/java/tk/glucodata/SuperGattCallback.java").readText()
+        assertTrue(source.contains("SensorOwnershipRuntime.noteDirectReading(SerialNumber, sampleTimeMs);"))
+        assertFalse(source.contains("noteDirectReading(SerialNumber, System.currentTimeMillis())"))
+        // And what the other device fills in is remembered for the check above.
+        val sync = File(repoRoot(), "Common/src/main/java/tk/glucodata/WearSync2.kt").readText()
+        assertTrue(sync.contains("SensorOwnershipRuntime.noteSyncedReading(serial,"))
+    }
+
+    private fun repoRoot(): File {
+        var dir: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (dir != null) {
+            if (File(dir, "Common/src/main/cpp/g.cpp").isFile) return dir
+            dir = dir.parentFile
+        }
+        throw AssertionError("repo root not found")
     }
 }

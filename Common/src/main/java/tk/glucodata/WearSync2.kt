@@ -656,6 +656,9 @@ object WearSync2 {
                         serial,
                     )
                     if (doLog) Log.i(LOG_ID, "native stored $stored/$written for $serial managedWatchImport=$managedWatchImport")
+                    // The sensor serving this device one of these later is not a
+                    // fresh reading of its own.
+                    SensorOwnershipRuntime.noteSyncedReading(serial, (0 until written).maxOf { stamps[it] })
                 }
                 // The phone reads its history from Room and never looks at native,
                 // so readings taken over by the watch landed somewhere the phone
