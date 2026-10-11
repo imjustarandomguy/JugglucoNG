@@ -1,8 +1,10 @@
 package tk.glucodata
 
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,6 +72,8 @@ class ReadingHub internal constructor(
     }
 
     private val state = MutableStateFlow(DisplayedReading.NONE)
+    private val readOnlyState = state.asStateFlow()
+    private val firstRecompute = CountDownLatch(1)
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val lock = Any()
     private val deadlineWake = Runnable { onDeadline() }
@@ -88,12 +92,28 @@ class ReadingHub internal constructor(
     val readings: StateFlow<DisplayedReading>
         get() {
             activate()
-            return state.asStateFlow()
+            return readOnlyState
         }
 
     /** The published reading, [DisplayedReading.NONE] until the first publish. */
     fun current(): DisplayedReading {
         activate()
+        return state.value
+    }
+
+    /**
+     * [current], waiting up to [timeoutMillis] for the first publish of a hub that has just
+     * started, so a surface drawn at process start does not show "no value" for a moment.
+     * Not from a [Listener]: they run on the worker that publishes.
+     */
+    fun awaitCurrent(timeoutMillis: Long): DisplayedReading {
+        val shown = current()
+        if (shown.revision > 0L) return shown
+        try {
+            firstRecompute.await(timeoutMillis, TimeUnit.MILLISECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
         return state.value
     }
 
@@ -195,6 +215,7 @@ class ReadingHub internal constructor(
             Log.stack(LOG_ID, "recompute", t)
         }
         published?.let { clock.arm(it, deadlineWake) }
+        firstRecompute.countDown()
     }
 
     companion object {
@@ -322,6 +343,10 @@ object CurrentReadingHub {
 
     @JvmStatic
     fun current(): DisplayedReading = hub.current()
+
+    /** [ReadingHub.awaitCurrent]: for a surface drawn at process start. */
+    @JvmStatic
+    fun awaitCurrent(timeoutMillis: Long): DisplayedReading = hub.awaitCurrent(timeoutMillis)
 
     @JvmStatic
     fun addListener(listener: ReadingHub.Listener) = hub.addListener(listener)
