@@ -2,6 +2,7 @@ package tk.glucodata.drivers
 
 import java.util.Locale
 import tk.glucodata.Applic
+import tk.glucodata.DisplayedReading
 import tk.glucodata.GlucoseReadingSource
 import tk.glucodata.HistorySyncAccess
 import tk.glucodata.Log
@@ -279,12 +280,14 @@ object VirtualGlucoseSensorBridge {
         }
         // Resolved: a follower publishes the upstream app's own final number
         // (its calibrated value when it sends one), not a stock lane to calibrate.
+        // Every virtual source follows readings taken elsewhere: Nightscout, MQ, an API.
         SuperGattCallback.processExternalCurrentReading(
             sensorSerial,
             tk.glucodata.LiveReadingLanes.resolved(glucoseDisplay),
             rate,
             reading.timestampMs,
             sensorGen,
+            DisplayedReading.Origin.FOLLOWER,
         )
         Log.d(
             TAG,

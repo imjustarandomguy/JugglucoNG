@@ -4,26 +4,38 @@ package tk.glucodata;
 final class NotificationRefreshPolicy {
     private NotificationRefreshPolicy() {}
 
-    static boolean isFresh(long readingTimeMs, long nowMs, long freshnessMs) {
-        return readingTimeMs > 0L
-                && freshnessMs > 0L
-                && (nowMs <= readingTimeMs || nowMs - readingTimeMs <= freshnessMs);
+    /** How the ongoing notification shows the current reading. */
+    enum OngoingLook {
+        /** The value with its arrow and chart. */
+        READING,
+        /** The next reading is overdue: the value kept, no arrow, "no new value since". */
+        STALE_READING,
+        /** Too old to show a value: "no new value since" alone. */
+        NO_VALUE,
+        /** No reading to show, or glucose kept out of the notification: the sensor's status. */
+        STATUS,
+        NO_SENSOR,
     }
 
-    static long deadlineDelayMs(long readingTimeMs, long nowMs, long freshnessMs) {
-        if (readingTimeMs <= 0L || freshnessMs <= 0L) {
-            return 0L;
+    /**
+     * The look of the ongoing notification for the current reading. {@code presentGlucose}
+     * says whether glucose is shown in it at all; without, an overdue reading still says
+     * since when there is no new value.
+     */
+    static OngoingLook ongoingLook(boolean presentGlucose, DisplayedReading.Freshness freshness,
+            boolean showsValue, long readingMillis) {
+        if (freshness == DisplayedReading.Freshness.NO_SENSOR) {
+            return OngoingLook.NO_SENSOR;
         }
-        final long deadline = readingTimeMs > Long.MAX_VALUE - freshnessMs
-                ? Long.MAX_VALUE
-                : readingTimeMs + freshnessMs;
-        if (deadline < nowMs || deadline == Long.MAX_VALUE) {
-            return deadline == Long.MAX_VALUE && nowMs < Long.MAX_VALUE
-                    ? Long.MAX_VALUE - nowMs : 0L;
+        final boolean overdue = readingMillis > 0L
+                && (freshness == DisplayedReading.Freshness.STALE || freshness == DisplayedReading.Freshness.NO_VALUE);
+        if (presentGlucose && showsValue && freshness == DisplayedReading.Freshness.FRESH) {
+            return OngoingLook.READING;
         }
-        // DisplayDataState treats the exact threshold as fresh. Reconcile one
-        // millisecond later so the deadline agrees with that shared contract.
-        return deadline - nowMs == Long.MAX_VALUE ? Long.MAX_VALUE : deadline - nowMs + 1L;
+        if (presentGlucose && showsValue && freshness == DisplayedReading.Freshness.STALE) {
+            return OngoingLook.STALE_READING;
+        }
+        return overdue ? OngoingLook.NO_VALUE : OngoingLook.STATUS;
     }
 
     /**
@@ -36,14 +48,6 @@ final class NotificationRefreshPolicy {
         }
         final long safeDelay = Math.max(0L, delayMs);
         return nowMs > Long.MAX_VALUE - safeDelay ? Long.MAX_VALUE : nowMs + safeDelay;
-    }
-
-    static boolean matchesRetainedDisplay(String activeSerial, String snapshotSerial,
-            boolean currentMmol, boolean snapshotMmol, int currentMode, int snapshotMode) {
-        return activeSerial != null && !activeSerial.isEmpty()
-                && activeSerial.equals(snapshotSerial)
-                && currentMmol == snapshotMmol
-                && currentMode == snapshotMode;
     }
 
     static boolean mayCancelForOwner(Object requestedOwner, Object currentOwner) {

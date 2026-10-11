@@ -28,7 +28,6 @@ import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Build;
 
 import androidx.annotation.Keep;
@@ -549,6 +548,18 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     /** Managed drivers with a known activation preserve it for the exchange feeds. */
     public static void processExternalCurrentReading(String sensorSerial, LiveReadingLanes reading, float rate,
             long timmsec, int sensorgen, long sensorStartMs) {
+        processExternalCurrentReading(sensorSerial, reading, rate, timmsec, sensorgen, sensorStartMs,
+                DisplayedReading.Origin.LOCAL);
+    }
+
+    /** @param origin where the reading came from; see {@link CurrentReadingHub#onReadingAccepted}. */
+    public static void processExternalCurrentReading(String sensorSerial, LiveReadingLanes reading, float rate,
+            long timmsec, int sensorgen, DisplayedReading.Origin origin) {
+        processExternalCurrentReading(sensorSerial, reading, rate, timmsec, sensorgen, 0L, origin);
+    }
+
+    public static void processExternalCurrentReading(String sensorSerial, LiveReadingLanes reading, float rate,
+            long timmsec, int sensorgen, long sensorStartMs, DisplayedReading.Origin origin) {
         if (reading == null || !reading.getHasValue() || timmsec <= 0L) {
             return;
         }
@@ -582,7 +593,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         }
         final int mgdlValue = Math.round(glucoseValue * (Applic.unit == 1 ? mgdLmult : 1.0f));
         dowithglucose(resolvedSensorSerial, mgdlValue, glucoseValue, rate, 0, timmsec,
-                sensorStartMs, Notify.glucosetimeout, sensorgen, reading);
+                sensorStartMs, Notify.glucosetimeout, sensorgen, reading, origin);
     }
 
     private static float stockPrimaryValue(LiveReadingLanes reading) {
@@ -723,6 +734,18 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
      */
     static void dowithglucose(String SerialNumber, int mgdl, float gl, float rate, int alarm, long timmsec,
             long sensorstartmsec, long showtime, int sensorgen, LiveReadingLanes reading) {
+        dowithglucose(SerialNumber, mgdl, gl, rate, alarm, timmsec, sensorstartmsec, showtime, sensorgen, reading,
+                DisplayedReading.Origin.LOCAL);
+    }
+
+    /**
+     * @param origin where the reading came from, as the current reading's hub records it
+     *               (CurrentReadingHub): read here, followed from a remote source, or sent
+     *               by the other device.
+     */
+    static void dowithglucose(String SerialNumber, int mgdl, float gl, float rate, int alarm, long timmsec,
+            long sensorstartmsec, long showtime, int sensorgen, LiveReadingLanes reading,
+            DisplayedReading.Origin origin) {
 
         if (gl == 0.0)
             return;
@@ -796,15 +819,13 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         previousglucosereading = reading;
         previousglucosevalue = gl;
         previousglucosesensorid = SerialNumber;
-        CurrentReadingHub.onReadingAccepted(SerialNumber, timmsec, DisplayedReading.Origin.LOCAL);
-        Applic.app.sendBroadcast(new Intent("tk.glucodata.action.AOD_IMMEDIATE_REFRESH"));
-        final var fview = Floating.floatview;
+        // The surfaces that draw the current reading (the ongoing notification and its
+        // icon, the always-on display, the floating value) follow the hub's publish.
+        CurrentReadingHub.onReadingAccepted(SerialNumber, timmsec, origin);
         // MainActivity.showmessage=null;
         final boolean alarmSpeechStarted = glucoseAlertStarted && !DontTalk && Natives.speakalarms();
         if (alarmSpeechStarted)
             Talker.nexttime = 0L;
-        if (fview != null)
-            fview.postInvalidate();
 
         try {
 
