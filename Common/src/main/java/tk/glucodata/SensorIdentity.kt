@@ -113,8 +113,8 @@ object SensorIdentity {
      *
      * That last one is how native lists a record named after the alias
      * (Natives.activeSensors, sensoren.hpp shortsensorname_chars). A watch
-     * holds a G7 handed over from the phone under its alias, "12147739749" for
-     * 8958912147739749, so it lists — and once reported — the G7 as "739749".
+     * holds a G7 handed over from the phone under its alias, "12345678901" for
+     * 5000012345678901, so it lists — and once reported — the G7 as "678901".
      *
      * A cloud record (NSF-, API-, MQF-), an "X-" name and a managed id
      * ("SIBI:") have no other names here.
@@ -136,7 +136,7 @@ object SensorIdentity {
      * Whether [a] and [b] name one sensor by native's naming alone: equal, or
      * one is among the other's [nativeNameForms]. No record is needed, which is
      * the point: each device can only resolve the spellings of records it holds,
-     * and the phone holds no record named "739749".
+     * and the phone holds no record named "678901".
      *
      * A sensor that merely shares a suffix is not the same one: only whole
      * five-character prefixes come off. A cloud record matches only itself.
@@ -231,10 +231,10 @@ object SensorIdentity {
     /**
      * One key per sensor for state shared with the other device, whichever of
      * its names arrives: the canonical id ([canonicalSensorId]) as its
-     * [crossDeviceName], lowercased. 8958912147739749 and 12147739749 key alike
-     * on both devices, record or not, and so does "739749" where native holds a
-     * record named 12147739749 — on the watch. On the phone nothing here
-     * explains "739749", and it keys as itself.
+     * [crossDeviceName], lowercased. 5000012345678901 and 12345678901 key alike
+     * on both devices, record or not, and so does "678901" where native holds a
+     * record named 12345678901 — on the watch. On the phone nothing here
+     * explains "678901", and it keys as itself.
      */
     @JvmStatic
     fun crossDeviceKey(sensorId: String?): String? {

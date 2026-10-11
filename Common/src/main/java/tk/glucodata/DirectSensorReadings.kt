@@ -67,7 +67,7 @@ object DirectSensorReadings {
         bySensor[key(target)]?.let { return it }
         // One sensor, several spellings: match by identity, as the peer reports
         // are — and by native's naming, for a spelling no record here explains
-        // (a watch that holds a G7 as 12147739749 asked about 8958912147739749).
+        // (a watch that holds a G7 as 12345678901 asked about 5000012345678901).
         val byName = SensorIdentity.nativeMatchesOfOne(target, bySensor.keys).toSet()
         return bySensor.entries
             .filter { (id, _) -> id in byName || SensorIdentity.matches(id, target) }
