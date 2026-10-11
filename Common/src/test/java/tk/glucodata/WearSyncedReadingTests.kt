@@ -108,7 +108,12 @@ class WearSyncedReadingTests {
         )
         // The watch face, the complications and the data refresh.
         assertTrue(dispatch, dispatch.contains("Applic.updatescreen();"))
-        assertTrue(dispatch, dispatch.contains("if (refresh != null) refresh.updateAll();"))
+        // Complications redraw from the hub's publish (feat/wear-current-reading). The
+        // reading enters it as the other device's (PEER), and the origin is what tells
+        // the rest of the path it came from the peer (feat/phone-current-reading).
+        assertTrue(dispatch, dispatch.contains("fromPeer ? DisplayedReading.Origin.PEER : DisplayedReading.Origin.LOCAL"))
+        assertTrue(dispatch, dispatch.contains("final boolean fromPeer = origin == DisplayedReading.Origin.PEER;"))
+        assertTrue(dispatch, dispatch.contains("CurrentReadingHub.onReadingAccepted(SerialNumber, timmsec, origin);"))
         assertTrue(dispatch, dispatch.contains("sglucose.value, !fromPeer);"))
         // The loss alarm's delay is the driver's here, as for a reading read here.
         assertTrue(body(gatt, "private static long showtimeFor(String sensorSerial)").contains("return callback.showtime;"))
