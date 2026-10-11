@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tk.glucodata.data.journal.JournalTreatmentUploader.MAX_DELETE_ATTEMPTS
+import tk.glucodata.data.journal.JournalTreatmentUploader.ReceiveRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.TombstoneAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.tombstoneAction
 
@@ -174,6 +175,130 @@ class JournalTreatmentUploaderTests {
         val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
         floor.recordRead("v1 https://ns.example.com", 1_000_000L)
         assertTrue(readingTriggers(floor, 900_000L))
+    }
+
+    // -- a light read when the app comes to the front -------------------------
+
+    private val fullInterval = 5 * 60_000L
+    private val lightInterval = 30_000L
+    private val key = "v1 https://ns.example.com"
+
+    private fun schedule() = JournalTreatmentUploader.ReceiveSchedule(fullInterval, lightInterval)
+
+    private fun planFor(fullWaitMillis: Long, lightWanted: Boolean, lightWaitMillis: Long) =
+        JournalTreatmentUploader.receivePlan(fullWaitMillis, lightWanted, lightWaitMillis)
+
+    @Test
+    fun aPassWhoseIntervalIsOverReadsInFullWhateverWokeIt() {
+        for (lightWanted in listOf(false, true)) {
+            for (lightWait in listOf(0L, 10_000L)) {
+                val plan = planFor(fullWaitMillis = 0L, lightWanted = lightWanted, lightWaitMillis = lightWait)
+                assertEquals(ReceiveRead.FULL, plan.read)
+                assertNull(plan.wakeInMillis)
+            }
+        }
+    }
+
+    @Test
+    fun withoutTheAppOpenedAPassInsideTheIntervalWaitsForItsEnd() {
+        val plan = planFor(fullWaitMillis = 120_000L, lightWanted = false, lightWaitMillis = 0L)
+        assertEquals(ReceiveRead.HOLD, plan.read)
+        assertEquals(120_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun openingTheAppInsideTheIntervalReadsTheNewestAndStillBooksTheFullRead() {
+        // The pass may also be owed a full read (a journal change raised at the same moment).
+        val plan = planFor(fullWaitMillis = 120_000L, lightWanted = true, lightWaitMillis = 0L)
+        assertEquals(ReceiveRead.LIGHT, plan.read)
+        assertEquals(120_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun openingTheAppAgainInsideTheLightFloorWaitsForTheEarlierEnd() {
+        val light = planFor(fullWaitMillis = 120_000L, lightWanted = true, lightWaitMillis = 21_000L)
+        assertEquals(ReceiveRead.HOLD, light.read)
+        assertEquals(21_000L, light.wakeInMillis)
+        val full = planFor(fullWaitMillis = 5_000L, lightWanted = true, lightWaitMillis = 21_000L)
+        assertEquals(ReceiveRead.HOLD, full.read)
+        assertEquals(5_000L, full.wakeInMillis)
+    }
+
+    @Test
+    fun aDoseEnteredJustAfterABookedReadArrivesWithinHalfAMinuteOfOpeningTheApp() {
+        // The field case: the booked full read ran 09:23:21, seconds before a dose reached the
+        // server; the app was opened from 09:23:30 to 09:25:23, every time held by the
+        // five-minute floor, and the dose arrived about 09:28.
+        val schedule = schedule()
+        val readAt = 1_000_000L
+        schedule.recordRead(ReceiveRead.FULL, key, readAt)
+        schedule.requestLight()
+        val opened = schedule.plan(key, readAt + 9_000L)
+        assertEquals(ReceiveRead.HOLD, opened.read)
+        assertEquals(21_000L, opened.wakeInMillis)
+        // The request was kept for the pass the booked wake brings.
+        val booked = schedule.plan(key, readAt + 30_000L)
+        assertEquals(ReceiveRead.LIGHT, booked.read)
+        assertEquals(fullInterval - 30_000L, booked.wakeInMillis)
+        schedule.recordRead(ReceiveRead.LIGHT, key, readAt + 30_500L)
+        // Used up: the next pass waits for the full read, which still comes at its time.
+        val later = schedule.plan(key, readAt + 60_000L)
+        assertEquals(ReceiveRead.HOLD, later.read)
+        assertEquals(fullInterval - 60_000L, later.wakeInMillis)
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, readAt + fullInterval).read)
+    }
+
+    @Test
+    fun openingTheAppOnceTheIntervalIsOverReadsInFull() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestLight()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + fullInterval).read)
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L + fullInterval)
+        // The full read answered the request too.
+        assertEquals(ReceiveRead.HOLD, schedule.plan(key, 1_000_000L + fullInterval + lightInterval).read)
+    }
+
+    @Test
+    fun aFullReadStartsTheLightFloorToo() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestLight()
+        val plan = schedule.plan(key, 1_000_000L + 10_000L)
+        assertEquals(ReceiveRead.HOLD, plan.read)
+        assertEquals(lightInterval - 10_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun aLightReadStartsNeitherTheFullIntervalNorTheReadingsFifteenMinutes() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.recordRead(ReceiveRead.LIGHT, key, 1_000_000L + fullInterval - 1_000L)
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + fullInterval).read)
+        schedule.recordRead(ReceiveRead.LIGHT, key, 1_000_000L + ageMillis - 1_000L)
+        assertTrue(readingTriggers(schedule.full, 1_000_000L + ageMillis))
+    }
+
+    @Test
+    fun aHeldPassRecordsNoRead() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.HOLD, key, 1_000_000L)
+        schedule.requestLight()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_001L).read)
+    }
+
+    @Test
+    fun theLightReadAsksForTheNewestTwentyOnEitherApiVersion() {
+        val count = JournalTreatmentUploader.LIGHT_FETCH_COUNT
+        assertEquals(20, count)
+        assertEquals(
+            "https://ns.example.com/api/v1/treatments.json?count=20",
+            JournalTreatmentUploader.treatmentFetchUrl("https://ns.example.com", useV3 = false, count = count)
+        )
+        val v3 = JournalTreatmentUploader.treatmentFetchUrl("https://ns.example.com", useV3 = true, count = count)
+        assertTrue(v3, v3.contains("limit=20"))
+        // Newest first, so the twenty are the newest twenty.
+        assertTrue(v3, v3.contains("sort%24desc=date"))
     }
 
     // -- what a refusal reports --------------------------------------------
