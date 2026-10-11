@@ -1075,7 +1075,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                 } else {
                     syncLegacyRoomHistoryAfterLive(SerialNumber, timmsec);
                 }
-                final LiveReadingLanes reading = LiveReadingLanes.stock(Float.NaN, glucoseToUse);
+                // Converted from mg/dL like the stored row; see the auto path below.
+                final LiveReadingLanes reading = LiveReadingLanes.stockFromMgdl(Float.NaN, rawMgdl, Applic.unit == 1);
                 if (shouldApplyGenericLiveCalibration) {
                     glucoseToUse = CalibrationAccess.getCalibratedValue(glucoseToUse, timmsec, true, false, SerialNumber);
                     mgdlToUse = (int) Math.round(glucoseToUse * (Applic.unit == 1 ? mgdLmult : 1.0f));
@@ -1154,9 +1155,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                 syncLegacyRoomHistoryAfterLive(SerialNumber, timmsec);
             }
 
-            final LiveReadingLanes reading = LiveReadingLanes.stock(gl, Float.isFinite(rawMgdl) && rawMgdl > 0f
-                    ? (Applic.unit == 1 ? rawMgdl / (float) mgdLmult : rawMgdl)
-                    : Float.NaN);
+            // The displays resolve the lanes, not gl (mg/dL / 18), so the lanes are
+            // converted from mg/dL the way the stored rows are.
+            final LiveReadingLanes reading = LiveReadingLanes.stockFromMgdl(autoMgdl, rawMgdl, Applic.unit == 1);
             if (shouldApplyGenericLiveCalibration) {
                 glucoseToUse = CalibrationAccess.getCalibratedValue(glucoseToUse, timmsec, isRawMode, false, SerialNumber);
                 mgdlToUse = (int) Math.round(glucoseToUse * (Applic.unit == 1 ? mgdLmult : 1.0f));

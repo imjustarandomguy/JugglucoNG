@@ -2,10 +2,10 @@ package tk.glucodata
 
 import android.util.Log
 import java.util.TreeMap
+import tk.glucodata.ui.util.GlucoseFormatter
 
 object NotificationHistorySource {
     private const val TAG = "NotifyHistory"
-    private const val MGDL_PER_MMOL = 18.0182f
 
     @JvmStatic
     fun resolveSensorSerial(preferredSerial: String? = null): String? {
@@ -78,6 +78,17 @@ object NotificationHistorySource {
             null
         } ?: return emptyList()
 
+        return pointsFromNativeHistory(history, isMmol)
+    }
+
+    /**
+     * Native `[time_sec, auto_mgdl*10, raw_mgdl*10, ...]` triples as display points.
+     *
+     * Converted exactly like the phone's Room rows ([GlucoseFormatter.displayFromMgDl]).
+     * Dividing by 18.0182 here instead made a companion watch show 5.5 where the
+     * phone showed 5.6 for the same 100 mg/dL reading.
+     */
+    internal fun pointsFromNativeHistory(history: LongArray, isMmol: Boolean): List<GlucosePoint> {
         if (history.size < 3) {
             return emptyList()
         }
@@ -87,14 +98,12 @@ object NotificationHistorySource {
             if (i + 2 >= history.size) break
 
             val timestamp = history[i] * 1000L
-            var value = history[i + 1] / 10f
-            var rawValue = history[i + 2] / 10f
-            if (value <= 0f && rawValue <= 0f) continue
+            val valueMgdl = history[i + 1] / 10f
+            val rawValueMgdl = history[i + 2] / 10f
+            if (valueMgdl <= 0f && rawValueMgdl <= 0f) continue
 
-            if (isMmol) {
-                value /= MGDL_PER_MMOL
-                rawValue /= MGDL_PER_MMOL
-            }
+            val value = GlucoseFormatter.displayFromMgDl(valueMgdl, isMmol)
+            val rawValue = GlucoseFormatter.displayFromMgDl(rawValueMgdl, isMmol)
 
             val candidate = GlucosePoint(timestamp, value, rawValue)
             val existing = orderedPoints[timestamp]

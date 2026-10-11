@@ -107,7 +107,7 @@ abstract class MultiSensorComplicationBase : SuspendingComplicationDataSourceSer
     private fun previewValues(now: Long): List<MultiSensorValue> {
         val mmol = ComplicationRenderer.isMmol()
         return listOf(101f to 0.4f, 126f to -1.2f).mapIndexed { index, (mgdl, rate) ->
-            val value = if (mmol) mgdl / 18.0182f else mgdl
+            val value = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(mgdl, mmol)
             MultiSensorValue(
                 "${index + 1}",
                 GlucoseComplicationData.Reading(value, tk.glucodata.ui.util.GlucoseFormatter.format(value, mmol), mmol, now, rate, 0),
