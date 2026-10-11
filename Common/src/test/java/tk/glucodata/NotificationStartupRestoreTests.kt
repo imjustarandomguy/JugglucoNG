@@ -623,6 +623,58 @@ class NotificationStartupRestoreTests {
         assertEquals("nor anything without alertwatch", true, renderField(h, "once"))
     }
 
+    @Test fun aNewReadingOvertakenWhileDrawingIsStillDeliveredAsOne() {
+        val h = harness()
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(time, 120f))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        call(h, "closeGate", "render")
+        val w = thread { drainOne(h) }
+        poll(5000) { get(h, "renderEntered") as Boolean }
+        // A quiet redraw (a status change, a backfill) is asked for while it draws.
+        invokePrivate(h, "scheduleVisualNotificationRefresh")
+        call(h, "openGate", "render")
+        w.join(5000)
+        assertFalse(w.isAlive)
+        val manager = get(h, "notificationManager")!!
+        assertNull("the overtaken render does not publish", getNested(manager, "last"))
+        assertTrue(drainOne(h))
+        assertEquals("the run that overtook it delivers the reading as one", false, renderField(h, "once"))
+        assertNotNull(getNested(manager, "last"))
+        assertEquals(0, call(h, "queuedCount"))
+    }
+
+    @Test fun aNewReadingWhosePublicationFailedIsRetriedAsOne() {
+        val h = harness()
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L, 120f))
+        set(h, "failPublication", true)
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertTrue(drainOne(h))
+        assertEquals(listOf(5000L), deadlineDelays(h))
+        set(h, "failPublication", false)
+        assertTrue(drainOne(h))
+        assertEquals("the retry delivers it as one", false, renderField(h, "once"))
+        assertNotNull(getNested(get(h, "notificationManager")!!, "last"))
+    }
+
+    @Test fun aRedrawThatReplacesTheRetryDeliversItsNewReadingAsOne() {
+        val h = harness()
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L, 120f))
+        set(h, "failPublication", true)
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertTrue(drainOne(h))
+        set(h, "failPublication", false)
+        // A quiet redraw before the retry runs takes its place.
+        invokePrivate(h, "scheduleVisualNotificationRefresh")
+        assertEquals(1, call(h, "queuedCount"))
+        assertTrue(drainOne(h))
+        assertEquals(false, renderField(h, "once"))
+        assertEquals(0, call(h, "queuedCount"))
+    }
+
     @Test fun dequeuedCallbacksCannotRescheduleAfterCurrentServiceCancellation() {
         for (method in listOf("scheduleDataChangedNotificationRefresh", "scheduleStatusChangedNotificationRefresh", "scheduleVisualNotificationRefresh")) {
             val h = harness()
@@ -752,6 +804,7 @@ class NotificationStartupRestoreTests {
                     public long pendingDataRefreshAtUptimeMs, pendingStatusRefreshAtUptimeMs;
                     public boolean visualRefreshPending, pendingVisualAlerting;
                     public long pendingVisualGeneration, publicationRetryGeneration;
+                    public boolean publicationRetryAlerting;
                     public Service pendingVisualService, publicationRetryService;
                     public static final long DATA_CHANGED_NOTIFICATION_REFRESH_DELAY_MS = 1000L;
                     public static final long FAILED_NOTIFICATION_RETRY_DELAY_MS = 5000L;
