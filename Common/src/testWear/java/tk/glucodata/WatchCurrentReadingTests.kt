@@ -232,4 +232,38 @@ class WatchCurrentReadingTests {
         watch.advanceTo(t0 + 30 * minute)
         assertEquals(DisplayedReading.NO_VALUE_TEXT, WearOngoingActivity.statusText(watch.hub.current(), t0 + 30 * minute, ago))
     }
+
+    // --- The other selected sensors go stale on the same clock. ---
+
+    @Test
+    fun aSensorShownBesideGoingStaleRedrawsTheWatchSurfacesAtOnce() {
+        var now = t0
+        val scheduler = FakeScheduler()
+        val published = ArrayList<DisplayedReading>()
+        val peer = ReadingHub.Other("PEER", t0 - 3 * minute, listOf(t0 - 8 * minute), 0L)
+        val hub = ReadingHub(
+            source = { ReadingHub.Inputs(sensor, scripted(t0, "123", 1.4f), emptyList(), 5 * minute, others = listOf(peer)) },
+            worker = { it.run() },
+            clock = ReadingClock(scheduler),
+            now = { now },
+        )
+        hub.addListener { published += it }
+        // The peer's next reading is due first: the one clock wakes for it.
+        assertEquals(t0 + 2 * minute + 20_000L, scheduler.at)
+        now = scheduler.at
+        scheduler.wake!!.run()
+        val peerStale = published.last()
+        assertEquals(Freshness.FRESH, peerStale.freshness)
+        assertEquals(Freshness.STALE, peerStale.otherSensors.single().freshness)
+        assertFalse("the complications redraw at once, not folded", WatchSurfaces.isRepeat(peerStale.reason))
+        assertEquals(t0 + 5 * minute + 20_000L, scheduler.at)
+    }
+
+    @Test
+    fun theWatchTellsTheHubWhichSensorsItShowsBeside() {
+        val root = generateSequence(java.io.File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+            .first { java.io.File(it, "Common/src/wear/java/tk/glucodata/WatchSurfaces.kt").exists() }
+        val surfaces = java.io.File(root, "Common/src/wear/java/tk/glucodata/WatchSurfaces.kt").readText()
+        assertTrue(surfaces.contains("CurrentReadingHub.setOtherSensors { tk.glucodata.ui.WearSensorSelection.selected() }"))
+    }
 }
