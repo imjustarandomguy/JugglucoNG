@@ -95,6 +95,16 @@ object AlertRuntimeManager {
         }
     }
 
+    /**
+     * The reading the alerts were last evaluated on, as the display resolves it; null before
+     * one. An alarm fires on it before it is in place for the display (see
+     * [evaluatedReadingTimeMs]), so the alarm's arrow is worked out from it.
+     */
+    fun evaluatedReading(): CurrentDisplaySource.Snapshot? = synchronized(lock) { lastDisplaySnapshot }
+
+    /** When the reading the alerts were last evaluated on was taken; 0 before one. */
+    fun evaluatedReadingTimeMs(): Long = synchronized(lock) { lastReadingTimeMs }
+
     fun onNewReading(glucoseValue: Float, rate: Float, readingTimeMs: Long): AlertRuntimeEvaluation {
         return onNewReading(null, glucoseValue, rate, readingTimeMs, 0)
     }

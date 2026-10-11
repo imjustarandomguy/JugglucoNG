@@ -160,6 +160,18 @@ data class DisplayedReading(
         else -> Float.NaN
     }
 
+    /**
+     * [alarmRate] for an alarm that fired on the reading taken at [alertingTimeMillis]. The
+     * alert engine sees a reading before it is in place for this one (its stored row and the
+     * live slot follow the alerts), so while this reading is older the arrow is the alarm's
+     * own reading's, [alertingRate], or [firedRate] without one: never the previous reading's.
+     */
+    fun alarmRate(alertingTimeMillis: Long, firedRate: Float, alertingRate: () -> Float): Float {
+        if (alertingTimeMillis <= lastReadingMillis + SAME_READING_MS) return alarmRate(firedRate)
+        val own = alertingRate()
+        return if (own.isFinite()) own else firedRate
+    }
+
     /** True when [other] draws exactly the same: everything but the revision, reason and origin. */
     fun sameDisplayAs(other: DisplayedReading): Boolean =
         this == other.copy(origin = origin, reason = reason, revision = revision)
@@ -167,6 +179,9 @@ data class DisplayedReading(
     companion object {
         /** What every surface shows where there is no value. */
         const val NO_VALUE_TEXT = "---"
+
+        /** Two reading times closer than this are one reading stamped twice (ms and whole seconds). */
+        private const val SAME_READING_MS = 30_000L
 
         /** Before the first publish. */
         @JvmField
