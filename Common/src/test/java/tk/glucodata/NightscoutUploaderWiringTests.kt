@@ -158,4 +158,24 @@ class NightscoutUploaderWiringTests {
         )
         assertTrue("afterAppToFront() wakes without the uploader set up", body.contains("getuseuploader()"))
     }
+
+    /**
+     * The full read's five-minute floor held a dose entered just after a read for up to five
+     * minutes, however often the app was opened. Coming to the front asks for a light read, and
+     * asks before it wakes, or the pass the wake brings could run without seeing the request.
+     */
+    @Test
+    fun comingToTheFrontAsksForALightReadBeforeItsWake() {
+        val wake = File(moduleRoot, "src/main/java/tk/glucodata/NightscoutUploadWake.kt").readText()
+        val start = wake.indexOf("fun afterAppToFront()")
+        assertTrue("afterAppToFront() is not in NightscoutUploadWake any more", start >= 0)
+        val body = wake.substring(start, wake.indexOf("@JvmStatic", start))
+        val request = body.indexOf("JournalTreatmentUploadAccess.requestLightReceive()")
+        assertTrue("afterAppToFront() no longer asks for a light read", request >= 0)
+        assertTrue("the light read is asked for after the wake", request < body.indexOf("Natives.waketreatments()"))
+        assertTrue(
+            "the light read is asked for before 'Receive treatments' is checked",
+            request > body.indexOf("getReceiveTreatments()"),
+        )
+    }
 }

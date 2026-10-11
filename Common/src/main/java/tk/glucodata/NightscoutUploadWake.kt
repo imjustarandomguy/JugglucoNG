@@ -34,14 +34,17 @@ object NightscoutUploadWake {
      * that wake the uploader all day do not run one: opening the app to look would show nothing
      * new until a pass came by for another reason (leaving the app, a journal change, a network
      * change). This is the treatments' own wake, not a full pass: a full "Send now" pass also
-     * ends the backoff after a refusal, and this is no reason to. The receive interval still
-     * bounds the read itself, so coming back to the app again and again costs one read per
-     * interval at most. Does nothing unless the server is set up and treatments are received.
+     * ends the backoff after a refusal, and this is no reason to. It asks for a light read, the
+     * newest few treatments on a short interval of their own, as the full read's five minutes
+     * held back a dose entered just after a read, however often the app was opened to look.
+     * Does nothing unless the server is set up and treatments are received.
      */
     @JvmStatic
     fun afterAppToFront() {
         if (!runCatching { Natives.getuseuploader() }.getOrDefault(false)) return
         if (!JournalTreatmentUploadAccess.getReceiveTreatments()) return
+        // Before the wake, so the pass it brings finds the request.
+        JournalTreatmentUploadAccess.requestLightReceive()
         runCatching {
             Natives.waketreatments()
         }.onFailure {
