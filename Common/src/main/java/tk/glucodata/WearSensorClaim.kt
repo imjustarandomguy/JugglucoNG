@@ -130,6 +130,22 @@ internal object WearSensorClaimPolicy {
             SensorIdentity.matches(localReadingSerial, targetSensorId) &&
             SensorIdentity.matches(localReadingSerial, callbackSerial)
     }
+
+    /**
+     * Whether a reading this watch's own driver accepted brings back a direct
+     * request its claim window dropped: the watch is still told to read the
+     * sensor ([storedRequest], "Direct sensor on watch"), the request in
+     * memory timed out, and the reading is the claimed sensor's.
+     */
+    fun restoresDirectRequest(
+        directRequested: Boolean,
+        storedRequest: Boolean,
+        targetSensorId: String?,
+        readingSerial: String?,
+    ): Boolean =
+        !directRequested && storedRequest &&
+            !targetSensorId.isNullOrBlank() && !readingSerial.isNullOrBlank() &&
+            SensorIdentity.matches(readingSerial, targetSensorId)
 }
 
 /** Watch-only, process-local ownership claim for direct sensor routing. */
@@ -218,7 +234,29 @@ object WearSensorClaim {
     fun onLocalReadingAccepted(serial: String?, sampleTimeMs: Long = 0L) {
         if (!Applic.isWearable || serial.isNullOrBlank()) return
         val acceptedAtMs = System.currentTimeMillis()
+        // Looked up outside the lock, as checkClaim does.
+        val restore = !directRequested && WearSensorClaimPolicy.restoresDirectRequest(
+            directRequested = directRequested,
+            storedRequest = storedDirectRequested(),
+            targetSensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull(),
+            readingSerial = serial,
+        )
+        var restored = false
         synchronized(this) {
+            if (restore && !directRequested) {
+                // The claim window ran out before a driver here reached the
+                // sensor (no Dexcom driver yet for a G7 just handed over), and
+                // the request went with it until the next /bluetooth.
+                directRequested = true
+                requestedAtMs = acceptedAtMs
+                lastWaitingReason = ""
+                transitionLocked(
+                    WearSensorClaimState.REQUESTING,
+                    "local reading from $serial while direct mode is on; request restored",
+                )
+                scheduleMonitorLocked()
+                restored = true
+            }
             if (
                 !directRequested ||
                 state == WearSensorClaimState.CONNECTED ||
@@ -235,6 +273,7 @@ object WearSensorClaim {
             )
         }
         checkClaim()
+        if (restored && state != WearSensorClaimState.CONNECTED) publishState()
     }
 
     /** Called directly from the local Android GATT callback/transport close path. */
@@ -399,19 +438,31 @@ object WearSensorClaim {
     fun isDirectRequested(): Boolean {
         if (!Applic.isWearable) return false
         if (directRequested) return true
-        return runCatching {
+        return storedDirectRequested()
+    }
+
+    private fun storedDirectRequested(): Boolean =
+        runCatching {
             Applic.app?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
                 ?.getBoolean(KEY_DIRECT_REQUESTED, false)
         }.getOrNull() ?: false
+
+    /**
+     * The phone has just handed this watch a sensor to read (a G7, see
+     * WearSync2.adoptDexcomSensor) while direct mode is on: the claim starts
+     * over, so it waits for that sensor again. One the watch holds stays.
+     */
+    @JvmStatic
+    fun rearmIfRequested(reason: String) {
+        if (!Applic.isWearable || state == WearSensorClaimState.CONNECTED || !isDirectRequested()) return
+        Log.i(LOG_ID, "direct sensor claim re-armed: $reason")
+        setDirectRequested(true)
     }
 
     @JvmStatic
     fun restoreOnStart() {
         if (!Applic.isWearable) return
-        val wanted = runCatching {
-            Applic.app?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                ?.getBoolean(KEY_DIRECT_REQUESTED, false)
-        }.getOrNull() ?: false
+        val wanted = storedDirectRequested()
         if (!wanted) return
         Log.i(LOG_ID, "restoring direct sensor mode after restart")
         setDirectRequested(true)
