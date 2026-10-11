@@ -233,6 +233,22 @@ private boolean connected=false;
         return super.useAutoConnect() || directConnectUnreachable;
     }
 
+    /**
+     * A known G7 bonded here that reconnects in the background: the controller
+     * waits for its next advertisement, so the CPU need not wake at the next
+     * slot to issue the connect. Its reconnect is armed after the quiet period.
+     */
+    @SuppressLint("MissingPermission")
+    private boolean reconnectsInBackground() {
+        final var device = mActiveBluetoothDevice;
+        try {
+            return directConnectUnreachable && known && !removedBond && device != null
+                    && device.getBondState() == BOND_BONDED;
+        } catch (Throwable th) {
+            return false;
+        }
+    }
+
     @Override
     protected long connectionAttemptTimeoutMillis() {
         // A background attempt needs to survive until the next five-minute advert.
@@ -459,7 +475,7 @@ private boolean connected=false;
                                 stillwait = 0L;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
-                        else if(getalarmclock()) {
+                        else if(getalarmclock() && !reconnectsInBackground()) {
                             // Slot timing follows the sample; the quiet period follows reception.
                             final long sinceSample = sampletime > 0L ? tim - sampletime : alreadywaited;
                             final long mmsectimebetween = 5 * 60 * 1000;
