@@ -262,6 +262,27 @@ class CurrentReadingHubTests {
     }
 
     @Test
+    fun aWakeLetsGoOnlyAfterItsPublishWentOut() {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            var now = t0
+            val events = java.util.Collections.synchronizedList(ArrayList<String>())
+            val hub = ReadingHub({ Thread.sleep(30L); inputs(reading(t0)) }, worker, ReadingClock(FakeScheduler()), { now })
+            hub.addListener { events += "publish ${it.freshness}" }
+            hub.awaitCurrent(5_000L)
+            // The stale alarm fires: the receiver asks for the recompute, then waits for it.
+            now = t0 + 6 * minute
+            val released = java.util.concurrent.CountDownLatch(1)
+            hub.onDeadline()
+            hub.afterPending { events += "released"; released.countDown() }
+            assertTrue(released.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(listOf("publish FRESH", "publish STALE", "released"), events.toList())
+        } finally {
+            worker.shutdownNow()
+        }
+    }
+
+    @Test
     fun theFirstPublishIsStartupAndTheSameReadingIsNotPublishedAgain() {
         val rig = Rig(inputs(reading(t0)))
         assertEquals(1, rig.published.size)
