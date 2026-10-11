@@ -13,4 +13,7 @@ interface JournalTreatmentUploadBridge {
     fun getReceiveTreatments(): Boolean
 
     fun uploadAll(useV3: Boolean): Boolean
+
+    /** Whether a pass woken by a new glucose reading should also read treatments back. */
+    fun readingReceiveDue(useV3: Boolean): Boolean
 }
