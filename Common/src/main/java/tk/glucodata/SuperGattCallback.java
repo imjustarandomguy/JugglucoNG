@@ -280,6 +280,15 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         charcha[1] = whenMs;
     }
 
+    /**
+     * True while the sensor is silent because it has not produced its first reading
+     * yet, as during a warmup. {@link #reconnect} still reconnects such a sensor but
+     * does not record its silence as a loss of signal.
+     */
+    protected boolean awaitingFirstReading(long nowMs) {
+        return false;
+    }
+
     public boolean reconnect(long now) {
         final var old = now - showtime + 20;
         if (charcha[1] < old && connectTime < (now - 60 * 1000)) {
@@ -288,7 +297,10 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                     Log.i(LOG_ID, "reconnect " + SerialNumber);
                 }
                 ;
-                noteLossOfSignal(now);
+                // shouldreconnect passes a time one showtime back, so ask the clock.
+                if (!awaitingFirstReading(System.currentTimeMillis())) {
+                    noteLossOfSignal(now);
+                }
                 final var thegatt = mBluetoothGatt;
                 if (thegatt != null) {
                     thegatt.disconnect();
