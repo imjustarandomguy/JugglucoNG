@@ -504,7 +504,11 @@ object WearSync2 {
                 val local = existingSensorNameFor(serial) ?: serial
                 if (Natives.dexAdoptSensor(local, code, startSec, deviceName)) {
                     Log.i(LOG_ID, "G7 $serial adopted as Dexcom record $local")
+                    // Also replaces a driver built for the record before it was a G7's.
                     SensorBluetooth.updateDevices()
+                    // A claim that timed out while no driver here could reach the
+                    // sensor would otherwise wait for the next /bluetooth.
+                    WearSensorClaim.rearmIfRequested("G7 $local handed over")
                 } else {
                     Log.e(LOG_ID, "could not adopt G7 $serial as $local")
                 }
