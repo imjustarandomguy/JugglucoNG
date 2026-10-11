@@ -30,7 +30,8 @@ def method(signature, source=source):
 
 methods = '\n'.join(method(s) for s in [
     'public DexGattCallback(', 'private void preferBackgroundConnect(',
-    'protected boolean useAutoConnect(', 'protected long connectionAttemptTimeoutMillis(',
+    'protected boolean useAutoConnect(', 'private boolean reconnectsInBackground(',
+    'protected long connectionAttemptTimeoutMillis(',
     'protected void onConnectionAttemptTimeout(', 'public synchronized boolean connectDevice(',
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
@@ -132,7 +133,7 @@ class SuperGattCallback {
     static PendingIntent getBroadcast(Context c,int id,Intent i,int flags){return new PendingIntent(i.action);}
 }
 class BluetoothProfile {static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}
-class BluetoothDevice {static final int BOND_BONDING=11;int getBondState(){return 12;}boolean createBond(){return true;}}
+class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;int getBondState(){return bondState;}boolean createBond(){return true;}}
 class BluetoothGatt {static final int GATT_CONNECTION_TIMEOUT=147,GATT_SUCCESS=0;BluetoothDevice getDevice(){return new BluetoothDevice();}int discoveries;boolean discoveryResult=true;boolean discoverServices(){if(!Thread.holdsLock(PowerManager.owner))throw new AssertionError("discovery outside callback monitor");discoveries++;return discoveryResult;}}
 class BluetoothGattCharacteristic {static final int WRITE_TYPE_DEFAULT=2;void setWriteType(int t){}UUID getUuid(){return UUID.randomUUID();}}
 class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;BluetoothGattDescriptor(BluetoothGattCharacteristic c){characteristic=c;}BluetoothGattCharacteristic getCharacteristic(){return characteristic;}byte[] getValue(){return new byte[]{0};}UUID getUuid(){return UUID.randomUUID();}}
@@ -261,7 +262,7 @@ public class DexGattCallback extends SuperGattCallback {
     }
     static DexGattCallback fresh(){
         Applic.prefs=new Prefs();Applic.alarms=new AlarmManager();
-        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();Applic.scheduler=new Applic.Scheduler();
+        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();Applic.scheduler=new Applic.Scheduler();BluetoothDevice.bondState=BOND_BONDED;
         defaultAuto=false;alarmClock=false;isWearable=false;CloneSensorRegistry.clone=false;SensorOwnershipRuntime.blocked=false;
         Natives.lastGlucose=-1;Natives.aesSuccess=true;Natives.resets=0;Natives.authenticated=true;
         Natives.sampleAge=0;Natives.result=100;Natives.saveName=false;System.now=1_760_000_000_000L;
@@ -413,17 +414,28 @@ public class DexGattCallback extends SuperGattCallback {
             System.now+=10000;cb.onConnectionStateChange(gatt,19,0);
             check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"elapsed quiet period bypassed reconnect floor");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             Natives.sampleAge=120000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
             check(Applic.alarms.at==System.now+152500&&shortWaitEnded(cb),"next-slot alarm followed reception instead of sample age");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            for(int kind=0;kind<3;kind++) {
+                // Bonded, known, background preference: no next-slot alarm clock, the quiet wait instead.
+                cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+                if(kind==1)cb.known=false;
+                if(kind==2)cb.removedBond=true;
+                Natives.sampleAge=120000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+                cb.onConnectionStateChange(gatt,19,0);
+                if(kind==0)check(waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.useAutoConnect(),"bonded background G7 kept the next-slot alarm clock");
+                else check(Applic.alarms.at==System.now+152500&&shortWaitEnded(cb),"unknown or unbonded G7 lost its next-slot alarm");
+            }
+
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             Natives.sampleAge=280000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
             check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0,"past slot alarm bypassed reconnect floor");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             cb.datatime=System.now;cb.justdata=true;cb.sampletime=0;
             cb.onConnectionStateChange(gatt,19,0);
             check(Applic.alarms.at==System.now+272500,"missing sample time lost reception fallback");
@@ -577,7 +589,7 @@ public class DexGattCallback extends SuperGattCallback {
         preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();
         authSlots();
         challengeReplies();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
