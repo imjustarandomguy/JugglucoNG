@@ -44,6 +44,9 @@ object WatchSurfaces : ReadingHub.Listener {
         CurrentReadingHub.setDisplaySensor {
             tk.glucodata.ui.WearSensorSelection.resolve() ?: SensorIdentity.resolveMainSensor()
         }
+        // The sensors shown beside it (the multi-sensor complications, the hero's chips): their
+        // stale moments wake the same clock and are published, so they need no clock of their own.
+        CurrentReadingHub.setOtherSensors { tk.glucodata.ui.WearSensorSelection.selected() }
         CurrentReadingHub.setScheduler(ComplicationFreshness)
         CurrentReadingHub.addListener(this)
     }
