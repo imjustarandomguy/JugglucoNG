@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.text.format.DateUtils
 import androidx.core.app.NotificationCompat
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
@@ -56,11 +57,30 @@ object WearOngoingActivity : OngoingNotification {
 
     /**
      * The watch's current reading as every other watch surface shows it: the value while
-     * it is shown (a status line cannot dim a stale one) and "---" once it is taken down.
-     * The resolver falls back to history well past any timeout, so reading it here kept
-     * the last value up as if it were live after readings stopped.
+     * it is shown and "---" once it is taken down. A status line cannot dim a stale value,
+     * so it says how long ago the newest reading came instead ("112 · 6 min. ago"), as of
+     * [nowMillis]: brought up to date by the publish that takes the reading stale and by
+     * every refresh after it. The resolver falls back to history well past any timeout, so
+     * reading it here kept the last value up as if it were live after readings stopped.
      */
-    internal fun statusText(reading: DisplayedReading): String = reading.shownText
+    internal fun statusText(
+        reading: DisplayedReading,
+        nowMillis: Long = System.currentTimeMillis(),
+        ago: (Long, Long) -> String = ::relativeAge,
+    ): String {
+        if (!reading.isDimmed || !reading.showsValue || reading.lastReadingMillis <= 0L) return reading.shownText
+        val age = ago(reading.lastReadingMillis, nowMillis)
+        return if (age.isBlank()) reading.shownText else reading.shownText + " · " + age
+    }
+
+    /** "6 min. ago", in the watch's language. */
+    private fun relativeAge(atMillis: Long, nowMillis: Long): String =
+        DateUtils.getRelativeTimeSpanString(
+            atMillis,
+            nowMillis,
+            DateUtils.MINUTE_IN_MILLIS,
+            DateUtils.FORMAT_ABBREV_RELATIVE,
+        )?.toString().orEmpty()
 
     private fun status(text: String): Status = Status.forPart(Status.TextPart(text))
 
