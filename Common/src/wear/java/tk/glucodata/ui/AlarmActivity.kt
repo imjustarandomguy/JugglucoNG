@@ -45,9 +45,9 @@ import tk.glucodata.Notify
 import tk.glucodata.R
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertType
+import tk.glucodata.glucosecomplication.trendArrowText
 import tk.glucodata.receivers.AlarmActionReceiver
 import tk.glucodata.ui.screens.glucoseColor
-import tk.glucodata.ui.screens.trendArrow
 import tk.glucodata.ui.theme.WearJugglucoTheme
 
 class AlarmActivity : ComponentActivity() {
@@ -142,7 +142,7 @@ class AlarmActivity : ComponentActivity() {
             alertLabel = alertLabel,
             primaryGlucose = snapshot?.primaryStr ?: fallback.primary,
             secondaryGlucose = snapshot?.secondaryStr ?: fallback.secondary,
-            trend = trendArrow(rate),
+            trend = trendArrowText(rate),
             glucoseColor = snapshot?.let { glucoseColor(it) },
             snoozeMinutes = snoozeMinutes
         )
