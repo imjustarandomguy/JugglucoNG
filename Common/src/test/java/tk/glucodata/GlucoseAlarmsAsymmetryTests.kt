@@ -23,7 +23,8 @@ import org.junit.Test
  * What this pins, phone vs watch:
  * - the watch recomputes the complication views, the phone does not;
  * - only the phone relays the loss alarm to WearInt, and only behind `doWearInt`;
- * - only the phone pushes the stale value to the home-screen widget;
+ * - neither pushes a stale value to the home-screen widgets: they go stale with the
+ *   current reading (CurrentReadingHub), not with the loss alarm;
  * - the phone's wake is conditional on `shouldwakesender()`, the watch's is unconditional;
  * - the watch asks for a sync afterwards, the phone does not;
  * - the phone calls `ensureCurrentSensorSelection()` on reconnect, the watch does not;
@@ -66,8 +67,8 @@ class GlucoseAlarmsAsymmetryTests {
     }
 
     @Test
-    fun onlyThePhonePushesTheStaleValueToTheWidget() {
-        assertTrue(phone, phone.contains("GlucoseWidget.oldvalue("))
+    fun neitherPushesAStaleValueToTheWidgets() {
+        assertFalse(phone, phone.contains("GlucoseWidget.oldvalue("))
         assertFalse(watch, watch.contains("GlucoseWidget.oldvalue("))
     }
 

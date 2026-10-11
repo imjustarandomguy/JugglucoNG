@@ -130,7 +130,7 @@ class WidgetConfigActivity : ComponentActivity() {
             return (listOf(current) + samples).distinctBy { (it.width / 24) to (it.height / 24) }
         }
 
-        /** The current reading and the longest chart window; a sample when there is no reading. */
+        /** The current reading and the longest chart window; a sample when there is no value to show. */
         private fun previewData(context: Context): WidgetData {
             val loaded = try {
                 WidgetDataLoader.load(context, PREVIEW_WINDOW_MILLIS, withIob = true)
@@ -138,7 +138,7 @@ class WidgetConfigActivity : ComponentActivity() {
                 Log.stack(LOG_ID, "previewData", th)
                 null
             }
-            if (loaded?.reading != null) return loaded
+            if (loaded?.reading?.hasValue == true) return loaded
             return WidgetSamples.data(System.currentTimeMillis(), isMmol = Applic.unit == 1)
         }
     }

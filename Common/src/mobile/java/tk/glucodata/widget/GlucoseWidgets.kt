@@ -16,12 +16,13 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import tk.glucodata.CurrentReadingHub
 import tk.glucodata.GlucoseUpdateBroadcaster
 import tk.glucodata.GlucoseWidget
 import tk.glucodata.Log
 import tk.glucodata.NotificationChartDrawer
-import tk.glucodata.Notify
 import tk.glucodata.NumberView
+import tk.glucodata.ReadingHub
 
 /**
  * Draws both home-screen widgets as plain RemoteViews.
@@ -31,8 +32,11 @@ import tk.glucodata.NumberView
  * settings, and a widget whose content did not change is not sent again. Nothing
  * runs while no widget is placed, and nothing renders while the screen is off: the
  * widgets are marked dirty instead and drawn once at screen-on ([WidgetRefreshGate]).
- * The loss alarm (MobileGlucoseAlarms) switches them to their stale look, so no
- * timer of their own is needed.
+ *
+ * The reading is CurrentReadingHub's: each publish (a new reading, its stale moment,
+ * the removal of its value, a setting) is an update, so the widgets change with the
+ * other surfaces and need no timer of their own. Stored data changes (the chart, the
+ * change, IOB) still arrive through GlucoseUpdateBroadcaster.
  */
 object GlucoseWidgets {
     private const val LOG_ID = "GlucoseWidgets"
@@ -52,7 +56,9 @@ object GlucoseWidgets {
     private var screenReceiverRegistered = false
 
     private val renderQueued = AtomicBoolean(false)
-    private val gate = WidgetRefreshGate(Notify.glucosetimeout)
+    private val gate = WidgetRefreshGate()
+    // Followed only while a widget is placed; see refreshPlacement.
+    private val hubListener = ReadingHub.Listener { onGlucoseUpdate() }
 
     // One thread, gone after 30 idle seconds: renders never overlap, and the
     // state below is only touched from it.
@@ -69,13 +75,6 @@ object GlucoseWidgets {
     @JvmStatic
     fun start(context: Context) {
         ensureStarted(context)
-    }
-
-    /** The loss alarm found no new reading in time: show the stale look now, or at the next screen-on. */
-    @JvmStatic
-    fun onReadingStale(context: Context) {
-        val app = ensureStarted(context)
-        if (placed) requestRender(app)
     }
 
     /** The host needs these widgets drawn (placed, resized, after a boot or an update), whatever the screen. */
@@ -232,8 +231,8 @@ object GlucoseWidgets {
         try {
             val token = gate.beginRender()
             val targets = placedWidgets(context)
-            val data = if (targets.isEmpty()) null else render(context, targets)
-            gate.renderedAll(token, data?.freshReadingMillis ?: 0L)
+            if (targets.isNotEmpty()) render(context, targets)
+            gate.renderedAll(token)
         } catch (th: Throwable) {
             Log.stack(LOG_ID, "renderAll", th)
         }
@@ -310,7 +309,7 @@ object GlucoseWidgets {
         true
     }
 
-    /** Listens for screen-on only while a widget is placed. */
+    /** Listens for screen-on, and follows the current reading, only while a widget is placed. */
     private fun refreshPlacement(context: Context) {
         val any = try {
             placedWidgets(context).isNotEmpty()
@@ -319,6 +318,7 @@ object GlucoseWidgets {
             placed
         }
         placed = any
+        if (any) CurrentReadingHub.addListener(hubListener) else CurrentReadingHub.removeListener(hubListener)
         synchronized(this) {
             if (any && !screenReceiverRegistered) {
                 val filter = IntentFilter(Intent.ACTION_SCREEN_ON)
@@ -338,7 +338,14 @@ object GlucoseWidgets {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             val app = appContext ?: return
-            if (placed && gate.needsRenderOnScreenOn(System.currentTimeMillis())) requestRender(app)
+            if (!placed) return
+            if (WidgetRefreshGate.hubIsBehind(CurrentReadingHub.current(), System.currentTimeMillis())) {
+                // The hub's clock slept through a deadline with the phone: its republish,
+                // on its way, is an update and draws the widgets.
+                CurrentReadingHub.onClockChanged()
+            } else if (gate.needsRenderOnScreenOn()) {
+                requestRender(app)
+            }
         }
     }
 
