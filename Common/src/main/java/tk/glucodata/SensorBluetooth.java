@@ -589,6 +589,30 @@ public class SensorBluetooth {
             blueone.removeDevice(str);
     }
 
+    /**
+     * Frees exactly {@code callbacks}, those still listed. Unlike sensorEnded(),
+     * which frees whichever callback a sensor id matches first, it leaves every
+     * other callback alone, so a removal that found the callbacks of the records
+     * it ends takes no other sensor's with them.
+     */
+    static public void callbacksEnded(List<SuperGattCallback> callbacks) {
+        final ArrayList<SuperGattCallback> removed = new ArrayList<>();
+        // The roster's lock, as for its rebuild, which works by index.
+        synchronized (gattcallbacks) {
+            for (SuperGattCallback callback : callbacks) {
+                if (gattcallbacks.remove(callback))
+                    removed.add(callback);
+            }
+            Natives.setmaxsensors(gattcallbacks.size());
+        }
+        for (SuperGattCallback callback : removed) {
+            if (doLog) {
+                Log.i(LOG_ID, "removeDevice " + callback.SerialNumber);
+            }
+            callback.free();
+        }
+    }
+
     private boolean scanstart = false;
 
     /**
