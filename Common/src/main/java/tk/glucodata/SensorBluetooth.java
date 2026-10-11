@@ -1218,6 +1218,16 @@ public class SensorBluetooth {
         return gatt == null ? 0L : gatt.constatchange[1];
     }
 
+    /** Time of the last valid reading this process received from the sensor, 0 for none. */
+    public static long lastReadingAt(SuperGattCallback gatt) {
+        return gatt == null ? 0L : gatt.charcha[0];
+    }
+
+    /** True once this process received a frame from the sensor, with or without a reading. */
+    public static boolean heardFromSensor(SuperGattCallback gatt) {
+        return gatt != null && (gatt.charcha[0] != 0L || gatt.charcha[1] != 0L);
+    }
+
     /** Keep mirrored sensor records visible without claiming their physical transmitter. */
     public static void blockLocalCloneConnection(String sensorId) {
         if (sensorId == null || sensorId.isEmpty()) return;

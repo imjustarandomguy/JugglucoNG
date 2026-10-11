@@ -1607,6 +1607,7 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="invalid_interval">Ungültiger Intervallwert</string>
     <string name="status_waiting_for_connection">Wartet auf Verbindung</string>
     <string name="status_ready_in_minutes">Sensor in %1$d Minuten bereit.</string>
+    <string name="status_waiting_for_first_reading">Wartet auf erste Messung</string>
     <string name="navigate_back">Zurück</string>
     <string name="nightscout_upload_title">Nightscout-Upload</string>
     <string name="nightscout_upload_active">Upload im Hintergrund aktiv</string>

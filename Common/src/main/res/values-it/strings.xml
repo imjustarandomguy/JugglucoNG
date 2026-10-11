@@ -1476,6 +1476,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="invalid_interval">Invalid interval value</string>
     <string name="status_waiting_for_connection">In attesa di connessione</string>
     <string name="status_ready_in_minutes">Sensore pronto tra %1$d minuti.</string>
+    <string name="status_waiting_for_first_reading">In attesa della prima lettura</string>
     <string name="navigate_back">Torna indietro</string>
     <string name="nightscout_upload_title">Caricamento Nightscout</string>
     <string name="nightscout_upload_active">Caricamento in background</string>
