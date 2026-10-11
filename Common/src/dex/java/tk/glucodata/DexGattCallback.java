@@ -70,6 +70,14 @@ private static final long DEXCOM_CONNECT_ATTEMPT_TIMEOUT_MS = 45_000L;
 private static final long DEXCOM_RECONNECT_QUIET_MS = 5_000L;
 // A session takes seconds; this only bounds a link that is never closed.
 private static final long DEXCOM_WAKELOCK_TIMEOUT_MS = 2L * 60L * 1000L;
+// A reconnect at most this far off (the quiet period after a session) waits on
+// the executor under a timed wake lock. An alarm clock for it would take the
+// device out of Doze after every session, and can show as the next alarm.
+private static final long DEXCOM_SHORT_RECONNECT_MAX_MS = 7_000L;
+private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
+private PowerManager.WakeLock reconnectlock;
+private long shortReconnectSeq;
+private boolean shortReconnectPending;
 private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
@@ -232,6 +240,11 @@ private boolean connected=false;
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
                 || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+        if (delayMillis > 0L && delayMillis <= DEXCOM_SHORT_RECONNECT_MAX_MS) {
+            waitShortReconnect(delayMillis);
+            return true;
+        }
+        cancelShortReconnect();
         if (delayMillis > 0L) {
             // An executor timer cannot wake a suspended CPU, and its pending latch
             // would prevent an alarm/scan from requesting an immediate connection.
@@ -244,11 +257,68 @@ private boolean connected=false;
         return super.connectDevice(0L);
     }
 
+    /**
+     * Waits a few seconds with the CPU held awake, which an executor timer alone
+     * cannot do. No pending latch: a later request replaces the wait, and an
+     * immediate one cancels it.
+     */
+    private void waitShortReconnect(long delayMillis) {
+        cancelalarm();
+        if (reconnectlock == null) {
+            reconnectlock = ((PowerManager) Applic.app.getSystemService(POWER_SERVICE))
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::DexcomReconnect");
+            reconnectlock.setReferenceCounted(false);
+        }
+        // An upper bound: released once the connect it waits for has been issued.
+        reconnectlock.acquire(delayMillis + DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS);
+        final long seq = ++shortReconnectSeq;
+        shortReconnectPending = true;
+        Applic.scheduler.schedule(() -> runShortReconnect(seq), delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void runShortReconnect(long seq) {
+        synchronized (this) {
+            if (!shortReconnectPending || seq != shortReconnectSeq) return;
+            shortReconnectPending = false;
+        }
+        try {
+            // As the caller would have with no delay, outside this callback's monitor.
+            final var sensorbluetooth = SensorBluetooth.blueone;
+            if (sensorbluetooth != null && !stop)
+                sensorbluetooth.connectToActiveDevice(this, 0L);
+        } finally {
+            synchronized (this) {
+                // A connect still scheduled releases it when it ends: pendingConnectEnded().
+                if (!shortReconnectPending && !connectScheduled())
+                    releaseReconnectLock();
+            }
+        }
+    }
+
+    @Override
+    protected void pendingConnectEnded() {
+        if (!shortReconnectPending)
+            releaseReconnectLock();
+    }
+
+    private synchronized void cancelShortReconnect() {
+        if (!shortReconnectPending) return;
+        shortReconnectPending = false;
+        releaseReconnectLock();
+    }
+
+    private synchronized void releaseReconnectLock() {
+        final var lock = reconnectlock;
+        if (lock != null && lock.isHeld())
+            lock.release();
+    }
+
     @Override
     public synchronized void setPause(boolean pause) {
         super.setPause(pause);
         if (pause) {
             cancelalarm();
+            cancelShortReconnect();
             releaselock();
         }
     }
@@ -974,6 +1044,7 @@ private    void getdata(byte[] value) {
     public void free() {
         releaselock();
         cancelalarm();
+        cancelShortReconnect();
         unbond();
         super.free();
     }
