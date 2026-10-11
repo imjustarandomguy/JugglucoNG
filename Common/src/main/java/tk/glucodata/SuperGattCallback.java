@@ -846,7 +846,10 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
             Log.stack(LOG_ID, "followMainReading", t);
         }
 
-        glucosealarms.setagealarm(timmsec, showtime);
+        // While the other device reads the sensor too, a reading this one misses is
+        // asked of it from this alarm: before the screens call the value stale.
+        glucosealarms.setagealarm(timmsec,
+                LossAlarmAhead.showtime(showtime, SensorOwnershipRuntime.bothRead(SerialNumber)));
         GlucoseUpdateBroadcaster.armFreshnessDeadline(timmsec);
         final var alertEvaluation = tk.glucodata.alerts.AlertRuntimeManager.INSTANCE.onNewReading(SerialNumber,
                 reading, rate, timmsec, sensorgen);
