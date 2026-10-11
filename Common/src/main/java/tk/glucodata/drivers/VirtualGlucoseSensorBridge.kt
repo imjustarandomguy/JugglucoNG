@@ -25,7 +25,6 @@ import tk.glucodata.UiRefreshBus
  */
 object VirtualGlucoseSensorBridge {
     private const val TAG = "VirtualGlucose"
-    private const val MMOL_TO_MGDL = 18.0182f
     private const val MIN_REASONABLE_TIMESTAMP_MS = 946_684_800_000L
     private const val MAX_FUTURE_TIMESTAMP_DRIFT_MS = 10L * 60L * 1000L
     private val mirrorLock = Any()
@@ -272,11 +271,7 @@ object VirtualGlucoseSensorBridge {
         }
 
         val primaryMgdl = reading.primaryGlucoseMgdl
-        val glucoseDisplay = if (Applic.unit == 1) {
-            primaryMgdl / MMOL_TO_MGDL
-        } else {
-            primaryMgdl
-        }
+        val glucoseDisplay = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(primaryMgdl, Applic.unit == 1)
         // Resolved: a follower publishes the upstream app's own final number
         // (its calibrated value when it sends one), not a stock lane to calibrate.
         SuperGattCallback.processExternalCurrentReading(

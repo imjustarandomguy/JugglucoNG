@@ -6099,11 +6099,8 @@ class AiDexBleManager(
             )
         ) {
             val catchUpTimestamp = sensorstartmsec + (lastHistoryNewestOffset.toLong() * 60_000L)
-            val catchUpDisplayGlucose = if (Applic.unit == 1) {
-                lastHistoryNewestGlucose / 18.0f
-            } else {
-                lastHistoryNewestGlucose
-            }
+            val catchUpDisplayGlucose =
+                tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(lastHistoryNewestGlucose, Applic.unit == 1)
             // Publish the catch-up sample without routing it back through shared
             // storage. The history row was already persisted above.
             SuperGattCallback.processExternalCurrentReading(

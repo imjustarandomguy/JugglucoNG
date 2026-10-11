@@ -141,7 +141,7 @@ class NightscoutFollowerManager(
         val glucoseMgdl = latestReadingMgdl
         if (timestampMs <= 0L || !glucoseMgdl.isFinite() || glucoseMgdl <= 0f) return null
         if (kotlin.math.abs(System.currentTimeMillis() - timestampMs) > maxAgeMillis) return null
-        val glucoseDisplay = if (Applic.unit == 1) glucoseMgdl / MMOL_TO_MGDL else glucoseMgdl
+        val glucoseDisplay = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(glucoseMgdl, Applic.unit == 1)
         val rateDisplay = if (Applic.unit == 1) latestRateMgdlPerMin / MMOL_TO_MGDL else latestRateMgdlPerMin
         return ManagedSensorCurrentSnapshot(
             timeMillis = timestampMs,
