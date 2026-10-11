@@ -33,8 +33,9 @@ class SensorHandoverStateTests {
         }
     }
 
-    private fun expiredPrimary(endMs: Long = oldEnd) =
-        HandoverSensor("OLD", startMs = endMs - 14L * 24 * 60 * 60 * 1000, endMs = endMs)
+    /** [delivering] is an expired sensor still reading inside its grace period. */
+    private fun expiredPrimary(endMs: Long = oldEnd, delivering: Boolean = false) =
+        HandoverSensor("OLD", startMs = endMs - 14L * 24 * 60 * 60 * 1000, endMs = endMs) { delivering }
 
     /** Successor activated 90 min ago: warmup is over, so "no reading" means disconnected, not warming. */
     private fun successor(
@@ -64,7 +65,8 @@ class SensorHandoverStateTests {
         )
     }
 
-    // Test 2: successor still in its warmup phase -> switch anyway, flagged as warming.
+    // Test 2: successor still in its warmup phase and the old sensor silent ->
+    // switch anyway, flagged as warming.
     @Test
     fun switchesToWarmingSuccessorWithWarmingFlag() {
         val state = SensorHandoverState(FakeStore())
@@ -72,6 +74,61 @@ class SensorHandoverStateTests {
             true, expiredPrimary(), listOf(warmingSuccessor()), now
         )
         assertEquals(HandoverDecision.Switch("OLD", "NEW", successorWarming = true), decision)
+    }
+
+    // While the expired sensor still reads, a warming successor would only
+    // blank the display: wait, unlatched, for its first reading.
+    @Test
+    fun waitsForTheWarmingSuccessorsFirstReadingWhileTheOldSensorReads() {
+        val store = FakeStore()
+        val state = SensorHandoverState(store)
+        assertEquals(
+            HandoverDecision.None,
+            state.evaluate(true, expiredPrimary(delivering = true), listOf(warmingSuccessor()), now)
+        )
+        assertEquals(null, store.handled)
+
+        val firstReading = successor(delivering = true, startMs = now - 20 * 60_000L)
+        assertEquals(
+            HandoverDecision.Switch("OLD", "NEW", successorWarming = false),
+            state.evaluate(true, expiredPrimary(delivering = true), listOf(firstReading), now + 10 * 60_000L)
+        )
+    }
+
+    // The old sensor falling silent ends the wait: the warming successor is then
+    // the only source.
+    @Test
+    fun switchesToTheWarmingSuccessorOnceTheOldSensorStops() {
+        val state = SensorHandoverState(FakeStore())
+        assertEquals(
+            HandoverDecision.None,
+            state.evaluate(true, expiredPrimary(delivering = true), listOf(warmingSuccessor()), now)
+        )
+        assertEquals(
+            HandoverDecision.Switch("OLD", "NEW", successorWarming = true),
+            state.evaluate(true, expiredPrimary(delivering = false), listOf(warmingSuccessor()), now + 60_000L)
+        )
+    }
+
+    // A delivering successor is switched to at expiry, whether or not the old
+    // sensor still reads.
+    @Test
+    fun deliveringSuccessorDoesNotWaitForTheOldSensor() {
+        val state = SensorHandoverState(FakeStore())
+        assertEquals(
+            HandoverDecision.Switch("OLD", "NEW", successorWarming = false),
+            state.evaluate(true, expiredPrimary(delivering = true), listOf(successor()), now)
+        )
+    }
+
+    // A disconnected successor does not take over from a sensor that still reads.
+    @Test
+    fun silentSuccessorDoesNotReplaceAReadingSensor() {
+        val state = SensorHandoverState(FakeStore())
+        assertEquals(
+            HandoverDecision.None,
+            state.evaluate(true, expiredPrimary(delivering = true), listOf(successor(delivering = false)), now)
+        )
     }
 
     // A successor whose warmup is long over but which has no readings is
