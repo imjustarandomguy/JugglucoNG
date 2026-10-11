@@ -138,6 +138,22 @@ object DirectReadingStatus {
         return !(late && lastSyncedMs > 0L && readingMs - lastSyncedMs < SAME_READING_MS)
     }
 
+    /**
+     * For a sensor both devices read, whether the phone's push after a reading
+     * still goes to the watch: unless the watch has said it read the newest
+     * reading the push carries ([newestMs]) itself, or a later one. [watch] is
+     * the watch's own newest reading, from its last report.
+     *
+     * Being set to read the sensor is not reading it: a watch that had lost its
+     * G7 bond got every value only from its loss alarm, 320 s late. Nor does
+     * this wait for the watch's word: its session ends about when the phone's
+     * does, so its report of the same reading is often still on the way. Then
+     * the push goes, and the watch takes from it only a slot it lacks.
+     */
+    @JvmStatic
+    fun phonePushesWhileBothRead(watch: DirectReadingFact, newestMs: Long): Boolean =
+        newestMs > 0L && !(watch.timed && watch.lastMs >= newestMs - SAME_READING_MS)
+
     @JvmStatic
     fun summary(phone: DirectReadingFact, watch: DirectReadingFact, nowMs: Long): DirectReadingSummary {
         val phoneReads = phone.isReading(nowMs)
