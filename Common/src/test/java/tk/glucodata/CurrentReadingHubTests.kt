@@ -419,4 +419,48 @@ class CurrentReadingHubTests {
         clock.arm(ReadingHub.compose(inputs(null, sensorId = null), t0), Runnable { })
         assertEquals(0L, scheduler.at)
     }
+
+    // --- Other sensors shown beside the first (the watch's selection). ---
+
+    private fun withPeer(peer: ReadingHub.Other) =
+        ReadingHub.Inputs(sensor, reading(t0), emptyList(), 5 * minute, others = listOf(peer))
+
+    @Test
+    fun theClockAlsoWakesWhenASensorShownBesideGoesStale() {
+        // The peer's newest reading is four minutes old: it goes stale before the first sensor's.
+        val rig = Rig(withPeer(ReadingHub.Other("PEER", t0 - 4 * minute, listOf(t0 - 9 * minute), 5 * minute)))
+        assertEquals(Freshness.FRESH, rig.hub.current().otherSensors.single().freshness)
+        assertEquals(t0 + minute + 20_000L, rig.scheduler.at)
+
+        rig.advanceTo(t0 + minute + 20_000L)
+        assertEquals(2, rig.published.size)
+        val peerStale = rig.published.last()
+        assertEquals(Reason.STALE_TICK, peerStale.reason)
+        assertEquals(Freshness.FRESH, peerStale.freshness)
+        assertEquals(Freshness.STALE, peerStale.otherSensors.single().freshness)
+
+        // Then the first sensor goes stale, then the peer's value is taken down, then the first's.
+        assertEquals(t0 + 5 * minute + 20_000L, rig.scheduler.at)
+        rig.advanceTo(t0 + 5 * minute + 20_000L)
+        assertEquals(Freshness.STALE, rig.hub.current().freshness)
+        assertEquals(t0 + 26 * minute, rig.scheduler.at)
+        rig.advanceTo(t0 + 26 * minute)
+        assertEquals(Freshness.NO_VALUE, rig.hub.current().otherSensors.single().freshness)
+        assertEquals(t0 + 30 * minute, rig.scheduler.at)
+        assertEquals(4, rig.published.size)
+    }
+
+    @Test
+    fun aSensorShownBesideWithoutReadingsNeverWakesTheClock() {
+        val rig = Rig(withPeer(ReadingHub.Other("PEER", 0L, emptyList(), 0L)))
+        assertEquals(Freshness.AWAITING, rig.hub.current().otherSensors.single().freshness)
+        assertEquals(t0 + 5 * minute + 20_000L, rig.scheduler.at)
+        // A new reading of the peer alone is published too: its deadlines moved.
+        rig.inputs = withPeer(ReadingHub.Other("PEER", t0 + minute, emptyList(), 5 * minute))
+        rig.now = t0 + minute
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+        assertEquals(Freshness.FRESH, rig.hub.current().otherSensors.single().freshness)
+        assertEquals(2, rig.published.size)
+        assertEquals(t0 + 5 * minute + 20_000L, rig.scheduler.at)
+    }
 }
