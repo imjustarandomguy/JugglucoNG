@@ -420,6 +420,10 @@ private boolean connected=false;
           connectedAttempt = bluetoothGatt;
           connectedAtMs = tim;
           glucoseAskedAgain = 0;
+          // A bond this callback removed is back: paired again, or the removal
+          // never took. Background connects (bondedHere) may use it again.
+          if(bondstate == BOND_BONDED)
+              removedBond = false;
           if(bondstate == BluetoothDevice.BOND_BONDING) {
               {if(doLog) {Log.i(LOG_ID, "wait BOND_BONDING");};};
               }
@@ -1222,6 +1226,9 @@ private    void getdata(byte[] value) {
                 };break;
             case  BOND_BONDED:  {
                 {if(doLog) {Log.i(LOG_ID,"bonded");};};
+                // Paired again after this callback removed the bond: background
+                // connects need the bond, and it is back.
+                removedBond = false;
                 getdatacmd();
                 if(!has_service) {
                     Applic.RunOnUiThread(() -> {

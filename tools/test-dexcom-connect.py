@@ -340,6 +340,24 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.scans==1,"unbonded G7 dialled its stored address under the application setting");
         }
     }
+    static void bondBackAfterItsRemoval() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // Removed by this callback (tried too often), then paired again: the bond broadcast.
+            DexGattCallback cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;
+            check(!cb.useAutoConnect()&&!cb.reconnectsInBackground(),"removed bond still used");
+            cb.bonded();
+            check(!cb.removedBond&&cb.useAutoConnect()&&cb.reconnectsInBackground()&&cb.connectionAttemptTimeoutMillis()==0,
+                "G7 paired again kept dialling directly");
+            // Or found bonded when it connects.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;
+            cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);
+            check(!cb.removedBond&&cb.useAutoConnect(),"G7 bonded at connect kept dialling directly");
+            // Still unbonded: the removal stands.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;BluetoothDevice.bondState=BOND_NONE;
+            cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);cb.bonded();
+            check(cb.removedBond&&!cb.useAutoConnect(),"removal forgotten while the G7 is unbonded");
+        }
+    }
     static void lossAlarmSparesASessionUnderWay() {
         for(boolean wear:new boolean[]{false,true}) {
             // A background connect issued minutes ago, answered at the G7's slot: the loss
@@ -648,8 +666,8 @@ public class DexGattCallback extends SuperGattCallback {
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
         preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
         unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
-        lossAlarmSparesASessionUnderWay();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        bondBackAfterItsRemoval();lossAlarmSparesASessionUnderWay();
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, a bond back after its removal, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
