@@ -1063,6 +1063,28 @@ static bool uploadJournalTreatmentsViaJava(bool useV3) {
         }
     return res==JNI_TRUE;
     }
+/* Whether the pass a reading woke should also read treatments back: "Receive treatments" is
+   on and the last read is old enough (JournalTreatmentUploader.readingTriggersReceive). */
+static bool treatmentReadDueViaJava(bool useV3) {
+    if(nightpostclass==nullptr)
+        return false;
+    auto env=getenv();
+    if(env==nullptr)
+        return false;
+    const static jmethodID mid=env->GetStaticMethodID(nightpostclass,"treatmentReadDue","(Z)Z");
+    if(mid==nullptr) {
+        if(env->ExceptionCheck())
+            env->ExceptionClear();
+        return false;
+        }
+    const jboolean res=env->CallStaticBooleanMethod(nightpostclass,mid,(jboolean)useV3);
+    if(env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return false;
+        }
+    return res==JNI_TRUE;
+    }
 /* False while "Upload only on Wi-Fi" holds uploads back (NightscoutWifiGate): the default
    network is neither Wi-Fi nor Ethernet. */
 static bool uploadNetworkAllowed() {
@@ -1188,6 +1210,19 @@ static void uploaderthread() {
             }
         const int64_t nowms=elapsedRealtimeMilliseconds();
         const bool treatmentsdue=(nowms>=treatmentnextattemptms);
+        /* A reading wakes this thread all day but asks for glucose only, so treatments entered
+           on the server were read back only when something else raised a treatment pass. With
+           "Receive treatments" on, a reading raises one once the last read is old enough (Java
+           decides: every read is the newest 240 documents, so never one per reading). Not
+           during the hold after a refusal, nor right after a failed glucose upload: the server
+           has not answered, and a read would only wait out the same timeout. Nothing here
+           raises a wake of its own, so it cannot feed itself. */
+        if(treatmentsdue&&!glucosefailed&&(current&Backup::wakestream)
+            &&!(current&(Backup::wakenums|Backup::wakeall|Backup::waketreatments))
+            &&treatmentReadDueViaJava(useV3)) {
+            current|=Backup::waketreatments;
+            LOGSTRING("Nightscout wake source=reading mask=treatments\n");
+            }
         /* Treatments are attempted even when the glucose upload has just failed. They are
            separate endpoints failing for separate reasons, and returning here meant one bad
            reading upload also swallowed the wake a journal entry had raised. */

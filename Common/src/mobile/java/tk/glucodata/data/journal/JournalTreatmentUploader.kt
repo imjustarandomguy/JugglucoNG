@@ -49,6 +49,9 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private const val RECEIVE_ERROR_LOG_INTERVAL_MILLIS = 5L * 60 * 1000
     private const val RECEIVE_MIN_INTERVAL_MILLIS = 5L * 60 * 1000
 
+    /** How old the last read must be before a new glucose reading asks for another. */
+    internal const val READING_RECEIVE_MIN_AGE_MILLIS = 15L * 60 * 1000
+
     /**
      * Failed attempts a delete, or an edit of a received treatment, gets before it is no longer
      * sent on its own. A document Nightscout will never let us delete (a token without
@@ -530,6 +533,17 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         }
 
         /**
+         * Whether the last read for [key] is at least [ageMillis] old, or there is none for it
+         * (or the clock went backwards): for a caller that wants reads further apart than this
+         * floor's interval, which only says when one may go.
+         */
+        fun readOlderThan(key: String, nowMillis: Long, ageMillis: Long): Boolean {
+            if (key != lastKey || lastReadAt == 0L) return true
+            val elapsed = nowMillis - lastReadAt
+            return elapsed < 0 || elapsed >= ageMillis
+        }
+
+        /**
          * A read that was answered starts the interval, a refusal included; one that got no
          * answer is the native backoff's.
          */
@@ -540,6 +554,36 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     }
 
     private val receiveFloor = ReceiveFloor(RECEIVE_MIN_INTERVAL_MILLIS)
+
+    private fun receiveFloorKey(baseUrl: String, useV3: Boolean): String =
+        "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
+
+    /**
+     * Whether the pass a new glucose reading woke should also read treatments back, so a dose
+     * entered on the server turns up without the app being opened or left. A reading is the
+     * wake that keeps coming, every minute or every five, and each read is the newest 240
+     * documents, so it takes its turn only once the last read for [key] in [floor] is
+     * [READING_RECEIVE_MIN_AGE_MILLIS] old. A read nobody answered is not counted, but the
+     * native backoff that follows it holds this pass off first. The receive interval still
+     * bounds the read this asks for.
+     */
+    internal fun readingTriggersReceive(
+        receiveEnabled: Boolean,
+        floor: ReceiveFloor,
+        key: String,
+        nowMillis: Long
+    ): Boolean = receiveEnabled && floor.readOlderThan(key, nowMillis, READING_RECEIVE_MIN_AGE_MILLIS)
+
+    @Keep
+    override fun readingReceiveDue(useV3: Boolean): Boolean {
+        val baseUrl = Natives.getnightuploadurl()?.takeIf { it.isNotBlank() } ?: return false
+        return readingTriggersReceive(
+            getReceiveTreatments(),
+            receiveFloor,
+            receiveFloorKey(baseUrl, useV3),
+            System.currentTimeMillis()
+        )
+    }
 
     /** When the booked treatment wake is due (uptime); Long.MAX_VALUE while none is. */
     private val bookedWakeAt = AtomicLong(Long.MAX_VALUE)
@@ -1690,7 +1734,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private class ReceiveOutcome(val result: ReceiveResult, val readBody: String? = null)
 
     private fun receiveRemoteTreatments(baseUrl: String, secret: String, useV3: Boolean): ReceiveOutcome {
-        val floorKey = "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
+        val floorKey = receiveFloorKey(baseUrl, useV3)
         val waitMillis = receiveFloor.waitMillis(floorKey, System.currentTimeMillis())
         if (waitMillis > 0L) {
             bookTreatmentWake(waitMillis)

@@ -457,6 +457,22 @@ static public boolean uploadJournalTreatments(boolean useV3) {
     }
 
 /**
+ * Whether the pass a new glucose reading woke should also read treatments back
+ * ("Receive treatments" on, and the last read old enough). Asked by the native uploader on
+ * such a pass, which then runs the treatments branch as a journal change would.
+ */
+@Keep
+static public boolean treatmentReadDue(boolean useV3) {
+    try {
+        return JournalTreatmentUploadAccess.readingReceiveDue(useV3);
+        }
+    catch(Throwable th) {
+        Log.e(LOG_ID,"treatmentReadDue error:\n"+stackline(th));
+        return false;
+        }
+    }
+
+/**
  * Whether the uploader may send anything now: false while "Upload only on Wi-Fi" is on and the
  * default network is neither Wi-Fi nor Ethernet. Asked by the native uploader at the start of
  * each pass.
