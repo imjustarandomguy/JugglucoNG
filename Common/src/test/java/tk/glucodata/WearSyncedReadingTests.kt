@@ -65,12 +65,12 @@ class WearSyncedReadingTests {
         after(source, signature).substringBefore("\n    }\n")
 
     @Test
-    fun theWatchHandlesTheNewestStoredReadingAsItsCurrentOne() {
+    fun eitherDeviceHandlesTheNewestStoredReadingAsItsCurrentOne() {
         val onChunk = body(sync, "fun onChunk(data: ByteArray?)")
         // What this device had is taken before the chunk is stored.
         val before = onChunk.indexOf("val newestBeforeMs = runCatching { Natives.lastglucosetime() }")
         assertTrue(onChunk, before >= 0 && before < onChunk.indexOf("Natives.addGlucoseStreamBatchWithRawTemp("))
-        val handled = after(onChunk, "if (written > 0 && Applic.isWearable) {")
+        val handled = after(onChunk, "// below, so nothing resolves the reading it replaces.\n                if (written > 0) {")
         assertTrue(
             handled,
             handled.contains(
@@ -112,5 +112,44 @@ class WearSyncedReadingTests {
         assertTrue(dispatch, dispatch.contains("sglucose.value, !fromPeer);"))
         // The loss alarm's delay is the driver's here, as for a reading read here.
         assertTrue(body(gatt, "private static long showtimeFor(String sensorSerial)").contains("return callback.showtime;"))
+    }
+
+    /**
+     * The phone sent a reading the watch synced to its exchange outputs from the
+     * sync, and its alert check then took the same reading through
+     * dowithglucose: alarms, and every exchange output a second time.
+     */
+    @Test
+    fun theAlertCheckTookASyncedReadingThroughTheReadingPathAgain() {
+        val previous = t0 - 300_000L
+        // The sync stored it in native, so the realtime order let the check's copy through.
+        assertTrue(RealtimeReadingPolicy.shouldDispatch(t0, previous, t0))
+        // The check hands on any reading newer than the last one it saw delivered that
+        // is not the live callback's; only onNewReading moves that mark.
+        val alerts = source("Common/src/main/java/tk/glucodata/alerts/AlertRuntimeManager.kt")
+        val check = body(alerts, "private fun syncCurrentReadingLocked()")
+        assertTrue(check, check.contains("if (latest.timeMillis <= lastDeliveredReadingTimeMs) {"))
+        assertTrue(check, check.contains("if (latest.source == \"callback\") {"))
+        assertTrue(check, check.contains("SuperGattCallback.processExternalCurrentReading("))
+        val onNewReading = after(alerts, "reading: LiveReadingLanes,\n        rate: Float,")
+            .substringBefore("private fun ensureTaskLocked()")
+        assertTrue(onNewReading, onNewReading.contains("lastDeliveredReadingTimeMs = maxOf(lastDeliveredReadingTimeMs, readingTimeMs)"))
+    }
+
+    @Test
+    fun aSyncedReadingNowGoesThroughTheReadingPathOnceOnThePhoneToo() {
+        val onChunk = body(sync, "fun onChunk(data: ByteArray?)")
+        // No exchange-only path beside it, and nothing restricted to the watch.
+        assertFalse(onChunk, onChunk.contains("emitExchangeOutputs"))
+        assertFalse(sync, sync.contains("SuperGattCallback.emitExchangeOutputs("))
+        assertFalse(onChunk, onChunk.contains("if (written > 0 && Applic.isWearable) {"))
+        // dowithglucose delivers it to the alert engine (the check skips it after
+        // that) and makes it the live callback reading, then sends the outputs once.
+        val dispatch = after(gatt, "LiveReadingLanes reading, boolean fromPeer) {")
+            .substringBefore("\n    static void emitExchangeOutputs(")
+        val delivered = dispatch.indexOf("AlertRuntimeManager.INSTANCE.onNewReading(SerialNumber,")
+        val live = dispatch.indexOf("previousglucose = sglucose;")
+        val outputs = dispatch.indexOf("emitExchangeOutputs(SerialNumber, gl, rate, alarm, timmsec")
+        assertTrue(dispatch, delivered in 0 until outputs && live in 0 until outputs)
     }
 }

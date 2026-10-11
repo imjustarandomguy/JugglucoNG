@@ -46,9 +46,6 @@ object WearSync2 {
     private const val DEEP_SERVE_MIN_INTERVAL_MS = 30L * 60L * 1000L
     private const val MGDL_PER_MMOL = 18.0182
 
-    /** Context the arrow needs; matches what the display surfaces use. */
-    private const val TREND_WINDOW_MS = 35L * 60L * 1000L
-
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "WearSync2").apply { isDaemon = true }
     }
@@ -737,18 +734,14 @@ object WearSync2 {
                             0f,
                             serial,
                         )
-                        emitExchangeOutputsForSyncedReading(
-                            serial,
-                            stamps[newest],
-                            values[newest],
-                        )
                     }
                 }
                 // The newest of them, when it is the current reading here, goes the
                 // way a reading this device takes goes: the screens show it at once
-                // and the loss alarm counts from it. Before the refresh below, so
-                // nothing resolves the reading it replaces.
-                if (written > 0 && Applic.isWearable) {
+                // and the loss alarm counts from it. On the phone that includes the
+                // alarms and every exchange output, each once. Before the refresh
+                // below, so nothing resolves the reading it replaces.
+                if (written > 0) {
                     val newest = (0 until written).maxByOrNull { stamps[it] } ?: 0
                     if (isCurrentPeerReading(stamps[newest], newestBeforeMs, System.currentTimeMillis(), Notify.glucosetimeout)) {
                         handlePeerReading(serial, stamps[newest], values[newest], raws[newest])
@@ -793,62 +786,6 @@ object WearSync2 {
             }
             SuperGattCallback.processPeerReading(serial, timestampMs, display(autoMgdl), display(rawMgdl))
         }.onFailure { Log.stack(LOG_ID, "handlePeerReading", it) }
-    }
-
-    /**
-     * Runs the newest synced reading through the same outbound path a locally
-     * read one takes: Nightscout and LibreView through numdata, the outbound
-     * API, the widget, and the xDrip / Gadgetbridge / WearInt
-     * broadcasts.
-     *
-     * While the watch holds the sensor the phone's BLE callback never fires, so
-     * every one of those silently stopped for the duration — the phone kept
-     * displaying readings it was no longer forwarding anywhere. Alarms and
-     * notifications are deliberately not included: the device that read the
-     * sensor has already raised them.
-     *
-     * @param valueMgdl the reading in mg/dL, as the chunk carries it.
-     */
-    private fun emitExchangeOutputsForSyncedReading(
-        serial: String,
-        timestampMs: Long,
-        valueMgdl: Float,
-    ) {
-        if (Applic.isWearable || timestampMs <= 0L || !valueMgdl.isFinite() || valueMgdl <= 0f) return
-        runCatching {
-            val isMmol = Applic.unit == 1
-            val displayValue =
-                if (isMmol) (valueMgdl / MGDL_PER_MMOL).toFloat() else valueMgdl
-            // The arrow the exchange targets carry has to come from the series,
-            // not the single reading; the payload resolver falls back to this.
-            val rate = runCatching {
-                val from = timestampMs - TREND_WINDOW_MS
-                val window = NotificationHistorySource
-                    .getDisplayHistory(from, isMmol, serial)
-                    .filter { it.timestamp in from..timestampMs }
-                if (window.size >= 2) TrendAccess.calculateVelocity(window, false, isMmol) else Float.NaN
-            }.getOrDefault(Float.NaN).takeIf { it.isFinite() } ?: 0f
-            val primaryText = String.format(Applic.usedlocale, Notify.pureglucoseformat, displayValue)
-            val sensorStartMs = runCatching {
-                val ptr = Natives.getdataptr(serial)
-                if (ptr != 0L) Natives.getSensorStartmsec(ptr) else 0L
-            }.getOrDefault(0L)
-            SuperGattCallback.emitExchangeOutputs(
-                serial,
-                displayValue,
-                rate,
-                0,
-                timestampMs,
-                sensorStartMs,
-                timestampMs / 1000L,
-                // Only a fallback: the payload resolver prefers the live
-                // snapshot's own generation when it has one.
-                0,
-                primaryText,
-                // Came from the peer; sending it straight back would echo.
-                false,
-            )
-        }.onFailure { Log.stack(LOG_ID, "emitExchangeOutputsForSyncedReading", it) }
     }
 
     @JvmStatic
