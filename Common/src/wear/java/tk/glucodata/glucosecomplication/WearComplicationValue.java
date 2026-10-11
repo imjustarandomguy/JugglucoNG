@@ -231,7 +231,7 @@ Bitmap getArrowBitmap() {
          {if(doLog) {Log.d(LOG_ID,"oldvalue "+glucose.getTimeMillis());};};
          return getnovalue();
          }
-    return getArrowBitmap(glucose.getRate());
+    return getArrowBitmap(GlucoseComplicationData.INSTANCE.displayRate(glucose));
    }
 static int getTextColor( ) {
    int col=Natives.getComplicationTextColor( );
@@ -309,7 +309,8 @@ Bitmap previewbitmap() {
         if(glucose != null&&((time = glucose.getTimeMillis())!=0L&&(now-time)<tk.glucodata.Notify.glucosetimeout)) {
             value = glucose.getPrimaryStr();
             index = glucose.getIndex();
-            rate = glucose.getRate();
+            // The complications' arrow, not the alert engine's rate.
+            rate = GlucoseComplicationData.INSTANCE.displayRate(glucose);
         } else {
             value = (Applic.unit == 1)?"5.6": "101";
             time = now;
