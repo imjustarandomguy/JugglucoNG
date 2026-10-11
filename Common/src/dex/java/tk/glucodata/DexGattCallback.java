@@ -228,9 +228,24 @@ private boolean connected=false;
         if (doLog) Log.i(LOG_ID, SerialNumber + " prefer background connect: " + why);
     }
 
+    /**
+     * The background preference holds only for a G7 bonded here. Without the
+     * bond (removed, or never made on this device) a background connect never
+     * completes, and the sensor has to be reached as on its first pairing.
+     */
     @Override
     protected boolean useAutoConnect() {
-        return super.useAutoConnect() || directConnectUnreachable;
+        return super.useAutoConnect() || (directConnectUnreachable && bondedHere());
+    }
+
+    @SuppressLint("MissingPermission")
+    private boolean bondedHere() {
+        final var device = mActiveBluetoothDevice;
+        try {
+            return !removedBond && device != null && device.getBondState() == BOND_BONDED;
+        } catch (Throwable th) {
+            return false;
+        }
     }
 
     /**
@@ -238,15 +253,8 @@ private boolean connected=false;
      * waits for its next advertisement, so the CPU need not wake at the next
      * slot to issue the connect. Its reconnect is armed after the quiet period.
      */
-    @SuppressLint("MissingPermission")
     private boolean reconnectsInBackground() {
-        final var device = mActiveBluetoothDevice;
-        try {
-            return directConnectUnreachable && known && !removedBond && device != null
-                    && device.getBondState() == BOND_BONDED;
-        } catch (Throwable th) {
-            return false;
-        }
+        return directConnectUnreachable && known && bondedHere();
     }
 
     @Override
@@ -276,9 +284,22 @@ private boolean connected=false;
             onalarm = setalarm(System.currentTimeMillis() + delayMillis, onalarm, SerialNumber);
             if (onalarm != null) return true;
             // Keep recovery queued if the OS refuses the wakeup alarm.
-            return super.connectDevice(0L);
+            return connectNow();
         }
         cancelalarm();
+        return connectNow();
+    }
+
+    /**
+     * A G7 not bonded here is dialled only once a scan has found it, as on its
+     * first pairing. Once the bond is gone, the stack no longer knows the
+     * stored address is a random one until it sees the sensor advertise, so a
+     * connect to that address alone, direct or in the background, never
+     * completes. Without a device the base class scans.
+     */
+    private boolean connectNow() {
+        if (foundtime == 0L && !bondedHere())
+            mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
     }
 
