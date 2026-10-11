@@ -565,12 +565,13 @@ object AlertRuntimeManager {
      */
     private fun persistentHighStartFromHistoryLocked(
         config: AlertConfig,
+        isMmol: Boolean,
         value: Float,
         readingTimeMs: Long
     ): Long {
         val start = try {
             val readings = EpisodeHistory.load(lastDisplaySnapshot?.sensorId, readingTimeMs, value)
-            PersistentHighPolicy.startFromHistory(readings, config)
+            PersistentHighPolicy.startFromHistory(readings, config, isMmol)
         } catch (t: Throwable) {
             Log.stack(LOG_ID, "persistentHighStartFromHistory", t)
             null
@@ -607,17 +608,19 @@ object AlertRuntimeManager {
         val readingTimeMs = lastDisplaySnapshot?.timeMillis?.takeIf { it > 0L }
             ?: lastReadingTimeMs.takeIf { it > 0L }
             ?: nowMs
+        val isMmol = Applic.unit == 1
         val wasStartedAtMs = persistentHighStartedAtMs
         val decision = PersistentHighPolicy.decide(
             startedAtMs = wasStartedAtMs,
             config = config,
+            isMmol = isMmol,
             activeNow = config.isActiveNow(),
             value = glucoseValue,
             readingTimeMs = readingTimeMs,
             rate = currentRateLocked(),
             snoozed = SnoozeManager.isSnoozed(type),
             historyStartMs = {
-                glucoseValue?.let { persistentHighStartFromHistoryLocked(config, it, readingTimeMs) } ?: 0L
+                glucoseValue?.let { persistentHighStartFromHistoryLocked(config, isMmol, it, readingTimeMs) } ?: 0L
             }
         )
         persistentHighStartedAtMs = decision.startedAtMs
