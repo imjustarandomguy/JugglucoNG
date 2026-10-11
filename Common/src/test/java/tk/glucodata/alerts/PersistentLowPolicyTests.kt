@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tk.glucodata.ui.util.GlucoseFormatter
 
 /**
  * PERSISTENT_LOW: a low that lasts the duration rings, a compression dip that
@@ -522,6 +523,59 @@ class PersistentLowPolicyTests {
             assertEquals(t0 + 20 * minute, restarted.state.startedAtMs)
             assertEquals(if (i == afterVeryLow.lastIndex) PersistentLowAction.FIRE else PersistentLowAction.WAIT, action)
         }
+    }
+
+    private fun mmol(mgdl: Int): Float = GlucoseFormatter.displayFromMgDl(mgdl.toFloat(), true)
+
+    @Test
+    fun theLinesAreComparedAsTheReadingIsShown() {
+        val run = Run(mmolConfig(rearmMargin = 0.5f))
+        // 70 mg/dL is 3.889 mmol/L, shown 3.9: not below 3.9.
+        assertEquals(PersistentLowAction.WAIT, run.reading(t0, mmol(70)))
+        assertEquals(0L, run.state.startedAtMs)
+        // 68 is 3.774, shown 3.8: the low starts.
+        run.reading(t0 + 5 * minute, mmol(68))
+        assertEquals(t0 + 5 * minute, run.state.startedAtMs)
+        // 79 is 4.385, shown 4.4 = 3.9 + 0.5: recovered.
+        assertEquals(PersistentLowAction.RESET, run.reading(t0 + 10 * minute, mmol(79)))
+
+        val mgdlConfig = AlertConfig(
+            type = AlertType.PERSISTENT_LOW, enabled = true, threshold = 70f,
+            durationMinutes = 15, rearmMargin = 3f
+        )
+        val mgdl = Run(mgdlConfig, isMmol = false)
+        // A calibrated 69.6 is shown 70.
+        assertEquals(PersistentLowAction.WAIT, mgdl.reading(t0, 69.6f))
+        assertEquals(0L, mgdl.state.startedAtMs)
+        mgdl.reading(t0 + 5 * minute, 69f)
+        assertEquals(t0 + 5 * minute, mgdl.state.startedAtMs)
+        // 72.6 is shown 73 = 70 + 3.
+        assertEquals(PersistentLowAction.RESET, mgdl.reading(t0 + 10 * minute, 72.6f))
+    }
+
+    /**
+     * Friday morning (3.9 with a 0.5 margin, 20 min), one G7 reading every 5
+     * minutes from 08:17 ([t0]): 81, 79, 79, 70, 76, 73, 68, 70 mg/dL. Compared
+     * unrounded, 70 (3.889) started the low at 08:32 although it was shown 3.9,
+     * 79 (shown 4.4) had not recovered, and the alarm rang at 08:52 on another
+     * reading shown 3.9.
+     */
+    private val friday = listOf(81, 79, 79, 70, 76, 73, 68, 70)
+        .mapIndexed { i, mgdl -> StoredReading(t0 + i * 5 * minute, mmol(mgdl)) }
+
+    @Test
+    fun fridaysReadingsShownAtTheLineAreNotLow() {
+        val config = mmolConfig(durationMinutes = 20, rearmMargin = 0.5f)
+        val live = Run(config, stored = friday)
+        val actions = friday.map { live.reading(it.timeMs, it.value) }
+        assertTrue(actions.none { it == PersistentLowAction.FIRE })
+        // The low starts at 68 (shown 3.8), 08:47.
+        assertEquals(friday[6].timeMs, live.state.startedAtMs)
+        // The walk back from 08:52 stops at 79, shown 4.4: recovered.
+        assertEquals(
+            EpisodeStart(friday[6].timeMs, 5),
+            PersistentLowPolicy.startFromHistory(friday, config, isMmol = true)
+        )
     }
 
     @Test
