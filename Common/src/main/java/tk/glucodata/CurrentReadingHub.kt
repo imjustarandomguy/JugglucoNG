@@ -263,6 +263,13 @@ class ReadingHub internal constructor(
         internal fun classify(previous: DisplayedReading?, next: DisplayedReading, trigger: Reason): Reason = when {
             previous == null -> Reason.STARTUP
             next.showsValue && next.timeMillis > previous.timeMillis -> Reason.NEW_READING
+            // Another sensor, unit or view mode, whatever was stored at the time: a setting,
+            // to be shown at once rather than folded with backfills.
+            next.showsValue && previous.showsValue && (
+                next.sensorId != previous.sensorId ||
+                    next.isMmol != previous.isMmol ||
+                    next.viewMode != previous.viewMode
+                ) -> Reason.SETTINGS
             // Asked for by a reading that turned out not to be newer: one filled in behind.
             trigger == Reason.NEW_READING || trigger == Reason.STARTUP -> Reason.BACKFILL
             else -> trigger

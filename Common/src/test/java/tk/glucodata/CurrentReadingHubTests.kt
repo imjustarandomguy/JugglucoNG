@@ -232,6 +232,18 @@ class CurrentReadingHubTests {
     }
 
     @Test
+    fun anotherUnitOrSensorIsASettingWhateverAskedForIt() {
+        val rig = Rig(inputs(reading(t0)))
+        rig.inputs = inputs(reading(t0, text = "6.7", isMmol = true))
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+        assertEquals(Reason.SETTINGS, rig.published.last().reason)
+        rig.inputs = inputs(reading(t0, text = "6.7", isMmol = true).copy(sensorId = "OTHER"))
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+        assertEquals(Reason.SETTINGS, rig.published.last().reason)
+        assertEquals(3, rig.published.size)
+    }
+
+    @Test
     fun theAcceptingPathNamesTheOrigin() {
         val rig = Rig(inputs(reading(t0)))
         assertEquals(Origin.STORED, rig.published.last().origin)
