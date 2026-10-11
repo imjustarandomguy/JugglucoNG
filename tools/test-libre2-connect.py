@@ -313,5 +313,6 @@ with tempfile.TemporaryDirectory(prefix='libre2-connect-') as directory:
         'public static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}')
     subprocess.run(['javac', '-d', str(directory), str(directory / 'Libre2GattCallback.java'),
                     str(directory / 'BluetoothProfile.java'),
-                    str(root / 'Common/src/main/java/tk/glucodata/GattConnectDeadline.java')], check=True)
+                    str(root / 'Common/src/main/java/tk/glucodata/GattConnectDeadline.java'),
+                    str(root / 'Common/src/main/java/tk/glucodata/PendingConnectPolicy.java')], check=True)
     subprocess.run(['java', '-cp', str(directory), 'tk.glucodata.Libre2GattCallback'], check=True)
