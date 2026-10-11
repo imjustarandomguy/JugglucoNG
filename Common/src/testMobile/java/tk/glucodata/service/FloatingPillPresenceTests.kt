@@ -5,46 +5,48 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tk.glucodata.DisplayedReading
+import tk.glucodata.ReadingHub
 
 class FloatingPillPresenceTests {
     @Test
-    fun offScreenUntilTheScreenIsOnAndTheReadingsAreLoaded() {
+    fun offScreenUntilTheScreenIsOnAndTheReadingIsHanded() {
         val presence = FloatingPillPresence()
         assertFalse(presence.shown)
 
         assertTrue(presence.onScreen(true))
         assertFalse(presence.shown)
 
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
         assertTrue(presence.shown)
     }
 
     @Test
-    fun screenOffTakesThePillOffAndItsReadingsCountAsStale() {
+    fun screenOffTakesThePillOffAndItsReadingIsHandedAgain() {
         val presence = FloatingPillPresence()
         presence.onScreen(true)
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
 
         assertFalse(presence.onScreen(false))
         assertFalse(presence.shown)
 
-        // Back on: what was loaded before the screen went off is not current.
+        // Back on: what was handed before the screen went off is not current.
         assertTrue(presence.onScreen(true))
         assertFalse(presence.shown)
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
         assertTrue(presence.shown)
     }
 
     @Test
-    fun readingsLoadedWhileTheScreenIsOffAreIgnored() {
+    fun aReadingHandedWhileTheScreenIsOffIsIgnored() {
         val presence = FloatingPillPresence()
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
         assertFalse(presence.shown)
 
         presence.onScreen(true)
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
         presence.onScreen(false)
-        presence.onReadingsLoaded(2L)
+        presence.onReadingHanded(2L)
         assertTrue(presence.onScreen(true))
         assertFalse(presence.shown)
     }
@@ -53,7 +55,7 @@ class FloatingPillPresenceTests {
     fun repeatedScreenStatesDoNotReloadOrHide() {
         val presence = FloatingPillPresence()
         presence.onScreen(true)
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
 
         assertFalse(presence.onScreen(true))
         assertTrue(presence.shown)
@@ -66,18 +68,18 @@ class FloatingPillPresenceTests {
     /** A pill that was on screen with [revision] composed, then the screen off. */
     private fun composedThenScreenOff(revision: Long) = FloatingPillPresence().apply {
         onScreen(true)
-        onReadingsLoaded(revision)
+        onReadingHanded(revision)
         onReadingComposed(revision)
         onScreen(false)
     }
 
     @Test
     fun aReadingHandedAtScreenOnIsComposedBeforeTheWindowGoesIn() {
-        // The device case: a reading arrived with the screen off, so the reading resolved
+        // The device case: a reading arrived with the screen off, so the reading handed
         // at screen on is a revision the composition has not seen.
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         assertFalse(presence.shown)
         assertTrue(presence.awaitingComposition)
 
@@ -95,16 +97,16 @@ class FloatingPillPresenceTests {
     fun anUnchangedReadingGoesBackOnScreenAtOnce() {
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(7L)
+        presence.onReadingHanded(7L)
         assertTrue(presence.shown)
     }
 
     @Test
-    fun aPillThatNeverComposedGoesOnScreenOnceLoaded() {
+    fun aPillThatNeverComposedGoesOnScreenOnceHanded() {
         // Its first composition is made as its first window goes in, from the handed reading.
         val presence = FloatingPillPresence()
         presence.onScreen(true)
-        presence.onReadingsLoaded(1L)
+        presence.onReadingHanded(1L)
         assertTrue(presence.shown)
         assertNull(presence.composedRevision)
     }
@@ -113,8 +115,8 @@ class FloatingPillPresenceTests {
     fun theNewestHandedReadingIsTheOneAwaited() {
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(8L)
-        presence.onReadingsLoaded(9L)
+        presence.onReadingHanded(8L)
+        presence.onReadingHanded(9L)
 
         presence.onReadingComposed(8L)
         assertFalse(presence.shown)
@@ -126,7 +128,7 @@ class FloatingPillPresenceTests {
     fun aCompositionAheadOfTheHandedReadingCounts() {
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         presence.onReadingComposed(9L)
         assertTrue(presence.shown)
     }
@@ -140,7 +142,7 @@ class FloatingPillPresenceTests {
 
         presence.onScreen(true)
         assertFalse(presence.shown)
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         assertTrue(presence.shown)
     }
 
@@ -148,10 +150,10 @@ class FloatingPillPresenceTests {
     fun onceOnScreenALaterReadingDoesNotTakeThePillOff() {
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(7L)
+        presence.onReadingHanded(7L)
         assertTrue(presence.shown)
 
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         assertTrue(presence.shown)
         assertFalse(presence.awaitingComposition)
     }
@@ -160,14 +162,14 @@ class FloatingPillPresenceTests {
     fun aCompositionThatNeverComesLeavesThePillToTheTimeout() {
         val presence = composedThenScreenOff(7L)
 
-        // With the screen off, and before the readings are in, the timeout does nothing.
+        // With the screen off, and before the reading is handed, the timeout does nothing.
         presence.onComposeTimedOut()
         assertFalse(presence.shown)
         presence.onScreen(true)
         presence.onComposeTimedOut()
         assertFalse(presence.shown)
 
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         presence.onComposeTimedOut()
         assertTrue(presence.shown)
         assertEquals(7L, presence.composedRevision)
@@ -177,11 +179,52 @@ class FloatingPillPresenceTests {
     fun theScreenGoingOffWhileAwaitingEndsTheWait() {
         val presence = composedThenScreenOff(7L)
         presence.onScreen(true)
-        presence.onReadingsLoaded(8L)
+        presence.onReadingHanded(8L)
         presence.onScreen(false)
         assertFalse(presence.awaitingComposition)
 
         presence.onReadingComposed(8L)
         assertFalse(presence.shown)
+    }
+
+    // The hub's reading at screen on
+
+    private val minute = 60_000L
+    private val t0 = 1_790_000_000_000L
+
+    private fun published(now: Long, revision: Long = 3L): DisplayedReading = ReadingHub.compose(
+        ReadingHub.Inputs(
+            sensorId = "S1",
+            reading = ReadingHub.Reading("S1", t0, 123f, "123", null, null, false, 0, 1.2f, 0),
+            recentTimes = emptyList(),
+            declaredIntervalMillis = 5 * minute,
+        ),
+        now,
+    ).copy(revision = revision)
+
+    @Test
+    fun aReadingTheHubKeepsUpWithIsHandedAtOnce() {
+        val fresh = published(t0 + minute)
+        assertFalse(FloatingPillPresence.waitsForHub(fresh, t0 + 2 * minute))
+        assertFalse(FloatingPillPresence.waitsForHub(fresh, fresh.staleAtMillis - 1L))
+        val stale = published(fresh.staleAtMillis)
+        assertFalse(FloatingPillPresence.waitsForHub(stale, t0 + 29 * minute))
+        val gone = published(t0 + 30 * minute)
+        assertFalse(FloatingPillPresence.waitsForHub(gone, t0 + 600 * minute))
+    }
+
+    @Test
+    fun aDeadlineTheHubSleptThroughWaitsForItsRepublish() {
+        // Published fresh, then the phone slept past the stale moment and past 30 minutes.
+        val fresh = published(t0 + minute)
+        assertTrue(FloatingPillPresence.waitsForHub(fresh, fresh.staleAtMillis))
+        val stale = published(fresh.staleAtMillis)
+        assertTrue(FloatingPillPresence.waitsForHub(stale, stale.noValueAtMillis))
+    }
+
+    @Test
+    fun aHubThatHasNotPublishedYetIsWaitedFor() {
+        assertTrue(FloatingPillPresence.waitsForHub(DisplayedReading.NONE, t0))
+        assertFalse(FloatingPillPresence.waitsForHub(DisplayedReading.NONE.copy(revision = 1L), t0))
     }
 }

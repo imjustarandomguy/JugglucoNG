@@ -7,50 +7,38 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import tk.glucodata.CurrentDisplaySource
-import tk.glucodata.ui.DisplayValues
-import tk.glucodata.ui.GlucosePoint
+import tk.glucodata.DisplayedReading
+import tk.glucodata.ReadingHub
 
 /**
  * A details card left open follows the pill: each new reading replaces the one it was
- * opened for, and its age and stale state move with the freshness clock, which keeps
- * ticking while the card is open (nextOverlayFreshnessCheckDelay with ageShown).
+ * opened for, it goes stale in the hub's publish that dims the pill, and its age moves on
+ * its own clock, which ticks once a minute of age and only while the card is open.
  */
 class FloatingDetailsCardStateTests {
     private val start = 1_790_000_000_000L
     private val minute = 60_000L
-    private val window = 330_000L
 
-    private fun point(at: Long, value: Float = 6.1f) = GlucosePoint(value = value, time = "", timestamp = at)
-
-    private fun snapshot(at: Long, value: Float) = CurrentDisplaySource.Snapshot(
-        timeMillis = at,
-        rate = 0f,
-        sensorId = "S1",
-        sensorGen = 0,
-        index = 0,
-        viewMode = 0,
-        source = "live",
-        autoValue = value,
-        rawValue = 0f,
-        sharedDisplayValue = value,
-        sharedMgdl = 0,
-        isMmol = true,
-        displayValues = DisplayValues(primaryValue = value, primaryStr = "$value", fullFormatted = "$value"),
+    /** The hub's reading of a value of [value] taken at [at], as published at [now]. */
+    private fun published(at: Long, now: Long, value: Float = 6.1f): DisplayedReading = ReadingHub.compose(
+        ReadingHub.Inputs(
+            sensorId = "S1",
+            reading = ReadingHub.Reading("S1", at, value, "$value", null, null, true, 0, 0.2f, 0),
+            recentTimes = emptyList(),
+            declaredIntervalMillis = 5 * minute,
+        ),
+        now,
     )
 
-    private fun reading(point: GlucosePoint?, snapshot: CurrentDisplaySource.Snapshot? = null, revision: Long = 1L) =
-        FloatingPillReading(point = point, snapshot = snapshot, sensorId = "S1", revision = revision)
+    private fun state(reading: DisplayedReading, now: Long) =
+        FloatingDetailsCardState.of(reading, isMmol = true, viewMode = 0, nowMillis = now)
 
-    private fun state(reading: FloatingPillReading, now: Long) =
-        FloatingDetailsCardState.of(reading, isMmol = true, viewMode = 0, nowMillis = now, freshnessWindowMillis = window)
-
-    /** The clock's ticks from [from] to [until], as the service runs it with the card open. */
+    /** The card clock's ticks from [from] to [until], as the service runs it while the card is open. */
     private fun ticksWhileOpen(readingTime: Long, from: Long, until: Long): List<Long> {
         val ticks = mutableListOf(from)
         var now = from
         while (now < until) {
-            now += nextOverlayFreshnessCheckDelay(readingTime, now, window, ageShown = true) ?: break
+            now += FloatingDetailsCardState.nextAgeTickDelay(readingTime, now)
             ticks += now
         }
         return ticks
@@ -58,8 +46,9 @@ class FloatingDetailsCardStateTests {
 
     @Test
     fun aNewReadingWhileOpenReplacesTheOneItWasOpenedFor() {
-        val first = state(reading(point(start, 6.1f), revision = 1L), start + minute)!!
-        val second = state(reading(point(start + 5 * minute, 6.8f), revision = 2L), start + 5 * minute + 10_000L)!!
+        val first = state(published(start, start + minute, 6.1f), start + minute)!!
+        val later = start + 5 * minute + 10_000L
+        val second = state(published(start + 5 * minute, later, 6.8f), later)!!
 
         assertEquals(start + 5 * minute, second.readingTime)
         assertEquals(6.8f, second.request.displayGlucose, 0f)
@@ -71,7 +60,7 @@ class FloatingDetailsCardStateTests {
 
     @Test
     fun theClockAloneAgesTheCardWithoutReloadingIt() {
-        val shown = reading(point(start))
+        val shown = published(start, start)
         val opened = state(shown, start + 30_000L)!!
         val later = state(shown, start + 4 * minute + 30_000L)!!
 
@@ -81,61 +70,53 @@ class FloatingDetailsCardStateTests {
     }
 
     @Test
-    fun aReadingThatGoesStaleWhileOpenIsShownStaleAsOnThePill() {
-        val shown = reading(point(start))
-        val ticks = ticksWhileOpen(start, start + minute, start + 40 * minute)
+    fun theCardGoesStaleWithTheHubsPublishAndDoesNotReloadForIt() {
+        val fresh = published(start, start + 5 * minute + 19_999L)
+        val stale = published(start, start + 5 * minute + 20_000L)
+        assertEquals(DisplayedReading.Freshness.STALE, stale.freshness)
 
-        val beforeTimeout = ticks.last { it - start <= window }
-        val afterTimeout = ticks.first { it - start > window }
-        assertFalse(state(shown, beforeTimeout)!!.stale)
-        val stale = state(shown, afterTimeout)!!
-        assertTrue(stale.stale)
-        assertEquals(!overlayReadingIsFresh(shown.point, 0L, afterTimeout, window), stale.stale)
-        assertEquals(FloatingStaleValue.DIMMED_ALPHA, FloatingStaleValue.alpha(hasValue = true, stale = stale.stale), 0f)
+        assertFalse(state(fresh, fresh.staleAtMillis - 1L)!!.stale)
+        val card = state(stale, stale.staleAtMillis)!!
+        assertTrue(card.stale)
+        assertEquals(FloatingPillLook.of(stale).stale, card.stale)
+        assertEquals(state(fresh, start)!!.request, card.request)
+        assertEquals(FloatingStaleValue.DIMMED_ALPHA, FloatingStaleValue.alpha(hasValue = true, stale = card.stale), 0f)
     }
 
     @Test
-    fun theAgeOfAStaleReadingGoesOnWhileTheCardIsOpen() {
-        val shown = reading(point(start))
-        val ticks = ticksWhileOpen(start, start + minute, start + 40 * minute)
+    fun theCardsClockTicksOnEachMinuteOfTheAge() {
+        assertEquals(minute, FloatingDetailsCardState.nextAgeTickDelay(start, start))
+        assertEquals(30_000L, FloatingDetailsCardState.nextAgeTickDelay(start, start + 30_000L))
+        assertEquals(minute, FloatingDetailsCardState.nextAgeTickDelay(start, start + 3 * minute))
+        // Stamped ahead of the clock: the first tick is at its own time.
+        assertEquals(5_000L, FloatingDetailsCardState.nextAgeTickDelay(start, start - 5_000L))
 
-        // Never more than the clock's cap between two ticks, past the timeout too.
-        assertTrue(ticks.zipWithNext().all { (a, b) -> b - a in 1L..15_000L })
-        assertTrue(ticks.last() >= start + 40 * minute)
-        assertEquals(40L, state(shown, ticks.last())!!.ageMinutes)
-    }
-
-    @Test
-    fun closedTheClockStopsAtTheTimeoutAsBefore() {
-        assertNull(nextOverlayFreshnessCheckDelay(start, start + window + 1L, window, ageShown = false))
-        assertEquals(15_000L, nextOverlayFreshnessCheckDelay(start, start + window + 1L, window, ageShown = true))
-    }
-
-    @Test
-    fun theCardCountsFromTheValueThePillShows() {
-        // The live value can be newer than the stored reading: time, age and freshness
-        // are the pill's, from the newer one.
-        val stored = point(start, 6.1f)
-        val live = snapshot(start + 2 * minute, 6.4f)
-        val now = start + window + minute
-        val card = state(reading(stored, live), now)!!
-
-        assertEquals(start + 2 * minute, card.readingTime)
-        assertEquals(4L, card.ageMinutes)
-        assertFalse(card.stale)
-        assertEquals(6.4f, card.request.displayGlucose, 0f)
-        assertEquals(stored, card.request.point)
+        val shown = published(start, start)
+        val ticks = ticksWhileOpen(start, start + 30_000L, start + 40 * minute)
+        // One tick per minute of age, each showing the next minute.
+        assertEquals(41, ticks.size)
+        assertEquals((0L..40L).toList(), ticks.map { state(shown, it)!!.ageMinutes })
     }
 
     @Test
     fun noReadingNoCard() {
-        assertNull(state(reading(point = null), start))
-        assertNotNull(state(reading(point(start)), start))
+        assertNull(state(DisplayedReading.NONE, start))
+        assertNotNull(state(published(start, start), start))
+    }
+
+    @Test
+    fun aValueTakenDownStillShowsWhenTheLastReadingWas() {
+        val gone = published(start, start + 30 * minute)
+        assertEquals(DisplayedReading.Freshness.NO_VALUE, gone.freshness)
+        val card = state(gone, start + 30 * minute)!!
+        assertEquals(start, card.readingTime)
+        assertEquals(30L, card.ageMinutes)
+        assertTrue(card.stale)
     }
 
     @Test
     fun anAgeIsNeverNegative() {
         // The clock can be read just before a reading stamped a moment later arrives.
-        assertEquals(0L, state(reading(point(start)), start - 5_000L)!!.ageMinutes)
+        assertEquals(0L, state(published(start, start), start - 5_000L)!!.ageMinutes)
     }
 }
