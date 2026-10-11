@@ -27,8 +27,8 @@ import org.junit.Test
  * - the phone's wake is conditional on `shouldwakesender()`, the watch's is unconditional;
  * - the watch asks for a sync afterwards, the phone does not;
  * - the phone calls `ensureCurrentSensorSelection()` on reconnect, the watch does not;
- * - and the one that looks like a bug rather than a decision: with no loss alarm the phone
- *   sends an `oldnotification` and the watch does nothing at all.
+ * - neither rewrites the notification with the stale value any more: on the phone the
+ *   stale look is the current reading's (CurrentReadingHub), which the check reconciles.
  */
 class GlucoseAlarmsAsymmetryTests {
     private fun source(relative: String): String = File(repoRoot(), relative).readText()
@@ -101,15 +101,17 @@ class GlucoseAlarmsAsymmetryTests {
     }
 
     @Test
-    fun withNoLossAlarmThePhoneNotifiesAndTheWatchDoesNothing() {
-        // This is the one I would call a candidate bug rather than a decision. Both read
-        // hasalarmloss() and both skip the loss branch when it is false, but the phone then
-        // sends an oldnotification for the stale value and the watch falls out of the if.
-        // Pinned so that closing it is a deliberate change with the review it deserves.
-        val phoneNoLoss = after(phone, "if(!haslossalarm) {")
+    fun withNoLossAlarmNeitherRewritesTheNotification() {
+        // The phone used to send an oldnotification for the stale value here, with or
+        // without the loss alarm, and the watch nothing. That oldnotification raced the
+        // notification's own stale look and dropped the value. The stale look is now the
+        // current reading's: the phone's check only brings it up to date, loss alarm or not.
+        assertFalse(phone, phone.contains("oldnotification("))
+        val phoneCheck = after(phone, "void handlealarm() {")
+        val reconcile = phoneCheck.indexOf("CurrentReadingHub.onClockChanged();")
         assertTrue(
-            "the phone is expected to notify about the stale value",
-            phoneNoLoss.contains("Notify.onenot.oldnotification(wastime)"),
+            "the phone's check reconciles the current reading before the loss decision",
+            reconcile >= 0 && reconcile < phoneCheck.indexOf("hasalarmloss()"),
         )
         val watchNoLoss = after(watch, "if(hasalarmloss())")
         assertFalse(

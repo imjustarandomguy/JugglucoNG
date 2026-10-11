@@ -162,6 +162,18 @@ public class Floating extends View {
             view.postInvalidate();
     }
 
+    /** Redraws the value on each publish of the current reading: a new one, or the same gone stale. */
+    private static final ReadingHub.Listener readingListener = reading -> invalidatefloat();
+
+    private static void followCurrentReading() {
+        CurrentReadingHub.addListener(readingListener);
+    }
+
+    /** The foreground at half its opacity: a reading whose successor is overdue. */
+    private static int dimmed(int color) {
+        return (color & 0x00FFFFFF) | ((Color.alpha(color) / 2) << 24);
+    }
+
     public static void rewritefloating(Activity context) {
         setfloatglucose(context, true);
     }
@@ -263,6 +275,7 @@ public class Floating extends View {
 
     private static void turnoffFloating() {
         removeFloating();
+        CurrentReadingHub.removeListener(readingListener);
         Natives.setfloatglucose(false);
     }
 
@@ -285,6 +298,7 @@ public class Floating extends View {
         var params = new WindowManager.LayoutParams(floatingwidth, (int) (floatingheight), (int) floatingx,
                 (int) floatingy, type, flags, PixelFormat.TRANSLUCENT);
         windowMana.addView(floatview, params);
+        followCurrentReading();
     }
 
     private boolean asking = false;
@@ -493,6 +507,7 @@ public class Floating extends View {
                 floatingheight = (int) (notheight);
 
                 windowMana.addView(floatview, makeparams(screenwidth, (int) (screenheight)));
+                followCurrentReading();
 
                 Natives.setfloatglucose(true);
             } catch (Throwable th) {
@@ -555,11 +570,12 @@ public class Floating extends View {
             ;
         }
         ;
-        final var current = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout, SensorIdentity.resolveMainSensor());
-        if (current != null) {
-            final var now = System.currentTimeMillis();
-            final var age = now - current.getTimeMillis();
-            if (age < (oldage * 1000L)) {
+        // The current reading as every surface shows it, gone stale at the same moment.
+        final DisplayedReading current = CurrentReadingHub.current();
+        if (current.getTimeMillis() > 0L) {
+            if (current.getShowsValue()) {
+                // Once the next reading is overdue the value stays, dimmed, without its arrow.
+                final int foreground = current.isDimmed() ? dimmed(floatingforeground) : floatingforeground;
                 if (hide) {
                     {
                         if (doLog) {
@@ -571,21 +587,21 @@ public class Floating extends View {
                     final var gety = floatCanvas.getHeight() * 0.85f;
                     final var xpos = 0.2f;
                     floatCanvas.drawColor(floatingbackground);
-                    floatPaint.setColor(floatingforeground);
-                    floatCanvas.drawText(current.getPrimaryStr(), xpos, gety, floatPaint);
+                    floatPaint.setColor(foreground);
+                    floatCanvas.drawText(current.getShownText(), xpos, gety, floatPaint);
                     return;
                 }
                 floatCanvas.drawColor(floatingbackground);
-                floatPaint.setColor(floatingforeground);
+                floatPaint.setColor(foreground);
                 var gety = (floatCanvas.getHeight() - timeHeight) * 0.98f;
                 var xpos = floatglucosex;
-                var rate = current.getRate();
+                var rate = current.getShownRate();
                 if (!isNaN(rate)) {
                     float weightrate = (rate > 1.6 ? -1.0f : (rate < -1.6 ? 1.0f : (rate / -1.6f)));
                     float arrowy = gety - floatfontsize * .4f + weightrate * floatfontsize * .4f;
                     drawarrow(floatCanvas, floatPaint, floatdensity, rate, xpos * .85f, arrowy);
                 }
-                final var value = current.getPrimaryStr();
+                final var value = current.getShownText();
                 floatCanvas.drawText(value, xpos, gety * .9659f, floatPaint);
                 /*
                  * if(colorAge) {

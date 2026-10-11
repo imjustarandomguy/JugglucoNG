@@ -245,6 +245,9 @@ fun DashboardCombinedHeader(
     calibratedValue: Float? = null,
     currentSnapshot: CurrentDisplaySource.Snapshot? = null,
     dataState: DisplayDataState.Status? = null,
+    // The current reading every surface shows (DashboardCurrentReading), when it is this
+    // hero's sensor: its value, arrow and stale look win over the history's.
+    currentReading: tk.glucodata.DisplayedReading? = null,
     isMmol: Boolean,
     targetLow: Float = fallbackLowThreshold(isMmol),
     targetHigh: Float = fallbackHighThreshold(isMmol),
@@ -296,7 +299,7 @@ fun DashboardCombinedHeader(
         }
     }
     // Advanced Trend
-    val trendResult = remember(movementHistory, latestPoint, currentSnapshot) {
+    val historyTrend = remember(movementHistory, latestPoint, currentSnapshot) {
         if (movementHistory.isNotEmpty()) {
              // Map Kotlin UI points to Native Java points for shared TrendEngine
              val nativeList = movementHistory.map { tk.glucodata.GlucosePoint(it.timestamp, it.value, it.rawValue) }
@@ -312,6 +315,11 @@ fun DashboardCombinedHeader(
             tk.glucodata.logic.TrendEngine.TrendResult(tk.glucodata.logic.TrendEngine.TrendState.Unknown, 0f, 0f, 0f, 0f)
         }
     }
+    val trendResult = remember(historyTrend, currentReading) {
+        currentReading?.let { DashboardCurrentReading.trend(it, historyTrend) } ?: historyTrend
+    }
+    // No arrow once the next reading is overdue, as on every surface.
+    val showHeroArrow = currentReading?.showsArrow ?: true
     // Signed change over the selected interval — a raw
     // number to sanity-check the estimated arrow against. Same computation as
     // the per-row deltas in the readings list, anchored at the newest point.
@@ -415,11 +423,21 @@ fun DashboardCombinedHeader(
         sensorStatus = sensorStatus
     )
     val isFreshData = resolvedDataState.isFresh
-    val dvs = remember(resolvedCurrentSnapshot, latestPoint, viewMode, calibratedValue, isFreshData) {
+    // The current reading's own value and lanes, while it shows one.
+    val shownReading = currentReading?.takeIf { it.showsValue }
+    val dvs = remember(resolvedCurrentSnapshot, latestPoint, viewMode, calibratedValue, isFreshData, shownReading) {
         if (!isFreshData) {
             null
         } else {
-            resolvedCurrentSnapshot?.displayValues ?: latestPoint?.let {
+            shownReading?.let {
+                DisplayValues(
+                    primaryValue = it.value,
+                    primaryStr = it.valueText,
+                    secondaryStr = it.secondaryText,
+                    tertiaryStr = it.tertiaryText,
+                    fullFormatted = it.shownLanesText
+                )
+            } ?: resolvedCurrentSnapshot?.displayValues ?: latestPoint?.let {
                 getDisplayValues(it, viewMode, "", calibratedValue)
             }
         }
@@ -429,7 +447,8 @@ fun DashboardCombinedHeader(
     // grow unbounded ("143m") in a card that is ~90dp of content, and the row
     // below already names the state in bigger type by then.
     val primaryReadingMillis = if (isFreshData) {
-        resolvedCurrentSnapshot?.timeMillis?.takeIf { it > 0L }
+        shownReading?.timeMillis
+            ?: resolvedCurrentSnapshot?.timeMillis?.takeIf { it > 0L }
             ?: latestPoint?.timestamp?.takeIf { it > 0L }
     } else {
         null
@@ -541,6 +560,12 @@ fun DashboardCombinedHeader(
             TrendProjection.BORDERLINE -> Color(GlucoseRangeColors.valueBorderline(isDark))
             else -> heroValueColor
         }
+    } else {
+        heroValueColor
+    }
+    // The value as shown: dimmed once the next reading is overdue, as on every surface.
+    val heroShownValueColor = if (currentReading?.isDimmed == true) {
+        heroValueColor.copy(alpha = heroValueColor.alpha * 0.5f)
     } else {
         heroValueColor
     }
@@ -727,9 +752,10 @@ fun DashboardCombinedHeader(
                             primaryStyle = primaryValueStyle,
                             primarySecondaryText = listOfNotNull(secondaryText, tertiaryText).joinToString(" · ").ifEmpty { null },
                             primarySecondaryStyle = secondaryInlineStyle,
-                            primaryColor = heroValueColor,
+                            primaryColor = heroShownValueColor,
                             primaryRangeText = currentRangeText,
                             primaryTrend = trendResult,
+                            primaryShowArrow = showHeroArrow,
                             primaryArrowColor = heroArrowColor,
                             primaryDeltaText = heroDeltaText,
                             peer = secondaryPeer,
@@ -772,7 +798,7 @@ fun DashboardCombinedHeader(
                                     DashboardHeroPrimaryText(
                                         value = primaryText,
                                         style = primaryValueStyle,
-                                        color = heroValueColor,
+                                        color = heroShownValueColor,
                                         deltaText = heroDeltaText.takeIf { singleDeltaFits },
                                         deltaColor = glucoseContentColor
                                     )
@@ -787,7 +813,7 @@ fun DashboardCombinedHeader(
                                         secondaryStackStyle = secondaryThreeValueStyle,
                                         tertiaryStackStyle = tertiaryThreeValueStyle,
                                         contentColor = glucoseContentColor,
-                                        primaryColor = heroValueColor
+                                        primaryColor = heroShownValueColor
                                     )
                                 }
                                 // Only when the estimator actually reports a
@@ -808,6 +834,7 @@ fun DashboardCombinedHeader(
 
                             HeroTrendWithDelta(
                                 trendResult = trendResult,
+                                showArrow = showHeroArrow,
                                 arrowColor = heroArrowColor,
                                 deltaText = heroDeltaText.takeIf { deltaByArrow },
                                 contentColor = glucoseContentColor,
@@ -883,7 +910,7 @@ fun DashboardCombinedHeader(
                                 secondaryStackStyle = secondaryThreeValueStyle,
                                 tertiaryStackStyle = tertiaryThreeValueStyle,
                                 contentColor = glucoseContentColor,
-                                primaryColor = heroValueColor,
+                                primaryColor = heroShownValueColor,
                                 deltaText = heroDeltaText.takeIf { singleDeltaFits }
                             )
 
@@ -891,6 +918,7 @@ fun DashboardCombinedHeader(
 
                             HeroTrendWithDelta(
                                 trendResult = trendResult,
+                                showArrow = showHeroArrow,
                                 arrowColor = heroArrowColor,
                                 deltaText = heroDeltaText.takeIf { deltaByArrow },
                                 contentColor = glucoseContentColor,
@@ -1176,17 +1204,23 @@ fun DashboardCombinedHeader(
 @Composable
 private fun HeroTrendWithDelta(
     trendResult: tk.glucodata.logic.TrendEngine.TrendResult,
+    showArrow: Boolean,
     arrowColor: Color,
     deltaText: String?,
     contentColor: Color,
     iconSize: androidx.compose.ui.unit.Dp
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        tk.glucodata.ui.components.TrendIndicator(
-            trendResult = trendResult,
-            modifier = Modifier.size(iconSize),
-            color = arrowColor
-        )
+        if (showArrow) {
+            tk.glucodata.ui.components.TrendIndicator(
+                trendResult = trendResult,
+                modifier = Modifier.size(iconSize),
+                color = arrowColor
+            )
+        } else {
+            // Holds the arrow's place, so the value does not shift when it goes.
+            Spacer(modifier = Modifier.size(iconSize))
+        }
         if (!deltaText.isNullOrEmpty()) {
             HeroDeltaText(deltaText, contentColor)
         }
@@ -1207,6 +1241,7 @@ private data class HeroSensorPairFrame(
     val secondary: String?,
     val range: String?,
     val trend: tk.glucodata.logic.TrendEngine.TrendResult,
+    val showArrow: Boolean,
     val delta: String?,
     val primaryColor: Color,
     val arrowColor: Color,
@@ -1223,6 +1258,8 @@ internal fun DashboardHeroSensorPair(
     primaryColor: Color,
     primaryRangeText: String?,
     primaryTrend: tk.glucodata.logic.TrendEngine.TrendResult,
+    // False once the current reading is overdue, as on every surface.
+    primaryShowArrow: Boolean = true,
     primaryArrowColor: Color,
     primaryDeltaText: String?,
     peer: PeerCurrentReading,
@@ -1239,7 +1276,7 @@ internal fun DashboardHeroSensorPair(
     var availableWidthPx by remember { mutableStateOf(0) }
     val showUncertainty by rememberUpdatedState(uncertaintyEnabled)
     val frame = HeroSensorPairFrame(primarySensorId, primaryText, primarySecondaryText, primaryRangeText,
-        primaryTrend, primaryDeltaText, primaryColor, primaryArrowColor, peer)
+        primaryTrend, primaryShowArrow, primaryDeltaText, primaryColor, primaryArrowColor, peer)
     // A regular, bounded layout supports the portrait header's intrinsic query.
     // Sensor changes animate one immutable frame, including its own uncertainty.
     androidx.compose.animation.AnimatedContent(
@@ -1311,7 +1348,7 @@ internal fun DashboardHeroSensorPair(
                     }
                     // Optical scaling follows the reading cluster; touch padding stays fixed.
                     Spacer(Modifier.width(8.dp * scale))
-                    HeroTrendWithDelta(shown.trend, shown.arrowColor, shown.delta, contentColor, 32.dp * scale)
+                    HeroTrendWithDelta(shown.trend, shown.showArrow, shown.arrowColor, shown.delta, contentColor, 32.dp * scale)
                 }
                 range?.let {
                     Text(it, style = rangeStyle, color = shown.primaryColor.copy(alpha = 0.65f),

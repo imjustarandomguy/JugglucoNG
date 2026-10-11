@@ -45,6 +45,8 @@ class ReadingHub internal constructor(
         /** The display arrow's rate in mg/dL per minute, NaN without one. */
         val rate: Float,
         val index: Int,
+        /** The sensor generation, which bounds the values the status-bar icon spells out. */
+        val sensorGen: Int = 0,
     )
 
     /** What one recompute reads. */
@@ -326,6 +328,7 @@ class ReadingHub internal constructor(
                 origin = if (hasTime) originOf(lastReadingMillis) else Origin.STORED,
                 reason = Reason.STARTUP,
                 revision = 0L,
+                sensorGen = shown?.sensorGen ?: 0,
             )
         }
 
@@ -454,6 +457,17 @@ object CurrentReadingHub {
     fun setScheduler(scheduler: ReadingScheduler) = hub.setScheduler(scheduler)
 
     /**
+     * The current reading worked out now, on the caller's thread, and not published: for a
+     * surface that has to draw a reading before the hub publishes it, such as an alarm,
+     * which fires while its reading is being accepted.
+     */
+    @JvmStatic
+    fun resolveNow(): DisplayedReading {
+        val now = System.currentTimeMillis()
+        return ReadingHub.compose(source.read(now), now)
+    }
+
+    /**
      * Another sensor of this device under the same rules, resolved on the caller's thread and
      * not published: for a surface that shows several sensors side by side.
      */
@@ -530,6 +544,7 @@ internal class StoredReadingSource : ReadingHub.Source {
                 viewMode = it.viewMode,
                 rate = runCatching { displayRate(history, it) }.getOrDefault(Float.NaN),
                 index = it.index,
+                sensorGen = it.sensorGen,
             )
         }
         val latest = if (reading != null) 0L else latestStoredTime(history, nowMillis, isMmol, sensor)
