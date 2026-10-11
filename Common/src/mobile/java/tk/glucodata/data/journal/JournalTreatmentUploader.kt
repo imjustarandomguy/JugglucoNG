@@ -21,6 +21,7 @@ import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -48,6 +49,13 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private const val SEND_BACKOFF_MAX_MILLIS = 30L * 60_000L
     private const val RECEIVE_ERROR_LOG_INTERVAL_MILLIS = 5L * 60 * 1000
     private const val RECEIVE_MIN_INTERVAL_MILLIS = 5L * 60 * 1000
+
+    /**
+     * The light read the app asks for when it comes to the front: the newest few documents, for
+     * a dose just entered on the server, on a floor of its own (see [receivePlan]).
+     */
+    internal const val LIGHT_FETCH_COUNT = 20
+    private const val LIGHT_RECEIVE_MIN_INTERVAL_MILLIS = 30_000L
 
     /** How old the last read must be before a new glucose reading asks for another. */
     internal const val READING_RECEIVE_MIN_AGE_MILLIS = 15L * 60 * 1000
@@ -508,7 +516,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private val receiveErrorLog = RepeatedErrorLog(RECEIVE_ERROR_LOG_INTERVAL_MILLIS)
 
     /**
-     * Lower bound on how often treatments are read back. The read is the newest 240 documents
+     * Lower bound on how often treatments are read back. A full read is the newest 240 documents
      * every time (a few hundred KB on a busy site), and it runs on every treatment pass, so
      * anything that makes passes frequent multiplies it directly: the receive/wake loop did
      * about one pass every two seconds, tens of MB in ten minutes. Nightscout gives no way to
@@ -553,7 +561,98 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         }
     }
 
-    private val receiveFloor = ReceiveFloor(RECEIVE_MIN_INTERVAL_MILLIS)
+    /** How much a treatment pass reads back. */
+    internal enum class ReceiveRead {
+        /** The newest [TREATMENT_FETCH_COUNT] documents. */
+        FULL,
+
+        /** The newest [LIGHT_FETCH_COUNT] documents only. */
+        LIGHT,
+
+        /** Nothing now: no read is allowed yet. */
+        HOLD
+    }
+
+    /** What a treatment pass reads, and in how long to wake for the next read (null: no wake). */
+    internal class ReceivePlan(val read: ReceiveRead, val wakeInMillis: Long?)
+
+    /**
+     * The full read goes whenever its interval allows, whatever woke the pass. Inside the
+     * interval a pass read nothing and booked one read for its end, so a dose entered on the
+     * server just after a read took up to five minutes to show, however often the app was
+     * opened to look for it. Coming to the front asks for a light read instead: only the newest
+     * [LIGHT_FETCH_COUNT] documents, which hold a dose just entered, on a floor of its own a
+     * tenth as long. It takes nothing from the full read: the wake for the end of the interval
+     * is still booked, so a pass that was also owed a full read (a journal change raised at the
+     * same moment) still gets one. A light request inside its own floor waits for the earlier
+     * of the two ends.
+     *
+     * @param fullWaitMillis how long until a full read may go (0: now)
+     * @param lightWanted the app came to the front since the last read
+     * @param lightWaitMillis how long until a light read may go (0: now)
+     */
+    internal fun receivePlan(fullWaitMillis: Long, lightWanted: Boolean, lightWaitMillis: Long): ReceivePlan = when {
+        fullWaitMillis <= 0L -> ReceivePlan(ReceiveRead.FULL, wakeInMillis = null)
+        !lightWanted -> ReceivePlan(ReceiveRead.HOLD, fullWaitMillis)
+        lightWaitMillis <= 0L -> ReceivePlan(ReceiveRead.LIGHT, fullWaitMillis)
+        else -> ReceivePlan(ReceiveRead.HOLD, minOf(lightWaitMillis, fullWaitMillis))
+    }
+
+    /**
+     * The two floors treatment reads keep ([receivePlan]), and the app's request for a light
+     * read, which stays until a read of either kind is made: one held back is made by the pass
+     * the booked wake brings.
+     */
+    internal class ReceiveSchedule(fullIntervalMillis: Long, lightIntervalMillis: Long) {
+        /** Full reads only. A reading's own question looks at it too ([readingTriggersReceive]). */
+        val full = ReceiveFloor(fullIntervalMillis)
+        private val light = ReceiveFloor(lightIntervalMillis)
+        private val lightWanted = AtomicBoolean(false)
+
+        fun requestLight() {
+            lightWanted.set(true)
+        }
+
+        /** The read this pass makes. */
+        fun plan(key: String, nowMillis: Long): ReceivePlan {
+            val wanted = lightWanted.getAndSet(false)
+            val plan = receivePlan(full.waitMillis(key, nowMillis), wanted, light.waitMillis(key, nowMillis))
+            if (plan.read == ReceiveRead.HOLD && wanted) lightWanted.set(true)
+            return plan
+        }
+
+        /**
+         * A read of [read]'s kind was answered (see [ReceiveFloor.recordRead]). Every read starts
+         * the light floor, as each one holds the newest documents; only a full one starts the
+         * full floor.
+         */
+        fun recordRead(read: ReceiveRead, key: String, nowMillis: Long) {
+            if (read == ReceiveRead.HOLD) return
+            light.recordRead(key, nowMillis)
+            if (read == ReceiveRead.FULL) full.recordRead(key, nowMillis)
+        }
+    }
+
+    private val receiveSchedule = ReceiveSchedule(RECEIVE_MIN_INTERVAL_MILLIS, LIGHT_RECEIVE_MIN_INTERVAL_MILLIS)
+
+    /**
+     * Whether a read served [documentId], as [settlement] takes it; null when the read says
+     * nothing either way. A full read that leaves out a document whose delete the server has
+     * just confirmed lets its tombstone go. A light read holds only the newest few documents,
+     * so one it leaves out may well still be on the server: only one it serves counts.
+     */
+    internal fun servedByRead(served: Set<String>?, documentId: String, read: ReceiveRead): Boolean? = when {
+        served == null || read == ReceiveRead.HOLD -> null
+        documentId in served -> true
+        read == ReceiveRead.FULL -> false
+        else -> null
+    }
+
+    /** Called when the app comes to the front, before the treatment wake it raises. */
+    @Keep
+    override fun requestLightReceive() {
+        receiveSchedule.requestLight()
+    }
 
     private fun receiveFloorKey(baseUrl: String, useV3: Boolean): String =
         "${if (useV3) "v3" else "v1"} ${NightscoutFollowerRegistry.normalizeUrl(baseUrl)}"
@@ -565,7 +664,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * documents, so it takes its turn only once the last read for [key] in [floor] is
      * [READING_RECEIVE_MIN_AGE_MILLIS] old. A read nobody answered is not counted, but the
      * native backoff that follows it holds this pass off first. The receive interval still
-     * bounds the read this asks for.
+     * bounds the read this asks for. Only full reads count here: a light read on opening the
+     * app holds the newest few documents, not an edit of an older one.
      */
     internal fun readingTriggersReceive(
         receiveEnabled: Boolean,
@@ -579,7 +679,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         val baseUrl = Natives.getnightuploadurl()?.takeIf { it.isNotBlank() } ?: return false
         return readingTriggersReceive(
             getReceiveTreatments(),
-            receiveFloor,
+            receiveSchedule.full,
             receiveFloorKey(baseUrl, useV3),
             System.currentTimeMillis()
         )
@@ -860,7 +960,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         } else {
             ReceiveOutcome(ReceiveResult.DONE)
         }
-        settleTombstones(dao, deletes, receiveEnabled, receive.readBody, baseUrl, rawSecret, useV3)
+        settleTombstones(dao, deletes, receiveEnabled, receive.readBody, receive.read, baseUrl, rawSecret, useV3)
         retryAt?.let { bookTreatmentWake(it - System.currentTimeMillis()) }
         // A delete or an edit that failed on its own is deliberately not folded in here:
         // returning false backs off the whole treatment path, and a token that may not delete
@@ -1044,13 +1144,15 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * deletes confirmed this pass are looked at, and those no longer sent; a tombstone still to
      * be sent has a document to delete, whether or not this read reached it. With sending off,
      * every tombstone is local only. One whose delete is not sent goes only when a read of its
-     * own document finds it gone, at most once a day each.
+     * own document finds it gone, at most once a day each. A light read counts only for the
+     * documents it serves ([servedByRead]).
      */
     private suspend fun settleTombstones(
         dao: JournalDao,
         deletes: DeletePass?,
         readsBack: Boolean,
         readBody: String?,
+        read: ReceiveRead,
         baseUrl: String,
         rawSecret: String,
         useV3: Boolean
@@ -1075,7 +1177,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             val action = settlement(
                 deleteConfirmed = candidate.deleteConfirmed,
                 readsBack = readsBack,
-                served = served?.contains(documentId)
+                served = servedByRead(served, documentId, read)
             )
             when (action) {
                 Settlement.DROP -> dao.clearPendingNightscoutDelete(tomb.entryId)
@@ -1729,29 +1831,41 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
 
     /**
      * How a receive went. [readBody] is the treatment list the server answered with, null when
-     * nothing was read (deferred, failed, or no such endpoint).
+     * nothing was read (deferred, failed, or no such endpoint); [read] is how much was asked for.
      */
-    private class ReceiveOutcome(val result: ReceiveResult, val readBody: String? = null)
+    private class ReceiveOutcome(
+        val result: ReceiveResult,
+        val readBody: String? = null,
+        val read: ReceiveRead = ReceiveRead.HOLD
+    )
 
     private fun receiveRemoteTreatments(baseUrl: String, secret: String, useV3: Boolean): ReceiveOutcome {
         val floorKey = receiveFloorKey(baseUrl, useV3)
-        val waitMillis = receiveFloor.waitMillis(floorKey, System.currentTimeMillis())
-        if (waitMillis > 0L) {
-            bookTreatmentWake(waitMillis)
-            return ReceiveOutcome(ReceiveResult.DONE)
-        }
+        val plan = receiveSchedule.plan(floorKey, System.currentTimeMillis())
+        plan.wakeInMillis?.let(::bookTreatmentWake)
+        if (plan.read == ReceiveRead.HOLD) return ReceiveOutcome(ReceiveResult.DONE)
+        val light = plan.read == ReceiveRead.LIGHT
         var readBody: String? = null
         val result = runCatching {
-            val read = fetchTreatmentsRead(baseUrl, secret, useV3)
-            receiveFloor.recordRead(floorKey, System.currentTimeMillis())
+            val read = fetchTreatmentsRead(
+                baseUrl,
+                secret,
+                useV3,
+                count = if (light) LIGHT_FETCH_COUNT else TREATMENT_FETCH_COUNT
+            )
+            receiveSchedule.recordRead(plan.read, floorKey, System.currentTimeMillis())
             readBody = read
             val body = read ?: return@runCatching ReceiveResult.DONE
             if (body.isBlank() || body == "[]") return@runCatching ReceiveResult.DONE
             val sensorId = NightscoutFollowerRegistry.deriveSensorId(baseUrl)
             val imported = NightscoutJournalFollowerImporter.importTreatments(sensorId, body)
-            if (imported > 0) {
-                UiRefreshBus.requestDataRefresh()
-                Log.i(LOG_ID, "received $imported Nightscout treatment journal items")
+            if (imported > 0) UiRefreshBus.requestDataRefresh()
+            if (imported > 0 || light) {
+                Log.i(
+                    LOG_ID,
+                    "received $imported Nightscout treatment journal items" +
+                        if (light) " (light read, newest $LIGHT_FETCH_COUNT)" else ""
+                )
             }
             receiveErrorLog.reset()
             ReceiveResult.DONE
@@ -1768,11 +1882,11 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
                 ReceiveResult.UNANSWERED
             } else {
                 // No backoff covers a refusal any more (see treatmentPassOk): the interval does.
-                receiveFloor.recordRead(floorKey, System.currentTimeMillis())
+                receiveSchedule.recordRead(plan.read, floorKey, System.currentTimeMillis())
                 ReceiveResult.REFUSED
             }
         }
-        return ReceiveOutcome(result, readBody)
+        return ReceiveOutcome(result, readBody, plan.read)
     }
 
     private fun fetchTreatmentsJson(baseUrl: String, secret: String, useV3: Boolean): String =
@@ -1783,16 +1897,18 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * (no URL, or no such endpoint). Throws when the read failed.
      *
      * @param tokenAuth authenticate with the v3 token, also for a v1 read made under a v3 setup
+     * @param count how many of the newest documents to read
      */
     private fun fetchTreatmentsRead(
         baseUrl: String,
         secret: String,
         useV3: Boolean,
-        tokenAuth: Boolean = useV3
+        tokenAuth: Boolean = useV3,
+        count: Int = TREATMENT_FETCH_COUNT
     ): String? {
         val normalized = NightscoutFollowerRegistry.normalizeUrl(baseUrl)
         if (normalized.isBlank()) return null
-        val endpoint = treatmentFetchUrl(normalized, useV3)
+        val endpoint = treatmentFetchUrl(normalized, useV3, count)
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 30_000
