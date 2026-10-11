@@ -572,16 +572,34 @@ class NotificationStartupRestoreTests {
         assertEquals(0, call(h, "queuedCount"))
         set(h, "cannedReading", readingAt(time, 140f, "STALE", "STALE_TICK"))
         staticCall("onReadingPublished", get(h, "cannedReading"))
-        // Quietly, through the bounded debounce of data changes.
-        assertEquals(listOf(1000L), deadlineDelays(h))
-        assertTrue(drainOne(h))
+        // At once, not after a delay counted in uptime, which stops while the phone sleeps:
+        // the alarm that brought the stale moment holds the phone awake until it is drawn.
+        val released = java.util.concurrent.atomic.AtomicBoolean()
+        staticCall("afterPendingRefresh", Runnable { released.set(true) })
+        assertEquals(emptyList<Long>(), deadlineDelays(h))
         assertTrue(drainOne(h))
         val manager = get(h, "notificationManager")!!
         val stale = getNested(manager, "last")!!
+        assertFalse("released before the stale look was drawn", released.get())
         assertTrue((getNested(stale, "title") as String).startsWith("No new value"))
         assertEquals(time, getNested(stale, "when"))
+        assertTrue(drainOne(h))
+        assertTrue(released.get())
         assertEquals(0, get(h, "broadcastSends"))
         assertEquals(0, call(h, "queuedCount"))
+    }
+
+    @Test fun aSettingRedrawsAtOnceAndABackfillThroughTheDebounce() {
+        val h = harness()
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "cannedReading", readingAt(time, 140f, "FRESH", "SETTINGS"))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertEquals(emptyList<Long>(), deadlineDelays(h))
+        assertTrue(drainOne(h))
+        assertEquals(1, get(h, "renderCalls"))
+        assertEquals(true, renderField(h, "once"))
+        staticCall("onReadingPublished", readingAt(time, 141f, "FRESH", "BACKFILL"))
+        assertEquals(listOf(1000L), deadlineDelays(h))
     }
 
     @Test fun alertwatchDeliversOnlyANewReadingAsOne() {
