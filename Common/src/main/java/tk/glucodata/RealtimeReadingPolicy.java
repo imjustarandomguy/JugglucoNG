@@ -21,4 +21,10 @@ final class RealtimeReadingPolicy {
         // Native storage can round the same live reading just ahead of the BLE callback timestamp.
         return nativeHighWaterMs - candidateTimeMs < NATIVE_CURRENT_READING_SKEW_MS;
     }
+
+    /** Whether native storage holds the live reading of {@code callbackTimeMs} under {@code nativeTimeMs}. */
+    static boolean isNativeCopy(long callbackTimeMs, long nativeTimeMs) {
+        return callbackTimeMs > 0L && nativeTimeMs > 0L
+                && Math.abs(nativeTimeMs - callbackTimeMs) < NATIVE_CURRENT_READING_SKEW_MS;
+    }
 }
