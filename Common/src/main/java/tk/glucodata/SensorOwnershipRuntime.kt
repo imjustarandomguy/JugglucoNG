@@ -247,6 +247,21 @@ internal fun resolveWatchStaysOffAlongside(
 ): Boolean = isWearable && readsAlongside && !directRequested && phoneReadsIt
 
 /**
+ * Whether a sensor is read alongside the other device: as its driver says
+ * ([driverReadsAlongside]), and while this device has no driver for it, as
+ * its record says.
+ *
+ * Asking only the driver let a restarted phone hand a G7 to the watch: the
+ * first reconciliation runs before the G7's driver exists, so the G7 looked
+ * like a sensor only one device can read, and the phone stood down for three
+ * minutes and missed the next reading.
+ */
+internal fun resolveReadsAlongside(
+    driverReadsAlongside: Boolean?,
+    recordReadsAlongside: () -> Boolean,
+): Boolean = driverReadsAlongside ?: recordReadsAlongside()
+
+/**
  * Keeps exactly one device reading each sensor, and hands it over when that
  * device stops being able to.
  *
@@ -561,7 +576,7 @@ object SensorOwnershipRuntime {
             phone = if (Applic.isWearable) peer else own,
             watch = watch,
             directOnWatch = directOn,
-            readsAlongside = findGatt(target)?.readsAlongside() == true,
+            readsAlongside = readsAlongside(target),
             watchUntimedSinceMs = trackWatchUntimed(target, directOn, watch, nowMs),
             nowMs = nowMs,
         )
@@ -614,12 +629,20 @@ object SensorOwnershipRuntime {
         return peerReadsCurrently(target)
     }
 
-    /** Whether both devices read [serial] at once, each over its own channel (a G7): [SuperGattCallback.readsAlongside]. */
+    /**
+     * Whether both devices read [serial] at once, each over its own channel (a
+     * G7): [SuperGattCallback.readsAlongside], or before this device has a
+     * driver for it, what its record is ([resolveReadsAlongside]).
+     */
     @JvmStatic
     fun readsAlongside(serial: String?): Boolean {
         val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
-        return findGatt(target)?.readsAlongside() == true
+        return resolveReadsAlongside(findGatt(target)?.readsAlongside()) { recordReadsAlongside(target) }
     }
+
+    /** A Dexcom record: its driver, DexGattCallback, is the one that reads alongside. */
+    private fun recordReadsAlongside(serial: String): Boolean =
+        runCatching { Natives.isDexcomRecord(serial) }.getOrDefault(false)
 
     /** Whether the peer reads any sensor itself, so it can be asked for a reading this device missed. */
     @JvmStatic
@@ -1031,8 +1054,9 @@ object SensorOwnershipRuntime {
             val intent = intentFor(serial, companionEnabled)
             val holds = holdsSensor(serial, now)
             // Read alongside the peer over its own channel: neither device stands
-            // down for the other, so there is nothing to hand over.
-            val shouldRead = if (findGatt(serial)?.readsAlongside() == true) {
+            // down for the other, so there is nothing to hand over. Known from the
+            // record too, before this device's driver for it exists.
+            val shouldRead = if (readsAlongside(serial)) {
                 intent != SensorOwnershipPolicy.Intent.NEVER
             } else SensorOwnershipPolicy.shouldReadLocally(
                 isPhone = !Applic.isWearable,
