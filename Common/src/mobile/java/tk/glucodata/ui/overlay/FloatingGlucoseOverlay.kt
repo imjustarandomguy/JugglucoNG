@@ -66,7 +66,7 @@ import tk.glucodata.UiRefreshBus
 
 /**
  * A stale reading on the pill: its last value stays, dimmed, beside the next-reading
- * bar's amber; "---" is only for no value at all. Pure, see the tests.
+ * ring's amber; "---" is only for no value at all. Pure, see the tests.
  */
 internal object FloatingStaleValue {
     /** Opacity of a stale value against a current one: clearly old, still readable. */
@@ -75,7 +75,7 @@ internal object FloatingStaleValue {
     /**
      * The opacity factor for the value, its trend arrow and its secondary value:
      * [DIMMED_ALPHA] while there is a value and it is [stale], the same flag the
-     * next-reading bar is late by; 1 otherwise.
+     * next-reading ring is late by; 1 otherwise.
      */
     fun alpha(hasValue: Boolean, stale: Boolean): Float = if (hasValue && stale) DIMMED_ALPHA else 1f
 }
@@ -164,7 +164,6 @@ fun FloatingGlucoseOverlay(
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
     val isMirrored by repository.isMirrored.collectAsState(initial = false)
     val showNextReading by repository.showNextReading.collectAsState(initial = true)
-    val nextReadingStyle by repository.nextReadingStyle.collectAsState(initial = FloatingNextReadingStyle.CURRENT.name)
 
     // Metrics State (from Service WindowInsets)
     val cutoutData by cutoutDataFlow.collectAsState(initial = CutoutData(0.dp, CutoutEdge.NONE))
@@ -399,7 +398,7 @@ fun FloatingGlucoseOverlay(
     val paletteRevision = GlucosePaletteState.revision
     val primaryValue = displayValues?.primaryValue
     // The value's range colour, whether or not the value is drawn in it: the time to the
-    // next reading fills in it too (in all its styles but the thin bar).
+    // next reading's ring fills in it too.
     val rangeColor = remember(
         primaryValue, isTransparent, isDarkTheme, unitInt, finalTextColor, refreshRevision, paletteRevision,
     ) {
@@ -423,29 +422,26 @@ fun FloatingGlucoseOverlay(
     }
     val valueColor = if (isStale || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
 
-    // Time to the next reading: a bar along the pill's bottom edge (its long inner side on
-    // an upright island) or its outline, drawn on its clipped background, or a ring around
-    // the arrow. Late in the range colours' amber, and late too while the pill is stale.
+    // Time to the next reading: a ring around the trend arrow, in every layout (the free
+    // pill and the island, upright or not), so only while the arrow is shown. Late in the
+    // range colours' amber, and late too while the pill is stale.
     val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
         Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
     }
     val hasArrow = showArrow && glucosePoint != null
     val nextReading = nextReadingIndicator(
         enabled = showNextReading,
-        style = FloatingNextReadingStyle.fromKey(nextReadingStyle),
-        side = FloatingNextReading.barSide(if (isDynamicIsland) cutoutEdge else null),
         readingTime = reading.readingTime,
         intervalMillis = reading.intervalMillis,
         stale = isStale,
         color = finalTextColor,
         rangeColor = rangeColor,
         lateColor = nextReadingLateColor,
-        cornerRadius = cornerRadius.dp,
         arrowSize = if (hasArrow) shownArrowSize else null,
     )
 
     // A stale value is drawn dimmed: the value, its arrow and its secondary value in
-    // their own colours at reduced opacity, by the same stale flag as the bar's late
+    // their own colours at reduced opacity, by the same stale flag as the ring's late
     // state. Their outline or shadow stays as it is, for legibility on any background.
     val valueAlpha = FloatingStaleValue.alpha(hasValue = glucosePoint != null, stale = isStale)
     val shownValueColor = valueColor.copy(alpha = valueColor.alpha * valueAlpha)
@@ -592,7 +588,6 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
-                                .then(nextReading.background)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -630,7 +625,6 @@ fun FloatingGlucoseOverlay(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(finalShape)
-                                .then(nextReading.background)
                                 .indication(overlayInteractionSource, overlayIndication)
                         ) {}
                     }
@@ -665,7 +659,6 @@ fun FloatingGlucoseOverlay(
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
-                .then(nextReading.background)
                 .combinedClickable(
                     interactionSource = overlayInteractionSource,
                     indication = overlayIndication,
