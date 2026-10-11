@@ -78,6 +78,15 @@ private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
 private PowerManager.WakeLock reconnectlock;
 private long shortReconnectSeq;
 private boolean shortReconnectPending;
+// Asked a moment before its next measurement, a G7 answers with the reading
+// before (age about 300 s). It keeps the link for a few seconds: ask again.
+private static final long DEXCOM_PREVIOUS_READING_AGE_MS = 240_000L;
+private static final long DEXCOM_GLUCOSE_ASK_AGAIN_MS = 1_000L;
+private static final int DEXCOM_GLUCOSE_ASK_AGAIN_MAX = 2;
+// Within half a slot of the last sample published here: the same reading.
+private static final long DEXCOM_SAME_READING_MS = 150_000L;
+private int glucoseAskedAgain;
+private long publishedSampleMs;
 private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
@@ -362,6 +371,7 @@ private boolean connected=false;
         }
         if(newState == BluetoothProfile.STATE_CONNECTED) {
           connectedAttempt = bluetoothGatt;
+          glucoseAskedAgain = 0;
           if(bondstate == BluetoothDevice.BOND_BONDING) {
               {if(doLog) {Log.i(LOG_ID, "wait BOND_BONDING");};};
               }
@@ -923,6 +933,15 @@ private boolean isWarmupReading(long readingTimeMsec, long res) {
         }
         return sensorstartmsec > 0L && readingTimeMsec > 0L && (readingTimeMsec - sensorstartmsec) < DEXCOM_WARMUP_MSEC;
     }
+    /** Asks again for the current reading on the same link, as onDescriptorWrite first did. */
+    private void askGlucoseAgain(BluetoothGatt gatt) {
+        synchronized (this) {
+            if (stop || !connected || gatt == null || gatt != mBluetoothGatt) return;
+            final byte[] com = {0x4E};
+            charact[0].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+            tryer(() -> write(0, com));
+        }
+    }
 private    void getdata(byte[] value) {
         final long timmsec = System.currentTimeMillis();
         switch (value[0]) {
@@ -943,11 +962,27 @@ private    void getdata(byte[] value) {
                         Log.i(LOG_ID, "Dexcom reading is still in warmup window; next retry at=" + lastWarmupRetryAt);
                     }
                 }
-                handleGlucoseResult(res, newtime);
-                Applic.scheduler.schedule(()->{
-                  if(connected) askbackfill();}, 10, TimeUnit.MILLISECONDS);
                 datatime=timmsec;
                 sampletime=newtime;
+                final boolean validReading = !lastDataInvalidDuringWarmup && (res & 0xFFFFFFFFL) != 0L;
+                final boolean previousReading = validReading && timmsec - newtime >= DEXCOM_PREVIOUS_READING_AGE_MS;
+                if(previousReading && publishedSampleMs > 0L && newtime - publishedSampleMs < DEXCOM_SAME_READING_MS) {
+                    // Not a new reading: nothing to publish, and no proof of a fresh one.
+                    {if(doLog) {Log.i(LOG_ID, "glucose reply is the reading already published, age=" + (timmsec - newtime) / 1000 + " s");};};
+                } else {
+                    handleGlucoseResult(res, newtime);
+                    if(validReading)
+                        publishedSampleMs = newtime;
+                }
+                if(previousReading && glucoseAskedAgain < DEXCOM_GLUCOSE_ASK_AGAIN_MAX) {
+                    ++glucoseAskedAgain;
+                    {if(doLog) {Log.i(LOG_ID, "glucose reply is the reading before, ask again " + glucoseAskedAgain);};};
+                    final var gatt = mBluetoothGatt;
+                    Applic.scheduler.schedule(() -> askGlucoseAgain(gatt), DEXCOM_GLUCOSE_ASK_AGAIN_MS, TimeUnit.MILLISECONDS);
+                } else {
+                    Applic.scheduler.schedule(()->{
+                      if(connected) askbackfill();}, 10, TimeUnit.MILLISECONDS);
+                }
                 if(savename) saveDeviceName();
             };break;
            case 0x59:{
