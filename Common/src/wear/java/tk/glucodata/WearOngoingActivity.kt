@@ -17,7 +17,7 @@ object WearOngoingActivity : OngoingNotification {
 
     override fun attach(context: Context, notification: Notification, notificationId: Int): Notification {
         return try {
-            val text = statusText(context)
+            val text = statusText(CurrentReadingHub.current())
             val builder = NotificationCompat.Builder(context, notification)
             OngoingActivity.Builder(context, notificationId, builder)
                 .setStaticIcon(R.drawable.novalue)
@@ -41,7 +41,7 @@ object WearOngoingActivity : OngoingNotification {
         try {
             // Resolved under the lock, so a slower caller cannot put back an older value.
             synchronized(this) {
-                val text = statusText(context)
+                val text = statusText(CurrentReadingHub.current())
                 // Several data changes arrive per reading; an unchanged value is not
                 // worth reposting the notification for.
                 if (text == shownStatus) return
@@ -54,24 +54,13 @@ object WearOngoingActivity : OngoingNotification {
         }
     }
 
-    private fun statusText(context: Context): String {
-        val current = runCatching { CurrentDisplaySource.resolveCurrent() }.getOrNull()
-        return freshValueText(
-            current?.primaryStr,
-            current?.timeMillis ?: 0L,
-            System.currentTimeMillis(),
-            Notify.glucosetimeout,
-        ) ?: context.getString(R.string.novalue)
-    }
-
     /**
-     * [valueText] while its reading is current, by the rule the phone's notification
-     * uses, and null once the reading is older than [timeoutMs]. The resolver falls back
-     * to history well past the timeout, so without this the status went on showing the
-     * last value as if it were live after readings stopped.
+     * The watch's current reading as every other watch surface shows it: the value while
+     * it is shown (a status line cannot dim a stale one) and "---" once it is taken down.
+     * The resolver falls back to history well past any timeout, so reading it here kept
+     * the last value up as if it were live after readings stopped.
      */
-    internal fun freshValueText(valueText: String?, readingTimeMs: Long, nowMs: Long, timeoutMs: Long): String? =
-        valueText?.takeIf { it.isNotBlank() && NotificationRefreshPolicy.isFresh(readingTimeMs, nowMs, timeoutMs) }
+    internal fun statusText(reading: DisplayedReading): String = reading.shownText
 
     private fun status(text: String): Status = Status.forPart(Status.TextPart(text))
 

@@ -34,28 +34,25 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUp
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import tk.glucodata.Applic
-import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.Log
 import tk.glucodata.MainActivity
-import tk.glucodata.Notify
 import tk.glucodata.R
 import java.lang.Math.min
 
 class IconArrowDataSourceService: SuspendingComplicationDataSourceService()  {
     /**
      * Arrow plus the reading's time, drawn by ComplicationRenderer so the angle
-     * and colour match the app rather than the legacy geometry.
+     * and colour match the app rather than the legacy geometry. A stale reading
+     * has no arrow: its time is left, dimmed.
      */
-    private fun arrowTimeBitmap(rate: Float, timeMillis: Long): android.graphics.Bitmap =
+    private fun arrowTimeBitmap(reading: GlucoseComplicationData.Reading): android.graphics.Bitmap =
         // Drawn as a mask: the watch face tints an ICON, so a range colour here
         // came out off-tone beside every other complication on the face.
         ComplicationRenderer.arrowWithTimeBitmap(
-            ICON_PX, rate, timeMillis, ComplicationRenderer.ICON_TINT,
+            ICON_PX, reading.rate, reading.timeMillis, ComplicationRenderer.iconTint(reading),
         )
 
     private val ICON_PX = 256
-
-private var glview: WearComplicationValue? =null
 
     override fun onComplicationActivated( complicationInstanceId: Int, type: ComplicationType) {
         Log.d(LOG_ID, "onComplicationActivated(): $complicationInstanceId")
@@ -63,31 +60,11 @@ private var glview: WearComplicationValue? =null
     override fun onComplicationDeactivated(complicationInstanceId: Int) {
         Log.d(LOG_ID, "onComplicationDeactivated(): $complicationInstanceId")
     }
-fun getview(type: ComplicationType):WearComplicationValue {
-     if(glview==null) {
-        val width:Int = 150
-        val height:Int = 150
-         glview= WearComplicationValue(width,height)
-         }
-      return glview as WearComplicationValue;
-      }
     override fun getPreviewData(type: ComplicationType): ComplicationData {
-      val glucose=CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout)
-      val time:Long
-      val rate:Float
-      if(glucose==null) {
-          rate=1.0f
-          time= System.currentTimeMillis();
-
-          }
-      else  {
-                time=glucose.timeMillis
-                rate= GlucoseComplicationData.displayRate(glucose)
-                }
       return MonochromaticImageComplicationData.Builder(
-//          MonochromaticImage.Builder( Icon.createWithBitmap(getview(type).getArrowBitmap(rate))).build(),
-          MonochromaticImage.Builder( Icon.createWithBitmap(arrowTimeBitmap(rate, time))).build(),
-
+          MonochromaticImage.Builder(
+              Icon.createWithBitmap(arrowTimeBitmap(GlucoseComplicationData.previewReading())),
+          ).build(),
             contentDescription = PlainComplicationText.Builder(text = "Glucose Arrow").build() )
             .setTapAction(GlucoseComplicationData.tapAction())
             .build()
@@ -97,16 +74,14 @@ fun getview(type: ComplicationType):WearComplicationValue {
         Log.d(LOG_ID, "onComplicationRequest() id: ${request.complicationInstanceId}")
         val type=        request.complicationType
     if(type== MONOCHROMATIC_IMAGE) {
-            val glucose = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout)
-            val now = System.currentTimeMillis()
-            val bitmap= if(glucose==null ||(now-glucose.timeMillis)>=tk.glucodata.Notify.glucosetimeout){
+            // The watch's one current reading, as every other complication shows it.
+            val glucose = GlucoseComplicationData.currentReading()
+            val bitmap= if(glucose==null){
                  Log.i(LOG_ID,"MonochromaticImage novalue")
-                 getview(type).getnovalue()
+                 ComplicationRenderer.noValueBitmap(ICON_PX, ComplicationRenderer.ICON_TINT, icon = true)
                  } else {
-                     val rate = GlucoseComplicationData.displayRate(glucose)
-                     Log.i(LOG_ID,"MonochromaticImage rate: $rate")
-//                    getview(type).getArrowBitmap(glucose.rate)
-                      arrowTimeBitmap(rate, glucose.timeMillis);
+                     Log.i(LOG_ID,"MonochromaticImage rate: ${glucose.rate}")
+                      arrowTimeBitmap(glucose)
                      }
              val image=Icon.createWithBitmap(bitmap)
              val complicationPendingIntent = GlucoseComplicationData.tapAction()

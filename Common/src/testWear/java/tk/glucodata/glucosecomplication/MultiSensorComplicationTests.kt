@@ -10,7 +10,7 @@ class MultiSensorComplicationTests {
 
     @Test fun resolvesEachSensorInSelectionOrder() {
         val calls = mutableListOf<String>()
-        val values = multiSensorValues(listOf("second", "first"), mapOf("second" to 42), now, 60_000L) {
+        val values = multiSensorValues(listOf("second", "first"), mapOf("second" to 42)) {
             calls.add(it); reading(it)
         }
         assertEquals(listOf("second", "first"), calls)
@@ -19,32 +19,40 @@ class MultiSensorComplicationTests {
         assertTrue(values.all { it.reading != null })
     }
 
-    @Test fun stalePrimaryRetainsItsSlotBesideFreshPeer() {
-        val values = multiSensorValues(listOf("primary", "peer"), emptyMap(), now, 60_000L) {
-            reading(it, if (it == "primary") now - 60_000L else now)
+    @Test fun aPrimaryWithoutValueRetainsItsSlotBesideFreshPeer() {
+        // The resolver applies the stale rules: a value taken down comes back as null.
+        val values = multiSensorValues(listOf("primary", "peer"), emptyMap()) {
+            if (it == "primary") null else reading(it)
         }
         assertNull(values.first().reading)
         assertNotNull(values.last().reading)
-        assertEquals("— · 101.0", multiSensorText(values, false))
+        assertEquals("--- · 101.0", multiSensorText(values, false))
     }
 
-    @Test fun rejectsFutureInvalidAndWrongSensorReadings() {
+    @Test fun aStaleSensorKeepsItsValueWithoutArrow() {
+        val values = multiSensorValues(listOf("first"), emptyMap()) {
+            reading(it, rate = Float.NaN).copy(stale = true)
+        }
+        assertEquals("101.0", multiSensorText(values, true))
+    }
+
+    @Test fun rejectsInvalidAndWrongSensorReadings() {
         val supplied = mapOf(
-            "future" to reading("future", now + 1),
+            "untimed" to reading("untimed", time = 0L),
             "invalid" to reading("invalid", value = Float.NaN),
             "wrong" to reading("another"),
             "zero" to reading("zero", value = 0f),
             "unknown" to reading("unknown").copy(sensorId = null),
         )
-        val values = multiSensorValues(supplied.keys.toList(), emptyMap(), now, 60_000L) { supplied[it] }
+        val values = multiSensorValues(supplied.keys.toList(), emptyMap()) { supplied[it] }
         assertTrue(values.all { it.reading == null })
     }
 
     @Test fun keepsMissingPeerAndDoesNotDuplicatePrimary() {
-        val values = multiSensorValues(listOf("primary", "missing"), emptyMap(), now, 60_000L) {
+        val values = multiSensorValues(listOf("primary", "missing"), emptyMap()) {
             if (it == "primary") reading(it) else null
         }
-        assertEquals("101.0 · —", multiSensorText(values, false))
+        assertEquals("101.0 · ---", multiSensorText(values, false))
     }
 
     @Test fun arrowAlternativeUsesEachSensorsOwnRateAndOmitsUnknownRate() {
