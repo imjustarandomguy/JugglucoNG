@@ -15,7 +15,7 @@ import org.junit.Test
 class CloudSensorRecordTests {
     private val fullNames = mapOf(
         "073E464C8CB" to "NSF-3073E464C8CB",
-        "12147739749" to "8958912147739749",
+        "12345678901" to "5000012345678901",
     )
     private val fullName: (String) -> String? = { fullNames[it] }
 
@@ -29,8 +29,8 @@ class CloudSensorRecordTests {
 
     @Test
     fun sensorsThatTransmitAreNotCloudSources() {
-        assertFalse(CloudSensorRecord.isCloudSensorId("12147739749"))
-        assertFalse(CloudSensorRecord.isCloudSensorId("8958912147739749"))
+        assertFalse(CloudSensorRecord.isCloudSensorId("12345678901"))
+        assertFalse(CloudSensorRecord.isCloudSensorId("5000012345678901"))
         // A Glutec transmitter, not its follower.
         assertFalse(CloudSensorRecord.isCloudSensorId("MQ-0123456789AB"))
         assertFalse(CloudSensorRecord.isCloudSensorId("X-222227JR7C"))
@@ -47,7 +47,7 @@ class CloudSensorRecordTests {
 
     @Test
     fun aG7RecordIsNotACloudRecord() {
-        assertNull(CloudSensorRecord.cloudRecordId("12147739749", fullName))
+        assertNull(CloudSensorRecord.cloudRecordId("12345678901", fullName))
         assertNull(CloudSensorRecord.cloudRecordId("UNKNOWN0001", fullName))
         assertNull(CloudSensorRecord.cloudRecordId(" ", fullName))
     }
@@ -61,10 +61,10 @@ class CloudSensorRecordTests {
     fun watchRosterKeepsTheG7AndDropsTheFollowerRecord() {
         val skipped = ArrayList<String>()
         val kept = CloudSensorRecord.withoutCloudRecords(
-            arrayOf("12147739749", "073E464C8CB"),
+            arrayOf("12345678901", "073E464C8CB"),
             fullName,
         ) { skipped += it }
-        assertArrayEquals(arrayOf<String?>("12147739749"), kept)
+        assertArrayEquals(arrayOf<String?>("12345678901"), kept)
         assertEquals(listOf("073E464C8CB"), skipped)
     }
 
@@ -72,12 +72,12 @@ class CloudSensorRecordTests {
     fun aRemovedFollowerEndsItsRecordUnderTheNameNativeListsIt() {
         assertEquals(
             listOf("073E464C8CB"),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "NSF-3073E464C8CB", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901", "073E464C8CB"), "NSF-3073E464C8CB", fullName),
         )
         // Told by its short alias, or with the case changed, it is the same record.
         assertEquals(
             listOf("073E464C8CB"),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "073E464C8CB", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901", "073E464C8CB"), "073E464C8CB", fullName),
         )
         assertEquals(
             listOf("073E464C8CB"),
@@ -89,11 +89,11 @@ class CloudSensorRecordTests {
     fun removingASensorThatTransmitsEndsNothingHere() {
         assertEquals(
             emptyList<String>(),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "12147739749", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901", "073E464C8CB"), "12345678901", fullName),
         )
         assertEquals(
             emptyList<String>(),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "8958912147739749", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901", "073E464C8CB"), "5000012345678901", fullName),
         )
         assertEquals(emptyList<String>(), CloudSensorRecord.recordsToEnd(arrayOf("073E464C8CB"), null, fullName))
     }
@@ -102,7 +102,7 @@ class CloudSensorRecordTests {
     fun anotherCloudSourceIsLeftAlone() {
         assertEquals(
             emptyList<String>(),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749", "073E464C8CB"), "API-0123456789AB", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901", "073E464C8CB"), "API-0123456789AB", fullName),
         )
     }
 
@@ -110,7 +110,7 @@ class CloudSensorRecordTests {
     fun aFollowerAlreadyEndedLeavesNothingToEnd() {
         assertEquals(
             emptyList<String>(),
-            CloudSensorRecord.recordsToEnd(arrayOf("12147739749"), "NSF-3073E464C8CB", fullName),
+            CloudSensorRecord.recordsToEnd(arrayOf("12345678901"), "NSF-3073E464C8CB", fullName),
         )
         assertEquals(emptyList<String>(), CloudSensorRecord.recordsToEnd(null, "NSF-3073E464C8CB", fullName))
     }

@@ -271,20 +271,20 @@ class SensorIdentityTests {
         assertNull(SensorIdentity.aliasOf("SIBI:P225043JMV"))
     }
 
-    // --- one G7 under its three names (2026-10-07: the watch reported "739749") ---
+    // --- one G7 under its three names (2026-10-07: the watch reported "678901") ---
 
     /** The phone's record. */
-    private val g7Full = "8958912147739749"
+    private val g7Full = "5000012345678901"
 
     /** Its alias: the watch's record, the phone's card and driver. */
-    private val g7Alias = "12147739749"
+    private val g7Alias = "12345678901"
 
     /** How native lists a record named after the alias: the watch's driver and report. */
-    private val g7Listing = "739749"
+    private val g7Listing = "678901"
 
     /** Another G7 whose names end in the same six characters. */
-    private val otherFull = "8958999999739749"
-    private val otherAlias = "99999739749"
+    private val otherFull = "5000099999678901"
+    private val otherAlias = "99999678901"
 
     private val cloud = "NSF-3073E464C8CB"
 
@@ -328,9 +328,9 @@ class SensorIdentityTests {
         assertFalse(SensorIdentity.sameNativeSensor(g7Full, otherAlias))
         assertFalse(SensorIdentity.sameNativeSensor(g7Alias, otherFull))
         // Only whole five-character prefixes come off, never any suffix.
-        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "2147739749"))
-        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "47739749"))
-        assertFalse(SensorIdentity.sameNativeSensor(g7Alias, "39749"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "2345678901"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Full, "45678901"))
+        assertFalse(SensorIdentity.sameNativeSensor(g7Alias, "78901"))
         assertFalse(SensorIdentity.sameNativeSensor(g7Full, null))
         assertFalse(SensorIdentity.sameNativeSensor(g7Full, "?"))
     }
@@ -375,7 +375,7 @@ class SensorIdentityTests {
 
     @Test
     fun distinctNativeSensors_theWatchListsItsG7OnceUnderItsRecordName() {
-        // Its driver "739749", native's listing "739749", native's record 12147739749.
+        // Its driver "678901", native's listing "678901", native's record 12345678901.
         assertEquals(listOf(g7Alias), SensorIdentity.distinctNativeSensors(listOf(g7Listing, g7Listing, g7Alias)))
     }
 
