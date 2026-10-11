@@ -29,7 +29,8 @@ methods = '\n'.join(method(s) for s in [
     'protected boolean useAutoConnect(', 'private boolean bondedHere(', 'private boolean reconnectsInBackground(',
     'protected long connectionAttemptTimeoutMillis(',
     'protected void onConnectionAttemptTimeout(', 'public synchronized boolean connectDevice(',
-    'private boolean connectNow(',
+    'private boolean connectNow(', 'public void free(', 'private String dialledAddress(',
+    'private boolean dialledByAnotherCallback(',
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
     'static private PendingIntent mkintents(', 'static  PendingIntent  setalarm(',
@@ -126,7 +127,7 @@ class SuperGattCallback {
     static PendingIntent getBroadcast(Context c,int id,Intent i,int flags){return new PendingIntent(i.action);}
 }
 class BluetoothProfile {static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}
-class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;int getBondState(){return bondState;}boolean createBond(){return true;}}
+class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;String address=Natives.stored;int getBondState(){return bondState;}String getAddress(){return address;}boolean createBond(){return true;}}
 class BluetoothGatt {static final int GATT_CONNECTION_TIMEOUT=147,GATT_SUCCESS=0;BluetoothDevice getDevice(){return new BluetoothDevice();}int discoveries;boolean discoveryResult=true;boolean discoverServices(){if(!Thread.holdsLock(PowerManager.owner))throw new AssertionError("discovery outside callback monitor");discoveries++;return discoveryResult;}}
 class BluetoothGattCharacteristic {static final int WRITE_TYPE_DEFAULT=2;void setWriteType(int t){}UUID getUuid(){return UUID.randomUUID();}}
 class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;BluetoothGattDescriptor(BluetoothGattCharacteristic c){characteristic=c;}BluetoothGattCharacteristic getCharacteristic(){return characteristic;}byte[] getValue(){return new byte[]{0};}UUID getUuid(){return UUID.randomUUID();}}
@@ -335,6 +336,29 @@ public class DexGattCallback extends SuperGattCallback {
             cb.connectDevice(0);
             check(cb.scans==1,"unbonded G7 dialled its stored address under the application setting");
         }
+    }
+    static void duplicateCallbackKeepsTheBond() {
+        // Two callbacks dialling one G7, as a roster rebuild can find: the one it
+        // drops leaves the bond to the one that keeps reading the sensor.
+        DexGattCallback kept=fresh(),dropped=fresh();
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(kept);SensorBluetooth.gattcallbacks.add(dropped);
+        dropped.free();
+        check(dropped.unbondCalls==0&&dropped.stop&&dropped.dataptr==0,"dropping a second callback removed the bond of the G7 still read");
+        // The last callback of the G7 going is the sensor going.
+        SensorBluetooth.gattcallbacks.remove(dropped);kept.free();
+        check(kept.unbondCalls==1,"the last callback of a G7 kept its bond");
+        // Neither another G7's callback nor a stopped one keeps it.
+        DexGattCallback other=fresh(),gone=fresh();other.mActiveBluetoothDevice.address="F0:00:00:00:00:02";
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(other);SensorBluetooth.gattcallbacks.add(gone);
+        gone.free();check(gone.unbondCalls==1,"another G7's callback kept this one's bond");
+        DexGattCallback paused=fresh(),freed=fresh();paused.setPause(true);
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(paused);SensorBluetooth.gattcallbacks.add(freed);
+        freed.free();check(freed.unbondCalls==1,"a stopped callback kept the bond");
+        // Without a device, its stored address names the G7.
+        DexGattCallback reading=fresh(),scanning=fresh();scanning.mActiveBluetoothDevice=null;
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(reading);SensorBluetooth.gattcallbacks.add(scanning);
+        scanning.free();check(scanning.unbondCalls==0,"a callback between scans removed the bond of the G7 still read");
+        SensorBluetooth.gattcallbacks.clear();
     }
     static DexGattCallback fresh(){
         Applic.prefs=new Prefs();Applic.alarms=new AlarmManager();
@@ -598,8 +622,8 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();current=cb.mBluetoothGatt;current.discoveryResult=false;cb.bonded();Applic.runUi();check(cb.disconnects==1,"current discovery failure lost recovery");
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
         preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
-        unbondedG7ConnectsLikeAFirstPairing();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
