@@ -654,6 +654,11 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
      * reading showed the previous one, the watch face was not redrawn and the loss
      * alarm still counted from the previous reading. It is not pushed back.
      *
+     * The alarms go as for a reading taken here: one that only the other device
+     * got raises here what this device would have raised for it, once. The phone
+     * had already sent its exchange outputs from the sync, and that check sent
+     * them again; now they go once, from here.
+     *
      * @param autoValue the sensor's auto lane in display units, before calibration; NaN when absent
      * @param rawValue  its raw lane, the same way
      */
@@ -1032,9 +1037,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
      * phone's BLE callback never runs, so none of this fired and every exchange
      * target silently stopped for as long as the watch owned the sensor.
      *
-     * Deliberately excludes alarms, notifications and speech: those are wired
-     * into dowithglucose and stay there, so mirroring a reading cannot produce a
-     * second alarm for one the other device has already handled.
+     * Such a reading now goes through the whole of dowithglucose instead
+     * ({@link #processPeerReading}): the 15 s alert check took each one through
+     * it anyway, later, alarms included, and so sent all of this a second time.
      *
      * @param pushToPeer false for a reading that came from the peer, so it is
      *                   not immediately sent back to the device it came from.
