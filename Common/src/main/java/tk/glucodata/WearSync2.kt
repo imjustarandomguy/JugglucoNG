@@ -589,10 +589,14 @@ object WearSync2 {
                 // Chunks travel in whichever direction ownership points. A device
                 // reading the sensor itself takes from the other only the readings
                 // it missed: when both read it (a G7) they are the same readings,
-                // and its own must never be replaced. Not a Libre 2: its polls are
-                // not minute slots, and filling them moves its BLE cursor (below).
-                val readsLocally = SensorOwnershipRuntime.readsLocally(serial)
-                val alreadyHave = if (readsLocally) {
+                // and its own must never be replaced. The same for a sensor read
+                // alongside that this device has not read yet since it started:
+                // what it asks for then is what it missed while it was down. Not
+                // a Libre 2: its polls are not minute slots, and filling them
+                // moves its BLE cursor (below).
+                val missingOnly = SensorOwnershipRuntime.readsLocally(serial) ||
+                    SensorOwnershipRuntime.readsAlongside(serial)
+                val alreadyHave = if (missingOnly) {
                     val filled = if (isLibre2NativeSensor(serial)) null
                     else runCatching { Natives.streamSlotsFilled(times, serial) }.getOrNull()
                     filled ?: run {
@@ -607,7 +611,7 @@ object WearSync2 {
                 val mirrorNative = Applic.isWearable || !isLibre2NativeSensor(serial)
                 // Taken before storing: a reading filled in behind this device's own
                 // newest is history, not the current value.
-                val localNewestMs = if (readsLocally) {
+                val localNewestMs = if (missingOnly) {
                     runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
                 } else 0L
                 var written = 0
@@ -697,7 +701,7 @@ object WearSync2 {
                     UiRefreshBus.requestDataRefresh()
                 }
                 if (doLog) {
-                    val scope = if (readsLocally) " (missing only)" else ""
+                    val scope = if (missingOnly) " (missing only)" else ""
                     Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final$scope")
                 }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }
