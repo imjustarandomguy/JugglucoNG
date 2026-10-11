@@ -694,11 +694,7 @@ class ICanHealthBleManager(
         if (kotlin.math.abs(System.currentTimeMillis() - timestampMs) > maxAgeMillis) {
             return null
         }
-        val glucoseDisplay = if (Applic.unit == 1) {
-            glucoseMgdl / ICanHealthConstants.MMOL_TO_MGDL
-        } else {
-            glucoseMgdl
-        }
+        val glucoseDisplay = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(glucoseMgdl, Applic.unit == 1)
         return ICanHealthCurrentSnapshot(
             timeMillis = timestampMs,
             glucoseValue = glucoseDisplay,

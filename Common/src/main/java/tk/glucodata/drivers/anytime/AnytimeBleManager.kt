@@ -4924,7 +4924,7 @@ class AnytimeBleManager(
             result.rawMgdl.isFinite() && result.rawMgdl > 0f -> result.rawMgdl
             else -> Float.NaN
         }
-        return if (Applic.unit == 1) mgdl / MGDL_PER_MMOLL_DISPLAY else mgdl
+        return tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(mgdl, Applic.unit == 1)
     }
 
     private fun algorithmTransmitterName(context: Context?): String {
@@ -5559,17 +5559,14 @@ class AnytimeBleManager(
         if (System.currentTimeMillis() - lastGlucoseAtMs > maxAgeMillis) return null
         return AnytimeCurrentSnapshot(
             timeMillis = lastGlucoseAtMs,
-            glucoseValue = if (Applic.unit == 1) {
-                lastGlucoseMgdlTimes10 * MGDL_TO_MMOLL / 10f
-            } else {
-                lastGlucoseMgdlTimes10 / 10f
-            },
+            glucoseValue = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(
+                lastGlucoseMgdlTimes10 / 10f,
+                Applic.unit == 1,
+            ),
             rawValue = if (lastRawMgdl.isNaN()) {
                 lastIwNa
-            } else if (Applic.unit == 1) {
-                lastRawMgdl * MGDL_TO_MMOLL
             } else {
-                lastRawMgdl
+                tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(lastRawMgdl, Applic.unit == 1)
             },
             rate = Float.NaN,
             sensorGen = SENSOR_GEN,
