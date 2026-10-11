@@ -766,12 +766,23 @@ object SensorOwnershipRuntime {
         // must still be unable to connect.
         releaseState.release(serial)
         Log.i(LOG_ID, "standing down from $serial: the other device is reading it")
-        val gatt = findGatt(serial) ?: return
-        runCatching {
-            gatt.setPause(true)
-            gatt.disconnect()
-        }.onFailure { Log.stack(LOG_ID, "release($serial)", it) }
+        // Every callback under any of the sensor's names, its GATT closed and not only
+        // disconnected: a paused callback never reconnects or closes it itself.
+        releasedGatts(serial).forEach { gatt ->
+            runCatching {
+                gatt.setPause(true)
+                gatt.closeGattTransport()
+            }.onFailure { Log.stack(LOG_ID, "release($serial)", it) }
+        }
     }
+
+    private fun releasedGatts(serial: String): List<SuperGattCallback> = runCatching {
+        val id = key(serial)
+        SensorBluetooth.mygatts()?.filter { gatt ->
+            val name: String? = gatt.SerialNumber
+            name != null && (key(name) == id || SensorIdentity.matches(name, serial))
+        }
+    }.getOrNull().orEmpty()
 
     private fun resume(serial: String, reason: String = "the other device is no longer reading it") {
         releaseState.resume(serial)
