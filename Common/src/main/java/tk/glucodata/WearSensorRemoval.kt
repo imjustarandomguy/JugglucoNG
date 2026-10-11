@@ -45,6 +45,27 @@ internal object WearSensorRemoval {
         return records.values.toList()
     }
 
+    /**
+     * Whether the Bluetooth callback named [callbackName], reading the native
+     * record [callbackRecord] (negative when unknown), is one of the [ended]
+     * records': named exactly as one of them, or reading one of [endedRecords].
+     *
+     * No identity matching: it relates a sensor's other spellings, but also
+     * takes a callback without a name for any sensor, and freeing a callback is
+     * not undone (a Dexcom one removes its sensor's bond). A callback without a
+     * name is never one.
+     */
+    fun readsEndedRecord(
+        callbackName: String?,
+        callbackRecord: Int,
+        ended: Collection<String>,
+        endedRecords: Set<Int>,
+    ): Boolean {
+        val name = usable(callbackName) ?: return false
+        return ended.any { it.trim().equals(name, ignoreCase = true) } ||
+            (callbackRecord >= 0 && callbackRecord in endedRecords)
+    }
+
     private fun usable(name: String?): String? =
         name?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) }
 }
