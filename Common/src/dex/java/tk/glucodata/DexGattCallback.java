@@ -95,6 +95,9 @@ private BluetoothGatt connectedAttempt;
 // half a minute; this is the minute the base class gives a connect just issued.
 private long connectedAtMs;
 private static final long DEXCOM_SESSION_GRACE_MS = 60_000L;
+// The device a scan delivered. It carries the G7's address type, which the
+// stack forgets with the bond; one made from the stored address does not.
+private volatile BluetoothDevice scannedDevice;
 private boolean known=false;
     public DexGattCallback(String SerialNumber, long dataptr) {
         super(SerialNumber, dataptr, 0x40);
@@ -299,10 +302,12 @@ private boolean connected=false;
      * first pairing. Once the bond is gone, the stack no longer knows the
      * stored address is a random one until it sees the sensor advertise, so a
      * connect to that address alone, direct or in the background, never
-     * completes. Without a device the base class scans.
+     * completes. That holds for the device made from the stored address at
+     * start or on a roster update, however long ago a scan found the sensor.
+     * Without a device the base class scans.
      */
     private boolean connectNow() {
-        if (foundtime == 0L && !bondedHere())
+        if (!bondedHere() && (foundtime == 0L || mActiveBluetoothDevice != scannedDevice))
             mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
     }
@@ -371,6 +376,12 @@ private boolean connected=false;
             cancelShortReconnect();
             releaselock();
         }
+    }
+
+    @Override
+    public void setDevice(BluetoothDevice device) {
+        scannedDevice = device;
+        super.setDevice(device);
     }
 
     /**

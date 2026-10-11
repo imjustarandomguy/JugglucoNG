@@ -31,7 +31,7 @@ methods = '\n'.join(method(s) for s in [
     'protected void onConnectionAttemptTimeout(', 'public synchronized boolean connectDevice(',
     'private boolean connectNow(', 'public void free(', 'private String dialledAddress(',
     'private boolean dialledByAnotherCallback(',
-    'public boolean reconnect(', 'private synchronized boolean sessionUnderWay(',
+    'public boolean reconnect(', 'private synchronized boolean sessionUnderWay(', 'public void setDevice(',
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
     'static private PendingIntent mkintents(', 'static  PendingIntent  setalarm(',
@@ -94,6 +94,8 @@ class SuperGattCallback {
     public synchronized boolean connectDevice(long delay){if(mActiveBluetoothDevice==null){scans++;foundtime=0;return false;}directCalls++;executorDelay=delay;mBluetoothGatt=new BluetoothGatt();return true;}
     // As the base class past its own checks: the link is dropped and dialled again.
     int reconnects;public boolean reconnect(long now){reconnects++;return connectDevice(0);}
+    // As a scan delivers a device.
+    public void setDevice(BluetoothDevice device){mActiveBluetoothDevice=device;}
     public void close(){closes++;mBluetoothGatt=null;}
     public void setPause(boolean pause){stop=pause;}
     public void onConnectionStateChange(BluetoothGatt g,int status,int state){}
@@ -317,7 +319,7 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.directCalls==calls&&cb.scans==1&&cb.mActiveBluetoothDevice==null
                 &&Natives.stored.equals(cb.mActiveDeviceAddress),"unbonded G7 dialled its stored address instead of scanning");
             // The scan found it: dialled directly, and pairing goes on from the connection.
-            cb.foundtime=System.now;cb.mActiveBluetoothDevice=new BluetoothDevice();
+            cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());
             cb.connectDevice(0);
             check(cb.directCalls==calls+1&&cb.scans==1&&!cb.useAutoConnect(),"G7 the scan found not dialled directly");
             // A dial between its adverts fails: still direct while it has no bond.
@@ -338,6 +340,25 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.useAutoConnect(),"application background setting ignored");
             cb.connectDevice(0);
             check(cb.scans==1,"unbonded G7 dialled its stored address under the application setting");
+        }
+    }
+    static void unbondedG7DialledOnlyWithTheScannedDevice() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // A scan found it once; since then its bond went, and a roster update rebuilt
+            // the device from the stored address: scanned for again, not dialled.
+            DexGattCallback cb=fresh();isWearable=wear;cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());cb.close();
+            BluetoothDevice.bondState=BOND_NONE;int calls=cb.directCalls;
+            cb.mActiveBluetoothDevice=new BluetoothDevice();
+            cb.connectDevice(0);
+            check(cb.scans==1&&cb.directCalls==calls&&cb.mActiveBluetoothDevice==null,"unbonded G7 dialled from its stored address");
+            // The device the next scan delivers is dialled.
+            BluetoothDevice scanned=new BluetoothDevice();cb.foundtime=System.now;cb.setDevice(scanned);
+            cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.mActiveBluetoothDevice==scanned,"device the scan found not dialled");
+            // Bonded, the device made from the stored address is dialled as before.
+            cb=fresh();isWearable=wear;cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());cb.close();calls=cb.directCalls;
+            cb.mActiveBluetoothDevice=new BluetoothDevice();cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.scans==0,"bonded G7 not dialled from its stored address");
         }
     }
     static void bondBackAfterItsRemoval() {
@@ -666,8 +687,8 @@ public class DexGattCallback extends SuperGattCallback {
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
         preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
         unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
-        bondBackAfterItsRemoval();lossAlarmSparesASessionUnderWay();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, a bond back after its removal, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        unbondedG7DialledOnlyWithTheScannedDevice();bondBackAfterItsRemoval();lossAlarmSparesASessionUnderWay();
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, an unbonded G7 dialled only with the device a scan found, a bond back after its removal, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
