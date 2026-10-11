@@ -185,13 +185,25 @@ class ReadingHub internal constructor(
         request(Reason.STARTUP)
     }
 
+    /**
+     * Runs [task] on the worker once every recompute asked for before it has run, its
+     * listeners included. A wake that holds the device awake for its publish lets go from
+     * there: the alarm's own hold ends when its receiver returns, before the worker has
+     * published anything.
+     */
+    fun afterPending(task: Runnable) {
+        // Under the lock, like a request: a recompute another thread has just asked for is
+        // already queued ahead of the task.
+        synchronized(lock) { worker.execute(task) }
+    }
+
     private fun request(reason: Reason) {
         synchronized(lock) {
             pendingReason = strongest(pendingReason, reason)
             if (!active || queued) return
             queued = true
+            worker.execute(::recompute)
         }
-        worker.execute(::recompute)
     }
 
     private fun recompute() {
@@ -380,6 +392,10 @@ object CurrentReadingHub {
 
     @JvmStatic
     fun onDeadline() = hub.onDeadline()
+
+    /** [ReadingHub.afterPending]: how a wake knows its publish has gone out. */
+    @JvmStatic
+    fun afterPending(task: Runnable) = hub.afterPending(task)
 
     /** Starts publishing: at process start on a device whose surfaces read the hub. */
     @JvmStatic
