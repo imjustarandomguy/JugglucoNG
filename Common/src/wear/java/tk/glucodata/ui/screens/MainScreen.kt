@@ -127,19 +127,6 @@ internal fun readingVelocities(
     return swept + (newest to snapshot.trendRate)
 }
 
-internal fun trendArrow(rate: Float): String = runCatching {
-    when (Natives.getxDripTrendName(rate)) {
-        "DoubleUp" -> "↑↑"
-        "SingleUp" -> "↑"
-        "FortyFiveUp" -> "↗"
-        "Flat" -> "→"
-        "FortyFiveDown" -> "↘"
-        "SingleDown" -> "↓"
-        "DoubleDown" -> "↓↓"
-        else -> ""
-    }
-}.getOrDefault("")
-
 @Composable
 fun MainScreen(
     onOpenSettings: () -> Unit,
