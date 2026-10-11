@@ -1,6 +1,11 @@
 package tk.glucodata
 
+import androidx.wear.watchface.complications.data.ComplicationText
+import androidx.wear.watchface.complications.data.PlainComplicationText
+import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
+import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -172,5 +177,59 @@ class WatchCurrentReadingTests {
         val alarm = alarmGlucose(gone, "54", null, -1.2f)
         assertEquals("54", alarm.primary)
         assertEquals(trendArrowText(-1.2f), alarm.trend)
+    }
+
+    // --- A stale value says how old it is where it cannot be dimmed. ---
+
+    private fun surrounding(text: ComplicationText): String =
+        text.toWireComplicationText().surroundingText.toString()
+
+    @Test
+    fun aStaleReadingsTextFormsShowItsValueAndAge() {
+        val watch = Watch(declaredIntervalMs = 5 * minute)
+        watch.advanceTo(t0 + 5 * minute + 20_000L)
+        val stale = GlucoseComplicationData.reading(watch.hub.current())!!
+        assertTrue(stale.stale)
+        assertEquals(t0, stale.lastReadingMillis)
+
+        val short = GlucoseComplicationData.shortValueData(stale, "Glucose", tapAction = null).text
+        assertTrue(short is TimeDifferenceComplicationText)
+        assertEquals("123·^1", surrounding(short))
+        // The face counts the age on: the text changes with no new data and no wake.
+        assertFalse(short.returnsSameText(Instant.ofEpochMilli(t0 + 6 * minute), Instant.ofEpochMilli(t0 + 9 * minute)))
+
+        val long = GlucoseComplicationData.longTextData(stale, "Glucose", tapAction = null).text
+        assertTrue(long is TimeDifferenceComplicationText)
+        assertEquals("123 · ^1", surrounding(long))
+    }
+
+    @Test
+    fun aFreshReadingsTextFormsShowItsValueAloneAndNoValueAtThirtyMinutes() {
+        val watch = Watch(declaredIntervalMs = 5 * minute)
+        val fresh = GlucoseComplicationData.shortValueData(
+            GlucoseComplicationData.reading(watch.hub.current()), "Glucose", tapAction = null,
+        ).text
+        assertTrue(fresh is PlainComplicationText)
+        assertEquals("123", surrounding(fresh))
+        watch.advanceTo(t0 + 5 * minute + 20_000L)
+        watch.advanceTo(t0 + 30 * minute)
+        val gone = GlucoseComplicationData.longTextData(
+            GlucoseComplicationData.reading(watch.hub.current()), "Glucose", tapAction = null,
+        ).text
+        assertTrue(gone is PlainComplicationText)
+        assertEquals(DisplayedReading.NO_VALUE_TEXT, surrounding(gone))
+    }
+
+    @Test
+    fun theOngoingActivitySaysHowOldAStaleValueIs() {
+        val watch = Watch(declaredIntervalMs = 5 * minute)
+        val ago = { at: Long, now: Long -> "${(now - at) / minute} min. ago" }
+        assertEquals("123", WearOngoingActivity.statusText(watch.hub.current(), t0 + minute, ago))
+        watch.advanceTo(t0 + 5 * minute + 20_000L)
+        assertEquals("123 · 5 min. ago", WearOngoingActivity.statusText(watch.hub.current(), t0 + 5 * minute + 20_000L, ago))
+        // Refreshed later (the loss alarm's tick, a data change): the age has moved on.
+        assertEquals("123 · 11 min. ago", WearOngoingActivity.statusText(watch.hub.current(), t0 + 11 * minute, ago))
+        watch.advanceTo(t0 + 30 * minute)
+        assertEquals(DisplayedReading.NO_VALUE_TEXT, WearOngoingActivity.statusText(watch.hub.current(), t0 + 30 * minute, ago))
     }
 }
