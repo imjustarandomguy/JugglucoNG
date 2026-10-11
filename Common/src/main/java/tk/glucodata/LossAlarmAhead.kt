@@ -3,8 +3,9 @@ package tk.glucodata
 /**
  * How long after a reading the loss alarm goes off ([SuperGlucoseAlarms.setagealarm]).
  *
- * While phone and watch both read a sensor, neither pushes the other its
- * readings, and a device that missed one asks the other for it from this alarm.
+ * While phone and watch both read a sensor, the watch pushes the phone none of
+ * its readings, the phone pushes the watch only those the watch has not said it
+ * read itself, and a device that missed one asks the other for it from this alarm.
  * At the sensor's own loss point (a G7: reading + 380 s) that came after the
  * screens had called the value stale (reading + 330 s, Notify.glucosetimeout),
  * so a watch that missed a reading showed "No value" for nearly a minute while

@@ -315,25 +315,31 @@ object WearSync2 {
     }
 
     /**
-     * [routine]: the push after a reading, skipped for a sensor both devices read,
-     * where it would be stored as nothing; one that misses a reading asks for it.
+     * [routine]: the push after a reading. For a sensor both devices read, where
+     * a reading the other has is stored as nothing, the watch pushes none and the
+     * phone only one the watch has not said it read itself; a device that still
+     * misses a reading asks for it.
      */
     private fun serveSince(fromSec: Long, routine: Boolean = false) {
         if (!wearCompanionEnabled()) return
         val serials = serveSerials()
         if (serials.isEmpty()) return
         serials.forEach { serial ->
-            if (routine && SensorOwnershipRuntime.bothRead(serial)) return@forEach
+            val bothRead = routine && SensorOwnershipRuntime.bothRead(serial)
+            // A message per reading on the watch's battery: the phone asks for one it missed.
+            if (bothRead && Applic.isWearable) return@forEach
             // The watch serves only what it reads itself; the rest came from the phone.
             if (Applic.isWearable && !SensorOwnershipRuntime.readsLocally(serial)) return@forEach
-            serveSensorSince(serial, fromSec)
+            serveSensorSince(serial, fromSec, unlessWatchReadIt = bothRead)
         }
     }
 
-    private fun serveSensorSince(serial: String, fromSec: Long) {
-        // Calibrations live on the phone; the watch must not echo back the
-        // anchors it was given or the two would fight over the revision.
-        if (!Applic.isWearable) sendCalibration(serial)
+    /**
+     * [unlessWatchReadIt]: the phone's routine push of a sensor both devices
+     * read, left out when the watch has said it read the newest of these
+     * readings itself ([DirectReadingStatus.phonePushesWhileBothRead]).
+     */
+    private fun serveSensorSince(serial: String, fromSec: Long, unlessWatchReadIt: Boolean = false) {
         // Serve the phone's authoritative Room-backed source lanes, not only the
         // native stream. For a managed driver native storage can begin after
         // Room history, which otherwise truncates the watch chart. Calibration
@@ -343,6 +349,23 @@ object WearSync2 {
         }.getOrDefault(emptyList())
             .filter { it.timestamp > 0L && GlucoseValuePlausibility.isPlausibleMgdl(it.value) }
             .sortedBy { it.timestamp }
+        if (unlessWatchReadIt) {
+            val newestMs = points.lastOrNull()?.timestamp ?: 0L
+            val watch = SensorOwnershipRuntime.peerDirectReading(serial)
+            val push = DirectReadingStatus.phonePushesWhileBothRead(watch, newestMs)
+            if (doLog && newestMs > 0L) {
+                Log.i(
+                    LOG_ID,
+                    "$serial newest=${newestMs / 1000L} watch direct=" +
+                        (if (watch.known) "${watch.lastMs / 1000L}" else "unknown") + ": " +
+                        if (push) "pushed, the watch has not said it read it" else "not pushed, the watch read it",
+                )
+            }
+            if (!push) return
+        }
+        // Calibrations live on the phone; the watch must not echo back the
+        // anchors it was given or the two would fight over the revision.
+        if (!Applic.isWearable) sendCalibration(serial)
         if (points.isEmpty()) return
         // Preserve the source precision on the wire. The earlier display-unit
         // snap was not a measured fix: native storage still stores whole mg/dL,

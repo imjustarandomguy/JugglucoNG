@@ -333,6 +333,53 @@ class DirectReadingStatusTests {
         assertFalse(isNew(0L, 0L))
     }
 
+    // ---------------------------------------- the phone's push while both read
+
+    private val reading = now - 4_000L
+
+    private fun phonePushes(watch: DirectReadingFact, newestMs: Long = reading) =
+        DirectReadingStatus.phonePushesWhileBothRead(watch, newestMs)
+
+    @Test
+    fun aWatchThatIsNotReadingTheSensorIsPushedEveryReading() {
+        // 2026-10-11: the watch held the G7 but had lost its bond, and got each
+        // value only from its loss alarm, 320 s late.
+        assertTrue(phonePushes(DirectReadingFact.at(now - 60 * minute)))
+        assertTrue(phonePushes(never))
+        assertTrue(phonePushes(unknown))
+    }
+
+    @Test
+    fun aWatchWhoseWordOnTheSameReadingIsNotInYetIsPushed() {
+        // Its last report is of the reading before: its session may have ended
+        // after the phone's. The watch takes only a slot it lacks.
+        assertTrue(phonePushes(DirectReadingFact.at(reading - 5 * minute)))
+    }
+
+    @Test
+    fun aWatchThatSaidItReadTheSameReadingIsNotPushed() {
+        // On this device's clock from an age: a second or two either side.
+        assertFalse(phonePushes(DirectReadingFact.at(reading + 1_500L)))
+        assertFalse(phonePushes(DirectReadingFact.at(reading - 2_000L)))
+        // Or a later one: this push carries nothing it lacks.
+        assertFalse(phonePushes(DirectReadingFact.at(reading + 5 * minute)))
+    }
+
+    @Test
+    fun theSameReadingIsHalfAMinuteEitherWay() {
+        val same = DirectReadingStatus.SAME_READING_MS
+        assertFalse(phonePushes(DirectReadingFact.at(reading - same)))
+        assertTrue(phonePushes(DirectReadingFact.at(reading - same - 1L)))
+        // Well inside a G7's five minutes, so the reading before never passes for it.
+        assertTrue(same < 5 * minute / 2)
+    }
+
+    @Test
+    fun nothingToPushIsNotPushed() {
+        assertFalse(phonePushes(unknown, newestMs = 0L))
+        assertFalse(phonePushes(never, newestMs = 0L))
+    }
+
     @Test
     fun theDriverHandsOverTheReadingTimeNotTheArrivalTime() {
         val source = File(repoRoot(), "Common/src/main/java/tk/glucodata/SuperGattCallback.java").readText()

@@ -566,8 +566,9 @@ object SensorOwnershipRuntime {
     /**
      * Whether both devices are set to read a sensor this device has: one read
      * alongside ([readsAlongside]) with "Direct sensor on watch" on for it.
-     * Neither then pushes the other its readings; a device that misses one
-     * asks for it from its loss alarm.
+     * The watch then pushes the phone none of its readings, the phone pushes
+     * the watch only those the watch has not said it read itself, and a device
+     * that still misses one asks for it from its loss alarm.
      */
     @JvmStatic
     fun anySetToReadAlongside(): Boolean = runCatching {
@@ -587,6 +588,17 @@ object SensorOwnershipRuntime {
     private fun peerReadsCurrently(serial: String): Boolean {
         val peer = peerReportFor(serial) ?: return false
         return peer.owns && System.currentTimeMillis() - peer.receivedAtMs <= PEER_SILENT_AFTER_MS
+    }
+
+    /**
+     * The peer's own newest reading of [serial], straight from the sensor, as
+     * its last report put it; unknown before it has said. Holding a sensor is
+     * not reading it: a watch whose G7 bond was lost still held it.
+     */
+    @JvmStatic
+    fun peerDirectReading(serial: String?): DirectReadingFact {
+        val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return DirectReadingFact.UNKNOWN
+        return peerReportFor(target)?.directReading ?: DirectReadingFact.UNKNOWN
     }
 
     /**
@@ -774,8 +786,9 @@ object SensorOwnershipRuntime {
 
     /**
      * The first word from the peer since this process started. For a sensor
-     * both read, neither device pushes the other its readings: one that misses
-     * a reading asks for it from its loss alarm. A reading missed while this
+     * both read, a device that misses a reading asks for it from its loss
+     * alarm: the watch pushes the phone none, and a push the phone sends a
+     * watch that is down is lost. A reading missed while this
      * device was down (an install, a reboot) had no alarm left to ask for it,
      * so the watch showed "No value" until its app was opened, and the phone
      * waited for the sensor's own backfill. Ask once, now: only for what came
