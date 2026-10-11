@@ -200,6 +200,21 @@ class CurrentReadingHubTests {
     }
 
     @Test
+    fun aSurfaceDrawnAtStartWaitsForTheFirstPublish() {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val hub = ReadingHub({ Thread.sleep(50L); inputs(reading(t0)) }, worker, ReadingClock(FakeScheduler()), { t0 })
+            val shown = hub.awaitCurrent(5_000L)
+            assertEquals(1L, shown.revision)
+            assertEquals("120", shown.shownText)
+            // One flow for every collector, not a new one per read.
+            assertTrue(hub.readings === hub.readings)
+        } finally {
+            worker.shutdownNow()
+        }
+    }
+
+    @Test
     fun theFirstPublishIsStartupAndTheSameReadingIsNotPublishedAgain() {
         val rig = Rig(inputs(reading(t0)))
         assertEquals(1, rig.published.size)
