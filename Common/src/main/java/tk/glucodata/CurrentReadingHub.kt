@@ -457,14 +457,19 @@ object CurrentReadingHub {
     fun setScheduler(scheduler: ReadingScheduler) = hub.setScheduler(scheduler)
 
     /**
-     * The current reading worked out now, on the caller's thread, and not published: for a
-     * surface that has to draw a reading before the hub publishes it, such as an alarm,
-     * which fires while its reading is being accepted.
+     * The arrow of an alarm that fired on [alerting], the reading taken at
+     * [alertingTimeMillis] as the alert engine resolved it. Worked out on the caller's
+     * thread, as an alarm fires while its reading is being accepted, before the hub
+     * publishes it: the current reading's arrow ([DisplayedReading.alarmRate]) once that
+     * has caught up with [alerting], else [alerting]'s own display arrow over the stored
+     * rows, as the hub draws it a moment later.
      */
     @JvmStatic
-    fun resolveNow(): DisplayedReading {
+    fun alarmRate(alerting: CurrentDisplaySource.Snapshot?, alertingTimeMillis: Long, firedRate: Float): Float {
         val now = System.currentTimeMillis()
-        return ReadingHub.compose(source.read(now), now)
+        return ReadingHub.compose(source.read(now), now).alarmRate(alertingTimeMillis, firedRate) {
+            alerting?.let { source.rateFor(it, now) } ?: Float.NaN
+        }
     }
 
     /**
@@ -560,6 +565,17 @@ internal class StoredReadingSource : ReadingHub.Source {
             newestReadingMillis = newestReadingMillis(history, liveMillis, nowMillis),
             others = others,
         )
+    }
+
+    /**
+     * The display arrow's rate for [snapshot], a reading perhaps not stored yet, over its
+     * sensor's stored rows: the rate this source gives it once it is the current reading.
+     */
+    fun rateFor(snapshot: CurrentDisplaySource.Snapshot, nowMillis: Long): Float {
+        val history = runCatching {
+            NotificationHistorySource.getDisplayHistory(nowMillis - HISTORY_MS, snapshot.isMmol, snapshot.sensorId)
+        }.getOrDefault(emptyList()).let { notAhead(it, nowMillis) }
+        return runCatching { displayRate(history, snapshot) }.getOrDefault(Float.NaN)
     }
 
     /** What the clock needs of a sensor shown beside the first: its reading times, no value. */

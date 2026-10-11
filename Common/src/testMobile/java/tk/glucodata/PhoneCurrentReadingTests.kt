@@ -218,6 +218,40 @@ class PhoneCurrentReadingTests {
     }
 
     @Test
+    fun anAlarmFiredBeforeItsReadingIsInPlaceDrawsThatReadingsArrow() {
+        // dowithglucose hands reading N to the alert engine before the live slot and the
+        // stored row hold it: the current reading is still N-1, fresh, rising.
+        val phone = Phone(declaredIntervalMs = 5 * minute)
+        val previous = phone.hub.current()
+        assertEquals(1.4f, previous.shownRate, 0f)
+        val n = t0 + 5 * minute
+        phone.now = n + 2_000L
+        assertEquals("N's arrow, not N-1's", -2.1f, previous.alarmRate(n, -3f) { -2.1f }, 0f)
+        assertEquals("N without a trend yet: the fired rate", -3f, previous.alarmRate(n, -3f) { Float.NaN }, 0f)
+        // N-1 already stale when N comes: still N's arrow, not none.
+        phone.advanceTo(n + 20_000L)
+        assertEquals(Freshness.STALE, phone.hub.current().freshness)
+        assertEquals(-2.1f, phone.hub.current().alarmRate(n + 30_000L, -3f) { -2.1f }, 0f)
+        // Once N is in place, the arrow every surface draws, whatever the engine resolved.
+        phone.reading = scripted(n, "131", -1.8f)
+        phone.hub.onReadingAccepted(sensor, n, Origin.LOCAL)
+        assertEquals(-1.8f, phone.hub.current().alarmRate(n, -3f) { error("not needed") }, 0f)
+        assertEquals(-1.8f, phone.hub.current().alarmRate(n + 1_000L, -3f) { error("same reading") }, 0f)
+    }
+
+    @Test
+    fun theAlarmArrowAsksForTheReadingTheAlertsWereEvaluatedOn() {
+        val root = generateSequence(java.io.File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+            .first { java.io.File(it, "Common/src/main/java/tk/glucodata/Notify.java").exists() }
+        val notify = java.io.File(root, "Common/src/main/java/tk/glucodata/Notify.java").readText().replace("\r\n", "\n")
+        val start = notify.indexOf("static float alarmArrowRate(notGlucose glucose) {")
+        assertTrue(start >= 0)
+        val body = notify.substring(start, notify.indexOf("\n    }\n", start))
+        assertTrue(body.contains("alerts.evaluatedReading(), alerts.evaluatedReadingTimeMs()"))
+        assertTrue(body.contains("CurrentReadingHub.alarmRate("))
+    }
+
+    @Test
     fun theHeroAgesItsNoDataLabelWithoutChangingFreshness() {
         val phone = Phone(declaredIntervalMs = 5 * minute)
         phone.advanceTo(t0 + 30 * minute)
