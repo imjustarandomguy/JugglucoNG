@@ -6,8 +6,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * For a sensor phone and watch both read, neither pushes the other its
- * readings; a device that misses one asks from its loss alarm. A reading missed
+ * For a sensor phone and watch both read, a device that misses a reading asks
+ * for it from its loss alarm. A reading missed
  * while a device was down had nothing left to ask for it: the phone rebooted on
  * 2026-10-09 and never asked the watch, and the rebooted watch showed "No
  * value" until its app was opened on 2026-10-10.
