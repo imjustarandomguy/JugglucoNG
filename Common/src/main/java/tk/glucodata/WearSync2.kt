@@ -579,13 +579,21 @@ object WearSync2 {
                 val localOwner = SensorOwnershipRuntime.readsLocally(serial)
                 val managedWatchImport = Applic.isWearable &&
                     SensorIdentity.usesNativeDirectStreamShell(serial)
-                // Chunks travel in whichever direction ownership points. Any other
-                // device reading the sensor itself takes from the other only the
-                // readings it missed: when both read it (a G7) they are the same
-                // readings, and its own must never be replaced. Not a Libre 2: its
+                // Chunks travel in whichever direction ownership points. A sensor
+                // read alongside the other device (a G7, each over its own channel)
+                // is taken only for the readings this device missed: they are the
+                // same readings, and its own must never be replaced. The same
+                // before this device has read it since it started: what it asks
+                // for then is what it missed while it was down. Any other sensor
+                // this device reads itself is not taken at all. Not a Libre 2: its
                 // polls are not minute slots, and filling them moves its BLE cursor
                 // (below).
-                val alreadyHave = if (localOwner && !managedWatchImport) {
+                val missingOnly = !managedWatchImport && SensorOwnershipRuntime.readsAlongside(serial)
+                if (localOwner && !managedWatchImport && !missingOnly) {
+                    if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
+                    return@execute
+                }
+                val alreadyHave = if (missingOnly) {
                     val filled = if (isLibre2NativeSensor(serial)) null
                     else runCatching { Natives.streamSlotsFilled(times, serial) }.getOrNull()
                     filled ?: run {
@@ -600,7 +608,7 @@ object WearSync2 {
                 val mirrorNative = Applic.isWearable || !isLibre2NativeSensor(serial)
                 // Taken before storing: a reading filled in behind this device's own
                 // newest is history, not the current value.
-                val localNewestMs = if (localOwner) {
+                val localNewestMs = if (missingOnly) {
                     runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
                 } else 0L
                 var written = 0
@@ -698,7 +706,7 @@ object WearSync2 {
                     UiRefreshBus.requestDataRefresh()
                 }
                 if (doLog) {
-                    val scope = if (localOwner) " (missing only)" else ""
+                    val scope = if (missingOnly) " (missing only)" else ""
                     Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final$scope")
                 }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }

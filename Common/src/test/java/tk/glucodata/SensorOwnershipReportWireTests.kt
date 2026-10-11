@@ -106,4 +106,40 @@ class SensorOwnershipReportWireTests {
         payload[0] = 2
         assertNull(SensorOwnershipRuntime.decodeReport(payload))
     }
+
+    // A device that has just started asks the other to answer at once, so it
+    // can ask for the readings it missed while it was down.
+
+    @Test
+    fun anAnswerRequestTravelsAsOneMoreByte() {
+        val payload = SensorOwnershipRuntime.encode(
+            serial, owns = false, lastReadingMs = 42L, directAgeMs = 7L, answerRequested = true,
+        )
+        val plain = SensorOwnershipRuntime.encode(serial, owns = false, lastReadingMs = 42L, directAgeMs = 7L)
+        assertArrayEquals(plain, payload.copyOfRange(0, plain.size))
+        assertEquals(plain.size + 1, payload.size)
+        assertEquals(
+            SensorOwnershipRuntime.Report(serial, false, 42L, 7L, answerRequested = true),
+            SensorOwnershipRuntime.decodeReport(payload),
+        )
+    }
+
+    @Test
+    fun aReportThatAsksNothingIsTheSameAsBefore() {
+        val report = SensorOwnershipRuntime.decodeReport(
+            SensorOwnershipRuntime.encode(serial, owns = true, lastReadingMs = 1234L, directAgeMs = 95_000L),
+        )
+        assertEquals(false, report?.answerRequested)
+        assertEquals(false, SensorOwnershipRuntime.decodeReport(legacyPayload(true, 1234L))?.answerRequested)
+    }
+
+    @Test
+    fun anOlderPeerReadsAnAnswerRequestAsAnOrdinaryReport() {
+        val payload = SensorOwnershipRuntime.encode(
+            serial, owns = true, lastReadingMs = 1234L, directAgeMs = 95_000L, answerRequested = true,
+        )
+        assertEquals(Triple(serial, true, 1234L), legacyDecode(payload))
+        // A build that knows the direct age but not the flags reads its 8 bytes and stops.
+        assertEquals(95_000L, ByteBuffer.wrap(payload, 3 + serial.length + 8, 8).long)
+    }
 }
