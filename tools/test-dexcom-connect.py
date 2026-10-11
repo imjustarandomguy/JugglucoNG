@@ -47,7 +47,7 @@ methods = '\n'.join(method(s) for s in [
     else 'private void releaselock(',
     'private void authenticate(', 'static private boolean equalpart(',
     'static boolean    createBond(', 'private void resetCerts(', 'private void resetconnect(',
-    'private    void getdata(', 'private boolean isWarmupReading(',
+    'private    void getdata(', 'private boolean isWarmupReading(', 'private void askGlucoseAgain(',
     'private void docmd0(', 'private void requestAuth(', 'public int getAuthSlot(',
     'public synchronized boolean changeAuthSlot(',
 ])
@@ -104,7 +104,7 @@ class SuperGattCallback {
     public void onCharacteristicChanged(BluetoothGatt g,BluetoothGattCharacteristic c,byte[] value){}
     boolean discover(BluetoothGatt g){payloadCalls++;return true;}
     void tryer(Runnable r){r.run();}void enableIndication(BluetoothGatt g,BluetoothGattCharacteristic c){}
-    void askbackfill(){}void write(int which,byte[] value){lastWrite=value;}
+    void askbackfill(){}int glucoseRequests;void write(int which,byte[] value){lastWrite=value;if(which==0&&value.length==1&&value[0]==0x4E)glucoseRequests++;}
     void cmd(BluetoothGatt g,int num){}
     void enableGattDescriptor(BluetoothGatt g,BluetoothGattCharacteristic c,byte[] value){}
     void getcert(byte[] v){payloadCalls++;}void handleGlucoseResult(long res,long time){
@@ -238,6 +238,54 @@ public class DexGattCallback extends SuperGattCallback {
     }
     static boolean shortWaitEnded(DexGattCallback cb){
         return !cb.shortReconnectPending&&(cb.reconnectlock==null||!cb.reconnectlock.held);
+    }
+    static void previousReadingAskedAgain() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // The reading already published comes back: not published again, asked for twice more.
+            DexGattCallback cb=fresh();isWearable=wear;BluetoothGatt gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==1000&&cb.datatime==System.now,"reading already published counted again or not asked again");
+            System.now+=1000;Applic.scheduler.lastTask().run();check(cb.glucoseRequests==1,"glucose not asked again");
+            cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==1000,"second ask missing");
+            System.now+=1000;Applic.scheduler.lastTask().run();check(cb.glucoseRequests==2,"glucose not asked a second time");
+            cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==10,"asked more than twice, or published the reading it had");
+            cb.onConnectionStateChange(gatt,19,0);System.now+=300000;cb.connectDevice(0);gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(Applic.scheduler.lastDelay()==1000,"a new session did not ask again");
+
+            // The new value is ready a second later: published with its own time.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            System.now+=1000;Applic.scheduler.lastTask().run();
+            Natives.sampleAge=3000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&cb.lastPublishedTime==System.now-3000&&cb.publishedSampleMs==System.now-3000
+                &&Applic.scheduler.lastDelay()==10,"fresh reading after asking again not published");
+
+            // An old reading this device lacks is published at once, and the new one still asked for.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-600000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&Applic.scheduler.lastDelay()==1000,"missed reading dropped, or the new one not asked for");
+
+            // Gone before the second ask: nothing is written on a closed link.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            Runnable ask=Applic.scheduler.lastTask();cb.onConnectionStateChange(gatt,19,0);ask.run();
+            check(cb.glucoseRequests==0,"asked again on a closed link");
+
+            // A fresh reading or a failed one is never asked for again.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;cb.onConnectionStateChange(gatt,0,2);
+            Natives.sampleAge=4000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&Applic.scheduler.lastDelay()==10,"fresh reading asked again");
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;cb.onConnectionStateChange(gatt,0,2);
+            Natives.result=0;Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(Applic.scheduler.lastDelay()==10,"failed reading asked again");
+        }
     }
     static void shortReconnectWaits() {
         DexGattCallback cb=fresh();cb.close();int calls=cb.directCalls;
@@ -586,10 +634,10 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();cb.mActiveBluetoothDevice=null;cb.bonded();check(Applic.ui.isEmpty(),"bonded without device queued discovery");
         cb=fresh();current=cb.mBluetoothGatt;current.discoveryResult=false;cb.bonded();Applic.runUi();check(cb.disconnects==1,"current discovery failure lost recovery");
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
-        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();
+        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
         authSlots();
         challengeReplies();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
