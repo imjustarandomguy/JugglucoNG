@@ -62,6 +62,11 @@ internal data class PersistentLowDecision(
  * - Only a recovery to threshold + margin resets it. A reading between the
  *   threshold and that line neither resets the timer nor fires, so a real low
  *   hovering at the line (3.8, 4.0, 3.8) keeps its count.
+ * - Both lines are compared as the reading is shown ([ShownGlucose]): at 3.9
+ *   with a margin of 0.5, 70 mg/dL (3.889 mmol/L, shown 3.9) is not below the
+ *   threshold, 68 (3.8) is, and 79 (4.389, shown 4.4) has recovered.
+ *   Unrounded, a reading shown as 3.9 counted as below 3.9 and one shown as
+ *   4.4 as not yet recovered.
  * - Disabled, no threshold or duration, or outside the time window: reset.
  *   A missing value does not reset: a lost sample is not a recovery.
  * - VERY_LOW holds it only while VERY_LOW's own episode is active (its
@@ -88,12 +93,6 @@ internal object PersistentLowPolicy {
      * one-minute sensors still need the full count.
      */
     const val READING_TIME_TOLERANCE_MS = 30_000L
-
-    /**
-     * Float slack on the recovery line: 3.9f + 0.2f lands just above 4.1f, so
-     * without it a reading of exactly 4.1 mmol/L would not count as recovered.
-     */
-    private const val RECOVERY_EPSILON = 0.001f
 
     fun defaultRearmMargin(isMmol: Boolean): Float =
         if (isMmol) AlertDefaults.PERSISTENT_LOW_REARM_MARGIN_MMOL else AlertDefaults.PERSISTENT_LOW_REARM_MARGIN_MGDL
@@ -138,14 +137,14 @@ internal object PersistentLowPolicy {
             return PersistentLowDecision(PersistentLowAction.WAIT, state, "persistent-low-no-value")
         }
 
-        if (value >= recoveredAt(threshold, config, isMmol)) {
+        if (!ShownGlucose.isBelow(value, recoveryLine(threshold, config, isMmol), isMmol)) {
             return reset("persistent-low-cleared")
         }
 
         if (veryLowActive) {
             return PersistentLowDecision(PersistentLowAction.HOLD, state.copy(heldByVeryLow = true), "persistent-low-very-low")
         }
-        val below = value < threshold
+        val below = ShownGlucose.isBelow(value, threshold, isMmol)
         var next = state
         if (next.heldByVeryLow) {
             // VERY_LOW's episode ended at this reading: the count starts over here.
@@ -195,11 +194,11 @@ internal object PersistentLowPolicy {
         veryLow: AlertConfig? = null
     ): EpisodeStart? {
         val threshold = thresholdOf(config) ?: return null
-        val recoveredAt = recoveredAt(threshold, config, isMmol)
+        val recoveryLine = recoveryLine(threshold, config, isMmol)
         val start = EpisodeHistory.startOf(readings) { value ->
             when {
-                value >= recoveredAt -> EpisodeHistory.Kind.END
-                value < threshold -> EpisodeHistory.Kind.START
+                !ShownGlucose.isBelow(value, recoveryLine, isMmol) -> EpisodeHistory.Kind.END
+                ShownGlucose.isBelow(value, threshold, isMmol) -> EpisodeHistory.Kind.START
                 else -> EpisodeHistory.Kind.BAND
             }
         } ?: return null
@@ -212,10 +211,10 @@ internal object PersistentLowPolicy {
         var inVeryLow = false
         readings.forEach { reading ->
             if (reading.timeMs < start.startedAtMs || !reading.value.isFinite()) return@forEach
-            inVeryLow = reading.value < if (inVeryLow) veryLowExit else veryLowEntry
+            inVeryLow = ShownGlucose.isBelow(reading.value, if (inVeryLow) veryLowExit else veryLowEntry, isMmol)
             if (inVeryLow) {
                 startedAtMs = 0L
-            } else if (startedAtMs == 0L && reading.value < threshold) {
+            } else if (startedAtMs == 0L && ShownGlucose.isBelow(reading.value, threshold, isMmol)) {
                 startedAtMs = reading.timeMs
             }
         }
@@ -224,11 +223,11 @@ internal object PersistentLowPolicy {
 
     private fun thresholdOf(config: AlertConfig): Float? = config.threshold?.takeIf { it.isFinite() && it > 0f }
 
-    /** At or above this the low is over and the timer resets: threshold + margin. */
-    private fun recoveredAt(threshold: Float, config: AlertConfig, isMmol: Boolean): Float {
+    /** Shown at or above this the low is over and the timer resets: threshold + margin. */
+    private fun recoveryLine(threshold: Float, config: AlertConfig, isMmol: Boolean): Float {
         val margin = (config.rearmMargin ?: defaultRearmMargin(isMmol)).takeIf { it.isFinite() }
             ?.coerceAtLeast(0f) ?: defaultRearmMargin(isMmol)
-        return if (margin > 0f) threshold + margin - RECOVERY_EPSILON else threshold
+        return threshold + margin
     }
 
     private fun reset(reason: String) =
