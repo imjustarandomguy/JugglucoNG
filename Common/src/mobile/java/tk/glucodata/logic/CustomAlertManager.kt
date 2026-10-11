@@ -13,6 +13,7 @@ import tk.glucodata.alerts.AlertEpisodeState
 import tk.glucodata.alerts.CustomAlertConfig
 import tk.glucodata.alerts.CustomAlertRepository
 import tk.glucodata.alerts.CustomAlertType
+import tk.glucodata.alerts.ShownGlucose
 
 object CustomAlertManager {
     private const val TAG = "CustomAlertManager"
@@ -81,8 +82,9 @@ object CustomAlertManager {
             true
         }
 
+        val isMmol = Applic.unit == 1
         val activeConditionConfigs = activeWindowConfigs.filter { config ->
-            isConditionActive(config, glucose)
+            isConditionActive(config, glucose, isMmol)
         }
 
         val activeIds = activeConditionConfigs.map { it.id }.toSet()
@@ -234,11 +236,15 @@ object CustomAlertManager {
         )
     }
 
-    private fun isConditionActive(config: CustomAlertConfig, glucose: Float): Boolean {
+    /**
+     * Compared as the reading is shown, like the standard Low and High
+     * ([ShownGlucose]): a reading shown as the threshold is not past it.
+     */
+    internal fun isConditionActive(config: CustomAlertConfig, glucose: Float, isMmol: Boolean): Boolean {
         return if (config.type == CustomAlertType.HIGH) {
-            glucose > config.threshold
+            ShownGlucose.isAbove(glucose, config.threshold, isMmol)
         } else {
-            glucose < config.threshold
+            ShownGlucose.isBelow(glucose, config.threshold, isMmol)
         }
     }
 
