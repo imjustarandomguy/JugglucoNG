@@ -1,6 +1,8 @@
 package tk.glucodata.ui.util
 
 import tk.glucodata.Applic
+import tk.glucodata.SensorBluetooth
+import tk.glucodata.SensorIdentity
 import tk.glucodata.drivers.ManagedSensorRuntime
 import tk.glucodata.drivers.ManagedSensorStatusPolicy
 
@@ -16,7 +18,10 @@ fun resolveDashboardSensorStatus(
     startMsec: Long,
     nativeStatus: String
 ): String {
-    val warmupStatus = getLegacyWarmupStatus(Applic.app, sensorKind, startMsec, nativeStatus)
+    val gatt = runCatching {
+        SensorBluetooth.mygatts().firstOrNull { SensorIdentity.matches(it.SerialNumber, serial) }
+    }.getOrNull()
+    val warmupStatus = getLegacyWarmupStatus(Applic.app, sensorKind, startMsec, nativeStatus, gatt = gatt)
     if (warmupStatus != null) {
         return warmupStatus
     }
