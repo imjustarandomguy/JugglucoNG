@@ -1610,6 +1610,48 @@ bool libreviewable() const {
     return true;
   }
 
+  // Makes a record that held a G7's synced readings, in 1-minute slots, the
+  // record its Dexcom driver writes: the header mkdatabaseDex would write and
+  // 5-minute slots from the sensor's start. The old slots mean nothing in that
+  // layout, so they are cleared; the caller syncs them again. The lifetime is
+  // the one the code names, as a scan gives it to mkdatabaseDex.
+  void becomeDexcom(std::string_view code, uint32_t sensorstart) {
+    rebaseDirectStreamWindow(sensorstart);
+    auto *info = getinfo();
+    const int wearDays = dexcomWearDays(code);
+    info->lastscantime = sensorstart;
+    info->starthistory = 0;
+    info->endhistory = 0;
+    info->scancount = 0;
+    info->startid = 0;
+    info->interval = interval5;
+    info->dexcom = true;
+    info->days = static_cast<uint8_t>(wearDays + 2);
+    info->warmup = 30;
+    info->wearduration = static_cast<uint16_t>(dexcom::wearMinutes(wearDays));
+    info->lastLifeCountReceived = 1;
+    info->lastHistoricLifeCountReceivedPos = 0;
+    info->healthconnectiter = 0;
+    info->siIdlen = std::min(code.size(), sizeof(info->siId));
+    memcpy(info->siId, code.data(), info->siIdlen);
+  }
+
+  // A Dexcom code's lifetime in days: 15 for the 15-day models, else 10.
+  static int dexcomWearDays(std::string_view code) {
+    const auto scan = dexcom::parseScan(code);
+    return scan ? scan->days : 10;
+  }
+
+  // Raises a Dexcom record's lifetime to the one its code names, as a rescan
+  // of a known sensor does; never shortens it.
+  void raiseDexcomLifetime(std::string_view code) {
+    auto *info = getinfo();
+    const int wearDays = dexcomWearDays(code);
+    info->wearduration = std::max<uint16_t>(
+        info->wearduration, static_cast<uint16_t>(dexcom::wearMinutes(wearDays)));
+    info->days = std::max<uint8_t>(info->days, wearDays + 2);
+  }
+
 #endif
   /*
 bool bluetoothfirst() const {

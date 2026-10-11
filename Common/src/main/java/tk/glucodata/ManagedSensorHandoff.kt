@@ -73,6 +73,7 @@ object ManagedSensorHandoff {
             }
         }
         root.put("entries", entries)
+        dexcomPairing()?.let { root.put("dexcom", it) }
         // Which namespaces actually travelled is otherwise invisible: a receiver that comes up
         // with no auth material looks exactly like one that was never sent any.
         run {
@@ -108,6 +109,7 @@ object ManagedSensorHandoff {
                         ManagedCurrentSensor.set(sensorId)
                     }
                 }
+            root.optJSONObject("dexcom")?.let(::adoptDexcom)
             run {
             val perPrefs = LinkedHashMap<String, Int>()
             for (i in 0 until entries.length()) {
@@ -137,6 +139,33 @@ object ManagedSensorHandoff {
             Log.stack(LOG_ID, "applyIncoming", th)
             false
         }
+    }
+
+    /**
+     * What the receiving device needs to pair with the selected G7 itself, or
+     * null for any other sensor. A G7 record is native, so none of the
+     * preferences above describe it. Like Juggluco's own mirror this sends the
+     * scanned code (it ends in the PIN), the sensor's Bluetooth name and its
+     * start, not the pairing key: the receiver pairs with the PIN.
+     */
+    private fun dexcomPairing(): JSONObject? {
+        val sensorId = SensorIdentity.resolveMainSensor() ?: return null
+        val fields = runCatching { Natives.dexHandoff(sensorId) }.getOrNull() ?: return null
+        if (fields.size < 4) return null
+        val start = fields[3].toLongOrNull() ?: return null
+        return JSONObject()
+            .put("name", fields[0])
+            .put("code", fields[1])
+            .put("deviceName", fields[2])
+            .put("start", start)
+    }
+
+    private fun adoptDexcom(dexcom: JSONObject) {
+        val name = dexcom.optString("name").trim().takeIf { it.isNotEmpty() } ?: return
+        val code = dexcom.optString("code").takeIf { it.isNotEmpty() } ?: return
+        val start = dexcom.optLong("start").takeIf { it > 0L } ?: return
+        val deviceName = dexcom.optString("deviceName").takeIf { it.isNotEmpty() }
+        WearSync2.adoptDexcomSensor(name, code, start, deviceName)
     }
 
     private fun collectManagedCandidates(context: Context?): Set<String> {
