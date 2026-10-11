@@ -2,6 +2,8 @@ package tk.glucodata
 
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import tk.glucodata.DisplayedReading.Freshness
@@ -42,19 +44,31 @@ class PhoneReadingClockTests {
     private val published = ArrayList<DisplayedReading>()
     private lateinit var savedAlarms: PhoneReadingClock.Alarms
     private lateinit var savedLossAlarm: () -> Long
+    private lateinit var savedAfterDrawn: (Runnable) -> Unit
+    private lateinit var savedBackstop: (Runnable) -> Unit
+
+    /** What the wake's chain and its backstop were handed, run by the test when it chooses. */
+    private val drawnSteps = ArrayList<Runnable>()
+    private val backstops = ArrayList<Runnable>()
 
     @Before
     fun installFakes() {
         savedAlarms = PhoneReadingClock.alarms
         savedLossAlarm = PhoneReadingClock.lossAlarmAt
+        savedAfterDrawn = PhoneReadingClock.afterDrawn
+        savedBackstop = PhoneReadingClock.backstop
         PhoneReadingClock.alarms = alarms
         PhoneReadingClock.lossAlarmAt = { lossAlarmAt }
+        PhoneReadingClock.afterDrawn = { drawnSteps += it }
+        PhoneReadingClock.backstop = { backstops += it }
     }
 
     @After
     fun restore() {
         PhoneReadingClock.alarms = savedAlarms
         PhoneReadingClock.lossAlarmAt = savedLossAlarm
+        PhoneReadingClock.afterDrawn = savedAfterDrawn
+        PhoneReadingClock.backstop = savedBackstop
     }
 
     private fun scripted(time: Long) = ReadingHub.Reading(
@@ -144,5 +158,68 @@ class PhoneReadingClockTests {
         assertEquals(deadline, PhoneReadingClock.wakeAt(deadline, deadline + 10_001L))
         // A loss alarm due before the stale moment cannot make it stale early.
         assertEquals(deadline, PhoneReadingClock.wakeAt(deadline, deadline - 1_000L))
+    }
+
+    // --- The wake holds the phone until its publish is drawn. ---
+
+    @Test
+    fun aWakeLetsGoOnceItsPublishIsDrawnAndOnlyOnce() {
+        var releases = 0
+        PhoneReadingClock.untilDrawn { releases++ }
+        assertEquals("held while the hub and the notification work", 0, releases)
+        drawnSteps.single().run()
+        assertEquals(1, releases)
+        backstops.single().run()
+        assertEquals("the backstop after it releases nothing", 1, releases)
+    }
+
+    @Test
+    fun aWakeWhosePublishNeverComesLetsGoAtTheBackstop() {
+        var releases = 0
+        PhoneReadingClock.untilDrawn { releases++ }
+        backstops.single().run()
+        assertEquals(1, releases)
+        drawnSteps.single().run()
+        assertEquals(1, releases)
+    }
+
+    @Test
+    fun theDeadlineWakeLetsGoAfterTheStaleReadingWasPublished() {
+        val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val events = java.util.Collections.synchronizedList(ArrayList<String>())
+            val hub = ReadingHub(
+                source = { Thread.sleep(20L); ReadingHub.Inputs(sensor, reading, emptyList(), 5 * minute) },
+                worker = worker,
+                clock = ReadingClock(PhoneReadingClock),
+                now = { now },
+            )
+            // The notification, as PhoneSurfaces hands it each publish.
+            hub.addListener { events += "drawn ${it.freshness}" }
+            hub.awaitCurrent(5_000L)
+            PhoneReadingClock.afterDrawn = { task -> hub.afterPending(task) }
+            val released = java.util.concurrent.CountDownLatch(1)
+            // PhoneReadingClockReceiver: the alarm fires, the broadcast stays pending.
+            now = alarms.pending
+            hub.onDeadline()
+            PhoneReadingClock.untilDrawn { events += "finished"; released.countDown() }
+            assertTrue(released.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals(listOf("drawn FRESH", "drawn STALE", "finished"), events.toList())
+        } finally {
+            worker.shutdownNow()
+        }
+    }
+
+    @Test
+    fun bothWakesHoldThePhoneUntilDrawn() {
+        val root = generateSequence(java.io.File(requireNotNull(System.getProperty("user.dir")))) { it.parentFile }
+            .first { java.io.File(it, "Common/src/mobile/java/tk/glucodata/PhoneReadingClock.kt").exists() }
+        val clock = java.io.File(root, "Common/src/mobile/java/tk/glucodata/PhoneReadingClock.kt").readText()
+        val receiver = clock.substringAfter("class PhoneReadingClockReceiver")
+        assertTrue(receiver.contains("val pending = goAsync()"))
+        assertTrue(receiver.contains("PhoneReadingClock.untilDrawn { pending.finish() }"))
+        val alarms = java.io.File(root, "Common/src/mobile/java/tk/glucodata/MobileGlucoseAlarms.java").readText()
+        assertTrue(alarms.contains("PhoneReadingClock.reconcileAwake();"))
+        assertFalse(alarms.contains("CurrentReadingHub.onClockChanged();"))
     }
 }

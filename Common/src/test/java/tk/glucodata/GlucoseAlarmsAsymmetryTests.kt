@@ -108,7 +108,7 @@ class GlucoseAlarmsAsymmetryTests {
         // current reading's: the phone's check only brings it up to date, loss alarm or not.
         assertFalse(phone, phone.contains("oldnotification("))
         val phoneCheck = after(phone, "void handlealarm() {")
-        val reconcile = phoneCheck.indexOf("CurrentReadingHub.onClockChanged();")
+        val reconcile = phoneCheck.indexOf("PhoneReadingClock.reconcileAwake();")
         assertTrue(
             "the phone's check reconciles the current reading before the loss decision",
             reconcile >= 0 && reconcile < phoneCheck.indexOf("hasalarmloss()"),
