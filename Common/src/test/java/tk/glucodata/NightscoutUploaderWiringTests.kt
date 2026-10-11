@@ -92,4 +92,36 @@ class NightscoutUploaderWiringTests {
             assertTrue("$request comes before the network is asked", at > gate)
         }
     }
+
+    /**
+     * Treatments entered on the server were read only when something else raised a treatment
+     * pass, so opening the app to look found nothing new. Coming to the front raises one, and
+     * the treatments' own wake: a full "Send now" pass would also end the backoff after a
+     * refusal.
+     */
+    @Test
+    fun comingToTheFrontWakesATreatmentReadOnTheTreatmentsWake() {
+        val activity = File(moduleRoot, "src/main/java/tk/glucodata/MainActivity.java").readText()
+        val resume = activity.substring(activity.indexOf("protected void onResume()"), activity.indexOf("protected void onStart()"))
+        assertTrue(
+            "onResume does not call NightscoutUploadWake.afterAppToFront() for the phone",
+            Regex("""!Applic\.isWearable\s*&&\s*Applic\.Nativesloaded\)\s*\{[^}]*NightscoutUploadWake\.afterAppToFront\(\)""")
+                .containsMatchIn(resume),
+        )
+
+        val wake = File(moduleRoot, "src/main/java/tk/glucodata/NightscoutUploadWake.kt").readText()
+        val start = wake.indexOf("fun afterAppToFront()")
+        assertTrue("afterAppToFront() is not in NightscoutUploadWake any more", start >= 0)
+        val body = wake.substring(start, wake.indexOf("@JvmStatic", start))
+        assertTrue("afterAppToFront() no longer wakes the treatments", body.contains("Natives.waketreatments()"))
+        assertFalse(
+            "afterAppToFront() raises a full pass, which also drops the treatment backoff",
+            Regex("""Natives\.wakeuploader(now)?\(\)""").containsMatchIn(body),
+        )
+        assertTrue(
+            "afterAppToFront() wakes without 'Receive treatments' on",
+            body.contains("getReceiveTreatments()"),
+        )
+        assertTrue("afterAppToFront() wakes without the uploader set up", body.contains("getuseuploader()"))
+    }
 }
