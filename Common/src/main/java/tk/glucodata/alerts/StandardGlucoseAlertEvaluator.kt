@@ -87,6 +87,12 @@ internal object StandardGlucoseAlertEvaluator {
      * AT 280 (strictly-greater = false) ended the episode, and 281 was a
      * regular re-entry. Edge case, documented on purpose: at exactly the
      * threshold an active episode stays ACTIVE, it does not end.
+     *
+     * Both lines are compared as the reading is shown ([ShownGlucose]): with a
+     * Low threshold of 4.0, 72 mg/dL (3.996 mmol/L, shown 4.0) is not low, and
+     * 71 mg/dL (3.94, shown 3.9) is. Unrounded, the alarm rang over a screen
+     * that read 4.0. The forecasts keep their own rules
+     * ([ForecastThresholdPolicy]) and do not come here.
      */
     private fun isThresholdConditionActive(
         type: AlertType,
@@ -104,10 +110,10 @@ internal object StandardGlucoseAlertEvaluator {
         return when (type) {
             AlertType.LOW,
             AlertType.VERY_LOW,
-            AlertType.PRE_LOW -> value < threshold + margin
+            AlertType.PRE_LOW -> ShownGlucose.isBelow(value, threshold + margin, isMmol)
             AlertType.HIGH,
             AlertType.VERY_HIGH,
-            AlertType.PRE_HIGH -> value > threshold - margin
+            AlertType.PRE_HIGH -> ShownGlucose.isAbove(value, threshold - margin, isMmol)
             else -> false
         }
     }
