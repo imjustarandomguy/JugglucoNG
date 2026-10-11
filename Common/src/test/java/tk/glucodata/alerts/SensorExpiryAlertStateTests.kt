@@ -368,6 +368,65 @@ class SensorExpiryAlertStateTests {
         )
     }
 
+    // Dexcom G7/ONE+/Stelo and Libre 2 keep delivering this long after the official end.
+    private val grace = 12L * 60 * 60 * 1000
+
+    @Test
+    fun nativeSensorCountsDownToTheExpectedEnd() {
+        assertEquals(end + grace, sensorExpiryAlarmEndMs(false, false, end, end + grace))
+    }
+
+    @Test
+    fun sensorWithoutALongerExpectedEndKeepsTheOfficialEnd() {
+        // Libre 3, Accu-Chek and Air report an expected end equal to the official one.
+        assertEquals(end, sensorExpiryAlarmEndMs(false, false, end, end))
+        // An unset or shorter expected end never pulls the alarm earlier.
+        assertEquals(end, sensorExpiryAlarmEndMs(false, false, end, 0L))
+        assertEquals(end, sensorExpiryAlarmEndMs(false, false, end, end - min(5)))
+    }
+
+    @Test
+    fun managedDriverAndSibionicsKeepTheOfficialEnd() {
+        // An advisory horizon (iCan: 28 days for a 7-day unit) and Sibionics' maximum
+        // run time (nearly 10 days past the official end) must not replace the rated end.
+        val longer = end + 10L * 24 * 60 * 60 * 1000
+        assertEquals(end, sensorExpiryAlarmEndMs(true, false, end, longer))
+        assertEquals(end, sensorExpiryAlarmEndMs(false, true, end, longer))
+        assertEquals(end, sensorExpiryAlarmEndMs(true, true, end, longer))
+        // The managed fallback has no native end to compare with at all.
+        assertEquals(end, sensorExpiryAlarmEndMs(true, false, end, 0L))
+    }
+
+    @Test
+    fun g7WarnsBeforeTheExpectedEndNotTheOfficialEnd() {
+        val official = end
+        val expected = end + grace
+        val alarmEnd = sensorExpiryAlarmEndMs(false, false, official, expected)
+        val s = newState()
+        val t = setOf(60)
+        fun tick(nowMs: Long): Set<Int> {
+            val resolved = selectSensorExpiryEndMs(listOf("G7" to alarmEnd), "G7", nowMs)
+            return s.triggeredThresholds(
+                enabled = true,
+                activeNow = true,
+                snoozed = false,
+                endTimeMs = resolved,
+                nowMs = nowMs,
+                thresholdsMinutes = t
+            ).also { fired -> fired.forEach { s.confirmDelivered(it) } }
+        }
+        assertEquals(emptySet<Int>(), tick(official - min(120)))
+        // The official end was only an hour away here, yet the sensor ran another 12.
+        assertEquals(emptySet<Int>(), tick(official - min(57)))
+        // Past the official end the sensor is still delivering: it must stay armed.
+        assertEquals(emptySet<Int>(), tick(official + min(30)))
+        assertEquals(emptySet<Int>(), tick(expected - min(61)))
+        assertEquals(setOf(60), tick(expected - min(60)))
+        assertEquals(emptySet<Int>(), tick(expected - min(30)))
+        // Counting from the official end instead leaves nothing to warn with once it passed.
+        assertEquals(0L, selectSensorExpiryEndMs(listOf("G7" to official), "G7", official + min(30)))
+    }
+
     @Test
     fun defaultSensorExpiryConfigKeeps24hThreshold() {
         val cfg = AlertDefaults.defaultConfig(AlertType.SENSOR_EXPIRY, isMmol = false)
