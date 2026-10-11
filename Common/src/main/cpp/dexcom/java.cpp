@@ -744,6 +744,24 @@ extern "C" JNIEXPORT jboolean JNICALL fromjava(dexKnownSensor)(JNIEnv *env,
               ->DexDeviceName;
 }
 
+// Whether the record named sensor (full name or short alias) is a Dexcom one,
+// asked for a record whose Dexcom driver does not exist yet.
+extern "C" JNIEXPORT jboolean JNICALL fromjava(isDexcomRecord)(JNIEnv *env,
+                                                              jclass cl,
+                                                              jstring jsensor) {
+  if (!jsensor || !sensors)
+    return false;
+  const char *sensorname = env->GetStringUTFChars(jsensor, nullptr);
+  if (!sensorname)
+    return false;
+  const int ind = sensors->sensorindexshort(sensorname);
+  env->ReleaseStringUTFChars(jsensor, sensorname);
+  if (ind < 0)
+    return false;
+  const SensorGlucoseData *hist = sensors->getSensorData(ind);
+  return hist && !hist->error() && hist->isDexcom();
+}
+
 static bool isG7(const char *deviceName) {
   if (!deviceName)
     return false;

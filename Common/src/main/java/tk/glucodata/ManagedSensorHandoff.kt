@@ -151,8 +151,12 @@ object ManagedSensorHandoff {
                 // beside them it could overlap a netinfo rebuild. The backlog is
                 // asked for after it, so it lands in the record this makes.
                 MessageReceiver.runNativeOp("Dexcom setup") {
-                    runCatching { DexcomWatchSetup.applyOnWatch(root) }
+                    val setUp = runCatching { DexcomWatchSetup.applyOnWatch(root) }
                         .onFailure { Log.stack(LOG_ID, "Dexcom setup", it) }
+                        .getOrDefault(false)
+                    // A claim that timed out while no driver here could reach the
+                    // sensor would otherwise wait for the next /bluetooth.
+                    if (setUp) WearSensorClaim.rearmIfRequested("G7 handed over")
                     SensorIdentity.invalidateCaches()
                     requestBacklog(root, mirrorDiscarded = true)
                 }

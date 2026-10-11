@@ -1433,6 +1433,9 @@ public class Natives {
 
         public static native boolean dexKnownSensor(long dataptr);
 
+        /** Whether the record named {@code sensor} is a Dexcom one, before any driver was built for it. */
+        public static native boolean isDexcomRecord(String sensor);
+
         public static native long[] activeSensorPtrs();
 
         public static native String namefromSensorptr(long sensorptr);
