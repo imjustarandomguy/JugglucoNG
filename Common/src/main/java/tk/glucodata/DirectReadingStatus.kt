@@ -87,6 +87,57 @@ object DirectReadingStatus {
      */
     const val REPORT_MIN_INTERVAL_MS = 4L * 60L * 1000L
 
+    /**
+     * Two readings of one sensor closer than this are the same reading. No
+     * sensor reads more often than once a minute, and a G7 asked a moment
+     * before its next measurement answers with the one before, stamped up to a
+     * second off from when it was first read.
+     */
+    const val SAME_READING_MS = 30_000L
+
+    /**
+     * When a reading straight from the sensor counts as taken: at the reading's
+     * own time, never ahead of this device's clock; now when it has no time.
+     * The time it arrived would make a session that only got the reading
+     * before look like a fresh one.
+     */
+    @JvmStatic
+    fun directReadingTime(sampleMs: Long, nowMs: Long): Long =
+        if (sampleMs > 0L) minOf(sampleMs, nowMs) else nowMs
+
+    /**
+     * A reading taken longer than this before it arrived is one the sensor had
+     * kept, not a live one: a live reading arrives within seconds of being
+     * taken, the reading before a G7's next measurement about five minutes on.
+     */
+    const val LATE_READING_MS = 60_000L
+
+    /**
+     * Whether a reading taken at [readingMs] and arriving at [nowMs] says this
+     * device is reading the sensor now. Not when it is no newer than
+     * [lastDirectMs], the newest this device read itself: the sensor served
+     * that one again, or an older one. Nor when it arrived late and this device
+     * already had it from the other one ([lastSyncedMs], the newest the other
+     * filled in): a G7 asked a moment early answers with the reading before,
+     * and that one may be the reading this device missed and was given.
+     *
+     * A live reading the other device happened to deliver a moment earlier
+     * still counts: this device read it too.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun isNewDirectReading(
+        readingMs: Long,
+        nowMs: Long,
+        lastDirectMs: Long,
+        lastSyncedMs: Long = 0L,
+    ): Boolean {
+        if (readingMs <= 0L) return false
+        if (lastDirectMs > 0L && readingMs - lastDirectMs < SAME_READING_MS) return false
+        val late = nowMs - readingMs > LATE_READING_MS
+        return !(late && lastSyncedMs > 0L && readingMs - lastSyncedMs < SAME_READING_MS)
+    }
+
     @JvmStatic
     fun summary(phone: DirectReadingFact, watch: DirectReadingFact, nowMs: Long): DirectReadingSummary {
         val phoneReads = phone.isReading(nowMs)
@@ -181,6 +232,12 @@ object DirectReadingStatus {
      * has to reach the other within a reading or two, or the other's screens
      * would call it not reading. Ownership changes and the heartbeat are sent
      * as before; this adds nothing when direct is off.
+     *
+     * A reading the other side does not know this device to be reading goes at
+     * once: its first, or the first after a pause. The report that said it now
+     * holds the sensor often went out a moment before that reading was noted,
+     * and [REPORT_MIN_INTERVAL_MS] then held the news until the next reading,
+     * so the phone said the watch was getting its values from the phone.
      */
     @JvmStatic
     fun reportDue(
@@ -189,7 +246,10 @@ object DirectReadingStatus {
         lastReportedDirectMs: Long,
         lastReportedAtMs: Long,
         nowMs: Long,
-    ): Boolean = directOnWatch &&
-        directReadingMs > lastReportedDirectMs &&
-        nowMs - lastReportedAtMs >= REPORT_MIN_INTERVAL_MS
+    ): Boolean {
+        if (!directOnWatch || directReadingMs <= lastReportedDirectMs) return false
+        val peerSeesItReading = lastReportedDirectMs > 0L &&
+            nowMs - lastReportedDirectMs <= DIRECT_READING_FRESH_MS
+        return !peerSeesItReading || nowMs - lastReportedAtMs >= REPORT_MIN_INTERVAL_MS
+    }
 }

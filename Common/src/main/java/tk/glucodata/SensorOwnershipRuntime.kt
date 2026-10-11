@@ -425,18 +425,44 @@ object SensorOwnershipRuntime {
     }
 
     /**
-     * A reading arrived over a GATT this process connected itself: not synced
-     * from the peer, not imported over Clone. Both screens show it; see
-     * [directReadingView].
+     * A reading taken at [sampleMs] arrived over a GATT this process connected
+     * itself: not synced from the peer, not imported over Clone. Both screens
+     * show it; see [directReadingView]. It counts at its own time, and only
+     * when it is a new reading, not one this device already had from itself or
+     * from the peer ([DirectReadingStatus.isNewDirectReading]).
      */
     @JvmStatic
-    fun noteDirectReading(serial: String?, atMs: Long) {
+    fun noteDirectReading(serial: String?, sampleMs: Long) {
         val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return
-        DirectSensorReadings.note(target, if (atMs > 0L) atMs else System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        val atMs = DirectReadingStatus.directReadingTime(sampleMs, now)
+        val isNew = DirectReadingStatus.isNewDirectReading(
+            readingMs = atMs,
+            nowMs = now,
+            lastDirectMs = DirectSensorReadings.lastMs(target),
+            lastSyncedMs = syncedReadings[key(target)] ?: 0L,
+        )
+        if (!isNew) return
+        DirectSensorReadings.note(target, atMs)
         bumpRevision()
         // Tell the peer now rather than at the next tick, when it is due at all.
         if (started) executor.execute { runCatching { announce() }.onFailure { Log.stack(LOG_ID, "direct", it) } }
     }
+
+    /**
+     * The peer filled in readings of [serial] up to [newestMs]. Asked a moment
+     * before its next measurement, the sensor may then serve this device the
+     * newest of them, which is no fresh reading of its own.
+     */
+    @JvmStatic
+    fun noteSyncedReading(serial: String?, newestMs: Long) {
+        val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return
+        if (newestMs <= 0L) return
+        syncedReadings.merge(key(target), newestMs, ::maxOf)
+    }
+
+    /** Per sensor, the newest reading the peer filled in; see [noteSyncedReading]. */
+    private val syncedReadings = ConcurrentHashMap<String, Long>()
 
     /**
      * Who reads [serial] itself, for the screens: when each device last took a
