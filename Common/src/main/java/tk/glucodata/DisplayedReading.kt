@@ -50,6 +50,12 @@ data class DisplayedReading(
      * collapses readings into chunks does.
      */
     val lastReadingMillis: Long,
+    /**
+     * The other sensors the device shows beside this one, in their order, each under the
+     * same stale rule. Its moments wake the clock too and are published, so a surface that
+     * shows those sensors redraws when one goes stale or is taken down.
+     */
+    val otherSensors: List<OtherSensor> = emptyList(),
     val origin: Origin,
     val reason: Reason,
     val revision: Long,
@@ -70,6 +76,14 @@ data class DisplayedReading(
         /** No sensor to show. */
         NO_SENSOR,
     }
+
+    /** One of [otherSensors]: its freshness, and when it goes stale and is taken down. */
+    data class OtherSensor(
+        val sensorId: String,
+        val freshness: Freshness,
+        val staleAtMillis: Long,
+        val noValueAtMillis: Long,
+    )
 
     /** Where the reading came from, as the path that accepted it said. */
     enum class Origin {

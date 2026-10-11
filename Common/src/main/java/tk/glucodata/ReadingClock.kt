@@ -31,17 +31,29 @@ class ReadingClock(@Volatile var scheduler: ReadingScheduler) {
     private var armedAtMillis = 0L
 
     /**
-     * The next moment [reading] changes by itself, or 0 when it cannot. A deadline already
-     * past (the device slept through it) is still returned, and wakes at once.
+     * The next moment [reading], or one of the [DisplayedReading.otherSensors] shown beside
+     * it, changes by itself, or 0 when none can. A deadline already past (the device slept
+     * through it) is still returned, and wakes at once.
      */
     fun nextDeadline(reading: DisplayedReading): Long {
-        if (reading.timeMillis <= 0L) return 0L
-        return when (reading.freshness) {
-            DisplayedReading.Freshness.FRESH -> reading.staleAtMillis
-            DisplayedReading.Freshness.STALE -> reading.noValueAtMillis
+        var next = if (reading.timeMillis > 0L) {
+            deadline(reading.freshness, reading.staleAtMillis, reading.noValueAtMillis)
+        } else {
+            0L
+        }
+        for (other in reading.otherSensors) {
+            val at = deadline(other.freshness, other.staleAtMillis, other.noValueAtMillis)
+            if (at > 0L && (next == 0L || at < next)) next = at
+        }
+        return next
+    }
+
+    private fun deadline(freshness: DisplayedReading.Freshness, staleAtMillis: Long, noValueAtMillis: Long): Long =
+        when (freshness) {
+            DisplayedReading.Freshness.FRESH -> staleAtMillis
+            DisplayedReading.Freshness.STALE -> noValueAtMillis
             else -> 0L
         }
-    }
 
     /** Schedules [wake] for [reading]'s next deadline, unless it is already scheduled. */
     @Synchronized
