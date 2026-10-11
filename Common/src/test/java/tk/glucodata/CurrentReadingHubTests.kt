@@ -84,7 +84,8 @@ class CurrentReadingHubTests {
         recentTimes: List<Long> = emptyList(),
         sensorId: String? = sensor,
         latestTimeMillis: Long = 0L,
-    ) = ReadingHub.Inputs(sensorId, reading, recentTimes, declaredIntervalMs, latestTimeMillis)
+        newestReadingMillis: Long = 0L,
+    ) = ReadingHub.Inputs(sensorId, reading, recentTimes, declaredIntervalMs, latestTimeMillis, newestReadingMillis)
 
     // --- The stale rule: the next reading was due and did not come. ---
 
@@ -174,6 +175,52 @@ class CurrentReadingHubTests {
         assertEquals(Freshness.NO_SENSOR, ReadingHub.compose(inputs(null, sensorId = null), t0).freshness)
         assertEquals(Freshness.AWAITING, ReadingHub.compose(inputs(null), t0).freshness)
         assertEquals(Freshness.NO_VALUE, ReadingHub.compose(inputs(null, latestTimeMillis = t0 - 40 * minute), t0).freshness)
+    }
+
+    @Test
+    fun aReadingShownAtItsChunksEndCountsItsDeadlinesFromTheNewestReading() {
+        // A one-minute sensor with smoothing collapsed into five-minute chunks: the point
+        // shown is the end of the last full chunk, four minutes behind the newest reading.
+        val chunked = inputs(reading(t0 - 4 * minute), declaredIntervalMs = minute, newestReadingMillis = t0)
+        val composed = ReadingHub.compose(chunked, t0 + 30_000L)
+        assertEquals(Freshness.FRESH, composed.freshness)
+        assertEquals(t0 - 4 * minute, composed.timeMillis)
+        assertEquals(t0, composed.lastReadingMillis)
+        assertEquals(t0 + minute, composed.nextExpectedAtMillis)
+        assertEquals(t0 + minute + 20_000L, composed.staleAtMillis)
+        assertEquals(t0 + 30 * minute, composed.noValueAtMillis)
+        assertEquals(1.2f, composed.shownRate, 0f)
+        assertEquals(Freshness.STALE, ReadingHub.compose(chunked, t0 + minute + 20_000L).freshness)
+    }
+
+    @Test
+    fun theClockWakesAtTheNewestReadingsDeadlineNotTheChunks() {
+        val rig = Rig(inputs(reading(t0 - 4 * minute), declaredIntervalMs = minute, newestReadingMillis = t0))
+        assertEquals(t0 + minute + 20_000L, rig.scheduler.at)
+        assertEquals(Freshness.FRESH, rig.hub.current().freshness)
+        // The next one-minute reading lands in the same chunk: the shown point does not move.
+        rig.inputs = inputs(reading(t0 - 4 * minute), declaredIntervalMs = minute, newestReadingMillis = t0 + minute)
+        rig.now = t0 + minute + 2_000L
+        rig.hub.onReadingAccepted(sensor, t0 + minute, Origin.LOCAL)
+        assertEquals(t0 + 2 * minute + 20_000L, rig.scheduler.at)
+        assertEquals(Freshness.FRESH, rig.hub.current().freshness)
+        assertEquals(Origin.LOCAL, rig.hub.current().origin)
+        rig.advanceTo(t0 + 2 * minute + 20_000L)
+        assertEquals(Freshness.STALE, rig.hub.current().freshness)
+    }
+
+    @Test
+    fun aReadingStampedAheadOfTheClockDoesNotKeepTheReadingFresh() {
+        val rows = listOf(GlucosePoint(t0 - 2 * minute, 110f), GlucosePoint(t0 + 2 * 60 * minute, 120f))
+        assertEquals(listOf(t0 - 2 * minute), StoredReadingSource.notAhead(rows, t0).map { it.timestamp })
+        assertEquals(t0 - 2 * minute, StoredReadingSource.newestReadingMillis(rows, 0L, t0))
+        // The live reading is newer than every row; a few seconds ahead of this clock still counts.
+        assertEquals(t0 - 20_000L, StoredReadingSource.newestReadingMillis(rows, t0 - 20_000L, t0))
+        assertEquals(t0 + 5_000L, StoredReadingSource.newestReadingMillis(rows, t0 + 5_000L, t0))
+        assertEquals(t0 - 2 * minute, StoredReadingSource.newestReadingMillis(rows, t0 + 10 * minute, t0))
+        assertEquals(0L, StoredReadingSource.newestReadingMillis(emptyList(), 0L, t0))
+        val past = rows.subList(0, 1)
+        assertTrue("nothing ahead, nothing copied", past === StoredReadingSource.notAhead(past, t0))
     }
 
     @Test
