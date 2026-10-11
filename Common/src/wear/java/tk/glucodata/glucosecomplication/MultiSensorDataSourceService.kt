@@ -62,7 +62,8 @@ abstract class MultiSensorComplicationBase : SuspendingComplicationDataSourceSer
         build(request.complicationType, preview = false)
 
     // No validity range or update period of its own: it is redrawn with every other
-    // complication whenever the current reading changes, its stale moment included.
+    // complication whenever the current reading changes, its stale moment included, and
+    // so are the other selected sensors' stale moments (the hub's clock wakes for them).
     private fun build(type: ComplicationType, preview: Boolean): ComplicationData? {
         val now = System.currentTimeMillis()
         val selected = WearSensorSelection.selected()
