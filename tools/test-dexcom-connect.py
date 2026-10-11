@@ -145,6 +145,7 @@ class Build {static class VERSION {static int SDK_INT=36;}static class VERSION_C
 class android {static class os {static class Build extends tk.glucodata.Build {}}}
 class CloneSensorRegistry {static boolean clone;static boolean isCloneSensor(String s){return clone;}}
 class SensorOwnershipRuntime {static boolean blocked;static boolean blocksLocalConnection(SuperGattCallback cb){return blocked;}}
+class UiRefreshBus {static void requestDataRefresh(){}static void requestDataRefresh(long t){}}
 class Natives {
     static String stored="F0:00:00:00:00:01";
     static long lastGlucose=-1;static boolean aesSuccess=true;static int resets;
