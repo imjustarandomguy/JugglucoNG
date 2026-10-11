@@ -29,6 +29,8 @@ class DexcomFollowWiringTests {
             sent += node to record.name
             return true
         }
+
+        override fun canonicalSensorId(sensorId: String) = sensorId
     }
 
     private fun prefs(vararg entries: Pair<String, Any>) = FakePreferences().apply { values.putAll(entries) }
@@ -44,12 +46,15 @@ class DexcomFollowWiringTests {
         val access = FakeAccess(listOf(old, new.copy(deviceName = "")))
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
         assertTrue("not before the phone paired it", access.sent.isEmpty())
+        assertEquals(old.name, prefs.values["sensor.watch"])
 
         access.records = listOf(old, new)
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
         assertEquals(listOf("watch" to new.name), access.sent)
         assertEquals(DexcomFollow.handedValue(new), prefs.values["dexcom.watch"])
+        // The phone's status for that watch follows it.
+        assertEquals(new.name, prefs.values["sensor.watch"])
     }
 
     @Test
@@ -61,6 +66,7 @@ class DexcomFollowWiringTests {
         access.delivers = false
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
         assertEquals(DexcomFollow.handedValue(old), prefs.values["dexcom.watch"])
+        assertNull(prefs.values["sensor.watch"])
 
         access.delivers = true
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
@@ -74,6 +80,7 @@ class DexcomFollowWiringTests {
         ManagedSensorHandoff.followNewestDexcom(prefs, access)
         assertTrue(access.sent.isEmpty())
         assertNull(prefs.values["dexcom.watch"])
+        assertEquals("ABCDEFGHIJK", prefs.values["sensor.watch"])
     }
 
     @Test

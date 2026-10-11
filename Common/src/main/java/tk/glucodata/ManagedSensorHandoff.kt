@@ -208,6 +208,9 @@ object ManagedSensorHandoff {
 
         /** Sends [node] the handoff for [record]; true once it was delivered. */
         fun handOver(node: String, record: DexcomFollow.Record): Boolean
+
+        /** The id the routing preferences name [sensorId] by (SensorIdentity.canonicalSensorId). */
+        fun canonicalSensorId(sensorId: String): String
     }
 
     private object SystemFollowAccess : FollowAccess {
@@ -226,6 +229,9 @@ object ManagedSensorHandoff {
             val sender = MessageSender.getMessageSender() ?: return false
             return sender.sendSensorHandoff(node, buildPayload(Applic.app, dexcomPayload(record)))
         }
+
+        override fun canonicalSensorId(sensorId: String): String =
+            runCatching { SensorIdentity.canonicalSensorId(sensorId) }.getOrNull() ?: sensorId
     }
 
     internal fun followNewestDexcom(prefs: SharedPreferences, access: FollowAccess) {
@@ -261,10 +267,16 @@ object ManagedSensorHandoff {
             due.forEach { node -> noteFollowSkip(node, newest.name, "watch out of reach") }
             return
         }
+        // The sensor a watch was told to read is the one the phone's Wear OS
+        // screen reports on (its status, and what the phone offers or stands
+        // down for), and was otherwise written only when direct mode went on:
+        // it kept naming the old G7, removed or not.
+        val assigned = access.canonicalSensorId(newest.name)
         due.forEach { node ->
             if (access.handOver(node, newest)) {
                 prefs.edit()
                     .putString(HANDED_DEXCOM_KEY_PREFIX + node, DexcomFollow.handedValue(newest))
+                    .putString(SENSOR_KEY_PREFIX + node, assigned)
                     .apply()
                 followSkips.remove(node)
                 Log.i(LOG_ID, "handed G7 ${newest.name} (start ${newest.start}) to watch $node")
