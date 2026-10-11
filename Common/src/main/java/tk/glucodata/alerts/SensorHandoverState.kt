@@ -4,7 +4,8 @@ package tk.glucodata.alerts
  * One sensor as the handover evaluation sees it. [endMs] is the official end
  * (start + wear duration, the same source the expiry alarm uses); 0 means
  * unknown. [hasRecentReading] is evaluated lazily because it needs a history
- * lookup - the decision only asks for it on the chosen successor.
+ * lookup - the decision only asks for it on the chosen successor and, while
+ * that one has none, on the expired primary.
  */
 internal data class HandoverSensor(
     val serial: String,
@@ -63,10 +64,10 @@ internal interface SensorHandoverStore {
  * native dependencies so it is unit-testable.
  *
  * Trigger: the primary sensor's official end time has passed and a successor
- * exists. There is nothing to wait for beyond that - past its end the old
- * sensor no longer counts as the source of truth. A successor that is still
- * warming up is switched to regardless (it is the only source); the caller
- * shows an informational notification for that case.
+ * exists. While the old sensor still delivers readings, the switch waits for
+ * the successor's first reading. Once the old sensor is silent, a successor
+ * that is still warming up is switched to regardless (it is the only source);
+ * the caller shows an informational notification for that case.
  *
  * Exactly-once: the caller persists the handled key via
  * [SensorHandoverStore.markHandled] *before* performing the switch, so a
@@ -107,12 +108,18 @@ internal class SensorHandoverState(
             }
         }
         val successor = candidates.single()
+        val successorDelivers = successor.hasRecentReading()
+        // Promoting a successor with nothing to show while the old sensor still
+        // reads would leave the display, alarms and notification without a value
+        // until the successor's first reading. Not latched: a later tick switches
+        // once the successor delivers or the old sensor falls silent.
+        if (!successorDelivers && primary.hasRecentReading()) return HandoverDecision.None
         // "Warming" strictly means inside the warmup phase after activation. A
         // successor that is merely disconnected (old start, no readings) is NOT
         // warming - it gets no suppression window, so a real outage still alarms.
         val warming = successor.startMs > 0L &&
             nowMs - successor.startMs < WARMUP_DURATION_MS &&
-            !successor.hasRecentReading()
+            !successorDelivers
         return HandoverDecision.Switch(
             oldSerial = primary.serial,
             newSerial = successor.serial,
