@@ -31,15 +31,15 @@ class FloatingStaleValueTests {
     }
 
     @Test
-    fun aDimmedValueAlwaysHasALateBar() {
+    fun aDimmedValueAlwaysHasALateRing() {
         // The pill hands both the same stale flag: whatever the sensor and the time,
-        // a dimmed value sits beside a full, amber bar.
+        // a dimmed value sits beside a full, amber ring.
         for (interval in listOf(minute, 3 * minute, FIVE_MINUTES_MS)) {
             for (elapsed in listOf(0L, minute, 6 * minute, 60 * minute)) {
                 val stale = true
                 assertTrue(FloatingStaleValue.alpha(hasValue = true, stale = stale) < 1f)
-                val bar = FloatingNextReading.state(t0, interval, t0 + elapsed, stale)
-                assertEquals(FloatingNextReading.State(1f, late = true), bar)
+                val ring = FloatingNextReading.state(t0, interval, t0 + elapsed, stale)
+                assertEquals(FloatingNextReading.State(1f, late = true), ring)
             }
         }
     }

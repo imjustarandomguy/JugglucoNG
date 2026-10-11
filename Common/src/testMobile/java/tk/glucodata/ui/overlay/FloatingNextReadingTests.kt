@@ -91,14 +91,14 @@ class FloatingNextReadingTests {
     // Progress and lateness
 
     @Test
-    fun noBarWithoutAReadingOrAnInterval() {
+    fun noRingWithoutAReadingOrAnInterval() {
         assertNull(FloatingNextReading.state(0L, FIVE_MINUTES_MS, t0, stale = false))
         assertNull(FloatingNextReading.state(t0, 0L, t0, stale = false))
         assertNull(FloatingNextReading.state(0L, FIVE_MINUTES_MS, t0, stale = true))
     }
 
     @Test
-    fun theBarFillsFromTheReadingToTheNextOne() {
+    fun theRingFillsFromTheReadingToTheNextOne() {
         val atReading = FloatingNextReading.state(t0, FIVE_MINUTES_MS, t0, stale = false)!!
         assertEquals(0f, atReading.progress, 0f)
         assertFalse(atReading.late)
@@ -144,7 +144,7 @@ class FloatingNextReadingTests {
     // Steps
 
     @Test
-    fun theBarMovesInStepsCountedFromTheReading() {
+    fun theRingMovesInStepsCountedFromTheReading() {
         assertEquals(STEP_MS, FloatingNextReading.nextStepDelay(t0, FIVE_MINUTES_MS, t0))
         assertEquals(3 * second, FloatingNextReading.nextStepDelay(t0, FIVE_MINUTES_MS, t0 + 2 * second))
         assertEquals(STEP_MS, FloatingNextReading.nextStepDelay(t0, FIVE_MINUTES_MS, t0 + STEP_MS))
@@ -179,11 +179,18 @@ class FloatingNextReadingTests {
     // Drawing
 
     @Test
-    fun theBarStartsWhereTheRoundedCornerLetsItShow() {
-        assertEquals(0f, FloatingNextReading.visibleInset(radius = 0f, thickness = 2.5f), 0f)
-        assertEquals(0f, FloatingNextReading.visibleInset(radius = 2f, thickness = 2.5f), 0f)
-        // A 32 px tall pill with round ends and a 2.5 px bar: about 7.4 px in.
-        assertEquals(7.41f, FloatingNextReading.visibleInset(radius = 16f, thickness = 2.5f), 0.01f)
+    fun theRingsSlotGrowsWithTheArrowAndTheRingClearsIt() {
+        for (arrow in listOf(10f, 12f, 12.6f, 20f, 34f, 42f)) {
+            val slot = FloatingNextReading.ringSlot(arrow)
+            val stroke = FloatingNextReading.ringStroke(arrow)
+            // The ring's inside edge is outside the circle the arrow's box holds...
+            assertTrue(slot / 2f - stroke > arrow / 2f)
+            // ...and the slot only as much larger as that needs.
+            assertTrue(slot < 1.5f * arrow)
+        }
+        assertTrue(FloatingNextReading.ringSlot(20f) < FloatingNextReading.ringSlot(30f))
+        assertEquals(1.5f, FloatingNextReading.ringStroke(10f), 0.001f)
+        assertEquals(4.2f, FloatingNextReading.ringStroke(42f), 0.001f)
     }
 
     // The pill's reading
