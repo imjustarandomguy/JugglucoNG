@@ -11,6 +11,7 @@ import android.widget.RemoteViews
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -20,6 +21,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.ConscryptMode
+import tk.glucodata.DisplayedReading
 import tk.glucodata.R
 
 /**
@@ -38,13 +40,23 @@ class WidgetRendererTests {
     private val now = 1_800_000_000_000L
     private val fresh = WidgetSamples.data(now, isMmol = false)
     private val stale = WidgetData(
-        reading = fresh.reading!!.copy(timeMillis = now - 20 * 60_000L),
+        reading = fresh.reading!!.copy(
+            timeMillis = now - 20 * 60_000L, rate = Float.NaN, freshness = DisplayedReading.Freshness.STALE,
+        ),
         history = fresh.history, isMmol = false, sensorSerial = null, viewMode = 0, hasCalibration = false,
-        deltaText = null, iobUnits = Float.NaN, nowMillis = now, freshnessMillis = 330_000L,
+        deltaText = null, iobUnits = Float.NaN, nowMillis = now,
+    )
+    private val gone = WidgetData(
+        reading = fresh.reading!!.copy(
+            valueText = DisplayedReading.NO_VALUE_TEXT, value = Float.NaN, timeMillis = now - 40 * 60_000L,
+            rate = Float.NaN, freshness = DisplayedReading.Freshness.NO_VALUE,
+        ),
+        history = fresh.history, isMmol = false, sensorSerial = null, viewMode = 0, hasCalibration = false,
+        deltaText = null, iobUnits = Float.NaN, nowMillis = now,
     )
     private val empty = WidgetData(
         reading = null, history = emptyList(), isMmol = false, sensorSerial = null, viewMode = 0,
-        hasCalibration = false, deltaText = null, iobUnits = Float.NaN, nowMillis = now, freshnessMillis = 330_000L,
+        hasCalibration = false, deltaText = null, iobUnits = Float.NaN, nowMillis = now,
     )
 
     @Before
@@ -152,6 +164,20 @@ class WidgetRendererTests {
         val value = root.findViewById<TextView>(R.id.widget_value)
         val spanned = value.text as android.text.Spanned
         assertEquals(1, spanned.getSpans(0, spanned.length, android.text.style.StrikethroughSpan::class.java).size)
+        assertEquals(model.palette.metaArgb, value.currentTextColor)
+        val meta = root.findViewById<TextView>(R.id.widget_meta_1).text.toString()
+        assertTrue(meta, meta.endsWith("12:34"))
+    }
+
+    @Test
+    fun thirtyMinutesOnTheValueIsTakenDownNotStruckThrough() {
+        fontFamily(1)
+        val (model, root) = render(WidgetKind.VALUE, WidgetOptions.VALUE_DEFAULTS, WidgetSizeDp(260, 56), gone)
+        assertEquals(DisplayedReading.NO_VALUE_TEXT, model.valueText)
+        assertFalse(model.stale)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_arrow).visibility)
+        val value = root.findViewById<TextView>(R.id.widget_value)
+        assertEquals(DisplayedReading.NO_VALUE_TEXT, value.text.toString())
         assertEquals(model.palette.metaArgb, value.currentTextColor)
         val meta = root.findViewById<TextView>(R.id.widget_meta_1).text.toString()
         assertTrue(meta, meta.endsWith("12:34"))

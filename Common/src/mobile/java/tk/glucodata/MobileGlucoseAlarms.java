@@ -84,7 +84,6 @@ public    void handlealarm() {
             MessageSender.sendwakestream();
             Natives.wakestreamsender();
             }
-        GlucoseWidget.oldvalue(wastime);
     }
 
 
