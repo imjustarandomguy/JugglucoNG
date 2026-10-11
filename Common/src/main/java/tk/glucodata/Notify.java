@@ -1176,13 +1176,16 @@ public class Notify {
      * The arrow an alarm draws, on its banner and its screen alike: the current reading's,
      * which the notification, the dashboard and every other surface draw. Worked out on the
      * spot, as an alarm fires while its reading is being accepted, before the hub publishes
-     * it. A fresh reading without a trend yet keeps the rate the alarm came with; a stale
-     * one, like any surface, draws no arrow.
+     * it: the alert engine evaluates a reading before the live slot and its stored row hold
+     * it, so until then the arrow is worked out for the reading the alerts were evaluated on,
+     * not taken from the previous one. A fresh reading without a trend yet keeps the rate the
+     * alarm came with; a stale one, like any surface, draws no arrow.
      */
     static float alarmArrowRate(notGlucose glucose) {
         final float fired = glucose != null ? glucose.rate : Float.NaN;
         try {
-            return CurrentReadingHub.resolveNow().alarmRate(fired);
+            final var alerts = tk.glucodata.alerts.AlertRuntimeManager.INSTANCE;
+            return CurrentReadingHub.alarmRate(alerts.evaluatedReading(), alerts.evaluatedReadingTimeMs(), fired);
         } catch (Throwable th) {
             Log.stack(LOG_ID, "alarmArrowRate", th);
             return fired;
