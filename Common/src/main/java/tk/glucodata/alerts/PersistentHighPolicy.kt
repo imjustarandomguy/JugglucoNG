@@ -35,6 +35,8 @@ internal data class PersistentHighDecision(
  *   already lasted the duration rings at the next check instead of waiting out a fresh
  *   duration. A hole of more than [EpisodeHistory.MAX_GAP_MS] between stored readings
  *   ends the stretch, and the walk looks back [EpisodeHistory.MAX_LOOKBACK_MS] at most.
+ * - Above is as the reading is shown ([ShownGlucose]): with a threshold of 10.0, 181 mg/dL
+ *   (10.05 mmol/L, shown 10.0) is not above the threshold and 182 (shown 10.1) is.
  * - It fires once the time between that reading and the current one reaches the
  *   duration. Time is measured between readings, never on the wall clock: the alert
  *   runtime also evaluates every 15 s, and on that tick the reading is the same one, so
@@ -78,6 +80,7 @@ internal object PersistentHighPolicy {
     fun decide(
         startedAtMs: Long,
         config: AlertConfig,
+        isMmol: Boolean,
         activeNow: Boolean,
         value: Float?,
         readingTimeMs: Long,
@@ -90,7 +93,7 @@ internal object PersistentHighPolicy {
         if (!config.enabled || threshold == null || durationMs <= 0L || value == null || !value.isFinite()) {
             return reset("persistent-high-disabled")
         }
-        if (value <= threshold) {
+        if (!ShownGlucose.isAbove(value, threshold, isMmol)) {
             return reset("persistent-high-cleared")
         }
         if (!activeNow) {
@@ -121,10 +124,10 @@ internal object PersistentHighPolicy {
      * [EpisodeHistory.startOf]'s. Null without a threshold, or when the current reading
      * is not above it.
      */
-    fun startFromHistory(readings: List<StoredReading>, config: AlertConfig): EpisodeStart? {
+    fun startFromHistory(readings: List<StoredReading>, config: AlertConfig, isMmol: Boolean): EpisodeStart? {
         val threshold = config.threshold ?: return null
         return EpisodeHistory.startOf(readings) { value ->
-            if (value > threshold) EpisodeHistory.Kind.START else EpisodeHistory.Kind.END
+            if (ShownGlucose.isAbove(value, threshold, isMmol)) EpisodeHistory.Kind.START else EpisodeHistory.Kind.END
         }
     }
 

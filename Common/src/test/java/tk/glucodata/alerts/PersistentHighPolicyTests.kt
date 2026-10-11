@@ -3,6 +3,7 @@ package tk.glucodata.alerts
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import tk.glucodata.ui.util.GlucoseFormatter
 
 /**
  * PERSISTENT_HIGH measures its duration between reading times, so phone and watch,
@@ -34,7 +35,11 @@ class PersistentHighPolicyTests {
      * With [stored], an episode's start comes from those readings before the current
      * one, then the current one, as [EpisodeHistory.load] hands them over.
      */
-    private class Run(val config: AlertConfig, val stored: List<StoredReading>? = null) {
+    private class Run(
+        val config: AlertConfig,
+        val stored: List<StoredReading>? = null,
+        val isMmol: Boolean = false
+    ) {
         var startedAtMs = 0L
         var historyReads = 0
         lateinit var last: PersistentHighDecision
@@ -49,6 +54,7 @@ class PersistentHighPolicyTests {
             last = PersistentHighPolicy.decide(
                 startedAtMs = startedAtMs,
                 config = config,
+                isMmol = isMmol,
                 activeNow = activeNow,
                 value = value,
                 readingTimeMs = atMs,
@@ -58,7 +64,7 @@ class PersistentHighPolicyTests {
                     historyReads++
                     stored?.let { readings ->
                         val upToNow = readings.filter { it.timeMs < atMs } + StoredReading(atMs, value!!)
-                        PersistentHighPolicy.startFromHistory(upToNow, config)?.startedAtMs
+                        PersistentHighPolicy.startFromHistory(upToNow, config, isMmol)?.startedAtMs
                     } ?: 0L
                 }
             )
@@ -268,7 +274,10 @@ class PersistentHighPolicyTests {
     @Test
     fun phoneAndWatchCountFromTheSameStoredStart() {
         val config = config(durationMinutes = 60)
-        assertEquals(EpisodeStart(t0 + 5 * minute, 13), PersistentHighPolicy.startFromHistory(evening.take(14), config))
+        assertEquals(
+            EpisodeStart(t0 + 5 * minute, 13),
+            PersistentHighPolicy.startFromHistory(evening.take(14), config, isMmol = false)
+        )
         // The phone first looks on the reading of t0 + 65 min, the watch (asleep when
         // the setting arrived) on the next one: both count from t0 + 5 min and ring.
         val phone = Run(config, stored = evening)
@@ -288,8 +297,11 @@ class PersistentHighPolicyTests {
         val config = config(durationMinutes = 15)
         // 180 is not above 180: the high counts from the reading after it.
         val stored = storedEvery5Minutes(200f, 210f, 180f, 205f, 215f)
-        assertEquals(EpisodeStart(t0 + 15 * minute, 2), PersistentHighPolicy.startFromHistory(stored, config))
-        assertNull(PersistentHighPolicy.startFromHistory(stored.take(3), config))
+        assertEquals(
+            EpisodeStart(t0 + 15 * minute, 2),
+            PersistentHighPolicy.startFromHistory(stored, config, isMmol = false)
+        )
+        assertNull(PersistentHighPolicy.startFromHistory(stored.take(3), config, isMmol = false))
     }
 
     @Test
@@ -309,8 +321,42 @@ class PersistentHighPolicyTests {
     fun storedStartInMmol() {
         // 10.0 is not above 10.0.
         val stored = storedEvery5Minutes(9.9f, 10.0f, 10.1f, 11.2f, 12.0f)
-        val start = PersistentHighPolicy.startFromHistory(stored, config(threshold = 10.0f, durationMinutes = 15))
+        val start = PersistentHighPolicy.startFromHistory(
+            stored,
+            config(threshold = 10.0f, durationMinutes = 15),
+            isMmol = true
+        )
         assertEquals(EpisodeStart(t0 + 10 * minute, 3), start)
+    }
+
+    private fun mmol(mgdl: Int): Float = GlucoseFormatter.displayFromMgDl(mgdl.toFloat(), true)
+
+    @Test
+    fun aReadingShownAsTheThresholdIsNotAboveIt() {
+        val inMmol = Run(config(threshold = 10.0f, durationMinutes = 15), isMmol = true)
+        // 181 mg/dL is 10.05 mmol/L, shown 10.0: not above 10.0.
+        assertEquals(PersistentHighAction.RESET, inMmol.reading(t0, mmol(181)))
+        // 182 is 10.10, shown 10.1: the high starts.
+        assertEquals(PersistentHighAction.WAIT, inMmol.reading(t0 + 5 * minute, mmol(182)))
+        assertEquals(t0 + 5 * minute, inMmol.startedAtMs)
+        // A reading shown 10.0 again ends it.
+        assertEquals(PersistentHighAction.RESET, inMmol.reading(t0 + 10 * minute, mmol(181)))
+
+        val inMgdl = Run(config(threshold = 180f, durationMinutes = 15))
+        // A calibrated 180.4 is shown 180.
+        assertEquals(PersistentHighAction.RESET, inMgdl.reading(t0, 180.4f))
+        assertEquals(PersistentHighAction.WAIT, inMgdl.reading(t0 + 5 * minute, 181f))
+    }
+
+    @Test
+    fun aStoredReadingShownAsTheThresholdEndsTheWalk() {
+        // 181 mg/dL, shown 10.0, at t0 + 10 min: the high counts from the reading after it.
+        val stored = listOf(200, 190, 181, 182, 190)
+            .mapIndexed { i, mgdl -> StoredReading(t0 + i * 5 * minute, mmol(mgdl)) }
+        assertEquals(
+            EpisodeStart(t0 + 15 * minute, 2),
+            PersistentHighPolicy.startFromHistory(stored, config(threshold = 10.0f), isMmol = true)
+        )
     }
 
     @Test
@@ -342,6 +388,7 @@ class PersistentHighPolicyTests {
             val decision = PersistentHighPolicy.decide(
                 startedAtMs = 0L,
                 config = config(),
+                isMmol = false,
                 activeNow = true,
                 value = 200f,
                 readingTimeMs = t0,
