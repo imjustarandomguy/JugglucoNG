@@ -44,6 +44,12 @@ data class DisplayedReading(
     val staleAtMillis: Long,
     /** When the value is taken down altogether ([Freshness.NO_VALUE]). */
     val noValueAtMillis: Long,
+    /**
+     * When the newest reading was taken, which the deadlines above count from; 0 with none.
+     * The same as [timeMillis] unless the display shows an earlier point, as smoothing that
+     * collapses readings into chunks does.
+     */
+    val lastReadingMillis: Long,
     val origin: Origin,
     val reason: Reason,
     val revision: Long,
@@ -145,6 +151,7 @@ data class DisplayedReading(
             nextExpectedAtMillis = 0L,
             staleAtMillis = 0L,
             noValueAtMillis = 0L,
+            lastReadingMillis = 0L,
             origin = Origin.STORED,
             reason = Reason.STARTUP,
             revision = 0L,

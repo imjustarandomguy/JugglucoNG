@@ -59,6 +59,12 @@ class ReadingHub internal constructor(
         val declaredIntervalMillis: Long,
         /** Without [reading]: the newest reading time known at all, or 0 for none. */
         val latestTimeMillis: Long = 0L,
+        /**
+         * When its newest reading was taken (stored or live), or 0 when unknown. Later than
+         * [reading] while the display shows an earlier point: smoothing that collapses
+         * readings into chunks shows the end of the last full chunk, up to a chunk behind.
+         */
+        val newestReadingMillis: Long = 0L,
     )
 
     /** Reads the [Inputs] at a moment. Runs on the hub's worker. */
@@ -238,13 +244,20 @@ class ReadingHub internal constructor(
                 it.timeMillis > 0L && it.value.isFinite() && it.value > 0f && it.valueText.isNotBlank()
             }
             val timeMillis = reading?.timeMillis ?: inputs.latestTimeMillis.coerceAtLeast(0L)
+            // Freshness and every deadline count from the newest reading taken, not from the
+            // point shown: a chunk's end would leave a one-minute sensor stale most of the time.
+            val lastReadingMillis = maxOf(timeMillis, inputs.newestReadingMillis)
             val interval = ReadingCadence.intervalMillis(
                 inputs.declaredIntervalMillis,
-                if (reading != null) inputs.recentTimes + reading.timeMillis else inputs.recentTimes,
+                buildList {
+                    addAll(inputs.recentTimes)
+                    if (reading != null) add(reading.timeMillis)
+                    if (inputs.newestReadingMillis > 0L) add(inputs.newestReadingMillis)
+                },
             )
             var freshness = ReadingCadence.freshness(
                 sensorPresent = !inputs.sensorId.isNullOrBlank() || reading != null,
-                timeMillis = timeMillis,
+                timeMillis = lastReadingMillis,
                 intervalMillis = interval,
                 nowMillis = nowMillis,
             )
@@ -254,7 +267,7 @@ class ReadingHub internal constructor(
             }
             val shown = if (freshness == Freshness.FRESH || freshness == Freshness.STALE) reading else null
             val rate = shown?.rate?.takeIf { it.isFinite() } ?: Float.NaN
-            val hasTime = timeMillis > 0L
+            val hasTime = lastReadingMillis > 0L
             return DisplayedReading(
                 sensorId = shown?.sensorId ?: inputs.sensorId ?: reading?.sensorId,
                 timeMillis = timeMillis,
@@ -271,10 +284,11 @@ class ReadingHub internal constructor(
                 index = shown?.index ?: 0,
                 freshness = freshness,
                 intervalMillis = interval,
-                nextExpectedAtMillis = if (hasTime) ReadingCadence.nextExpectedAt(timeMillis, interval) else 0L,
-                staleAtMillis = if (hasTime) ReadingCadence.staleAt(timeMillis, interval) else 0L,
-                noValueAtMillis = if (hasTime) ReadingCadence.noValueAt(timeMillis) else 0L,
-                origin = if (hasTime) originOf(timeMillis) else Origin.STORED,
+                nextExpectedAtMillis = if (hasTime) ReadingCadence.nextExpectedAt(lastReadingMillis, interval) else 0L,
+                staleAtMillis = if (hasTime) ReadingCadence.staleAt(lastReadingMillis, interval) else 0L,
+                noValueAtMillis = if (hasTime) ReadingCadence.noValueAt(lastReadingMillis) else 0L,
+                lastReadingMillis = lastReadingMillis,
+                origin = if (hasTime) originOf(lastReadingMillis) else Origin.STORED,
                 reason = Reason.STARTUP,
                 revision = 0L,
             )
@@ -418,8 +432,8 @@ internal class StoredReadingSource : ReadingHub.Source {
         val isMmol = Applic.unit == 1
         val history = runCatching {
             NotificationHistorySource.getDisplayHistory(nowMillis - HISTORY_MS, isMmol, sensor)
-        }.getOrDefault(emptyList())
-        val snapshot = newestSnapshot(sensor, history)
+        }.getOrDefault(emptyList()).let { notAhead(it, nowMillis) }
+        val snapshot = newestSnapshot(sensor, history, nowMillis)
         val reading = snapshot?.let {
             ReadingHub.Reading(
                 sensorId = it.sensorId,
@@ -435,19 +449,27 @@ internal class StoredReadingSource : ReadingHub.Source {
             )
         }
         val latest = if (reading != null) 0L else latestStoredTime(history, nowMillis, isMmol, sensor)
+        val liveMillis = runCatching {
+            CurrentGlucoseSource.getFresh(ReadingCadence.NO_VALUE_AFTER_MS, sensor)?.timeMillis
+        }.getOrNull() ?: 0L
         return ReadingHub.Inputs(
             sensorId = sensor ?: snapshot?.sensorId,
             reading = reading,
             recentTimes = history.map { it.timestamp },
             declaredIntervalMillis = declaredIntervalMillis(snapshot?.sensorId ?: sensor),
             latestTimeMillis = latest,
+            newestReadingMillis = newestReadingMillis(history, liveMillis, nowMillis),
         )
     }
 
-    private fun newestSnapshot(sensor: String?, history: List<GlucosePoint>): CurrentDisplaySource.Snapshot? {
+    private fun newestSnapshot(
+        sensor: String?,
+        history: List<GlucosePoint>,
+        nowMillis: Long,
+    ): CurrentDisplaySource.Snapshot? {
         val live = runCatching {
             CurrentDisplaySource.resolveCurrent(ReadingCadence.NO_VALUE_AFTER_MS, sensor, ReadingCadence.NO_VALUE_AFTER_MS)
-        }.getOrNull()
+        }.getOrNull()?.takeIf { it.timeMillis <= nowMillis + MAX_AHEAD_MS }
         val newestRow = history.lastOrNull { it.value.isFinite() && it.value > 0f }
             ?: return live
         if (live != null && newestRow.timestamp <= live.timeMillis + SAME_READING_MS) return live
@@ -464,7 +486,7 @@ internal class StoredReadingSource : ReadingHub.Source {
 
     private fun latestStoredTime(history: List<GlucosePoint>, nowMillis: Long, isMmol: Boolean, sensor: String?): Long =
         history.lastOrNull()?.timestamp ?: runCatching {
-            NotificationHistorySource.getDisplayHistory(nowMillis - LATEST_LOOKBACK_MS, isMmol, sensor)
+            notAhead(NotificationHistorySource.getDisplayHistory(nowMillis - LATEST_LOOKBACK_MS, isMmol, sensor), nowMillis)
                 .lastOrNull()?.timestamp
         }.getOrNull() ?: 0L
 
@@ -477,7 +499,7 @@ internal class StoredReadingSource : ReadingHub.Source {
         }.getOrNull() ?: 0L
     }
 
-    private companion object {
+    internal companion object {
         /** Enough for a dozen five-minute gaps, and the trend window behind a 30-min-old reading. */
         const val HISTORY_MS = 65L * 60_000L
 
@@ -486,6 +508,29 @@ internal class StoredReadingSource : ReadingHub.Source {
 
         /** A stored row this much newer than the live reading is a newer reading. */
         const val SAME_READING_MS = 30_000L
+
+        /**
+         * How far ahead of this device's clock a reading's time may be (another device's
+         * clock, a sensor's) and still count. One stamped later than that, after the clock
+         * was set back, would keep the shown reading fresh until its time came.
+         */
+        const val MAX_AHEAD_MS = 60_000L
+
+        /** [rows] without those stamped more than [MAX_AHEAD_MS] after [nowMillis]. */
+        fun notAhead(rows: List<GlucosePoint>, nowMillis: Long): List<GlucosePoint> =
+            if (rows.none { it.timestamp > nowMillis + MAX_AHEAD_MS }) rows
+            else rows.filter { it.timestamp <= nowMillis + MAX_AHEAD_MS }
+
+        /**
+         * When the newest reading was taken: the newest of the stored [rows] and the live
+         * reading at [liveMillis] (0 for none), neither more than [MAX_AHEAD_MS] ahead.
+         */
+        fun newestReadingMillis(rows: List<GlucosePoint>, liveMillis: Long, nowMillis: Long): Long {
+            val stored = rows.lastOrNull { it.value.isFinite() && it.value > 0f && it.timestamp <= nowMillis + MAX_AHEAD_MS }
+                ?.timestamp ?: 0L
+            val live = liveMillis.takeIf { it <= nowMillis + MAX_AHEAD_MS } ?: 0L
+            return maxOf(stored, live, 0L)
+        }
 
         /**
          * The rate the dashboard and the notification draw: the measured rows plus the live
