@@ -316,10 +316,22 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
     @Suppress("DEPRECATION")
     private fun resolveCutoutData(
         anchorView: View?,
-        cutout: android.view.DisplayCutout?
+        windowCutout: android.view.DisplayCutout?
     ): CutoutData {
         val density = resources.displayMetrics.density
         val edge = resolveIslandEdge(anchorView)
+        // The display's own cutout, in display coordinates for its current rotation (Android
+        // 10 and up). That of the window insets (windowCutout) is relative to our overlay
+        // window and clipped to it: the pill's window is no taller than the cutout, and its
+        // height depends on where the pill sits, which depends on the cutout's middle. The
+        // insets still trigger this, as a rotation dispatches them again, and stand in below
+        // Android 10.
+        val displayCutout = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            (anchorView?.display ?: windowManager?.defaultDisplay)?.cutout
+        } else {
+            null
+        }
+        val cutout = displayCutout ?: windowCutout
         val cutoutRect = when (edge) {
             CutoutEdge.LEFT -> cutout?.boundingRects?.minByOrNull { it.left }
             CutoutEdge.RIGHT -> cutout?.boundingRects?.maxByOrNull { it.right }
