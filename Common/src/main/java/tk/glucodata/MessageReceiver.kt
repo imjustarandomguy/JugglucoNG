@@ -206,7 +206,8 @@ class MessageReceiver: WearableListenerService() {
                 }
             }
             WearMessagePath.START ->  {
-               if(isWearable)
+               // Same gate as Applic.initproc(): request Wi-Fi only when the Wi-Fi setting is on.
+               if(isWearable && Natives.getWifi())
                   UseWifi.usewifi()
                val context=Applic.getContext()
                Applic.setinittext(context.getString(R.string.connected));

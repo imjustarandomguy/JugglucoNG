@@ -95,12 +95,15 @@ private void startusewifi() {
 			}
 		}
 	};
-static void usewifi() {
+static synchronized void usewifi() {
 	if(!Applic.isWearable) {
 		// Keeping Wi-Fi bound to the app is a watch behaviour; the phone's copy
 		// was a no-op stub. One class now, with the flavour difference here.
 		return;
 		}
+	// One request at a time: stopusewifi() can only release the one it holds.
+	if(thisone!=null)
+		return;
 	thisone=new UseWifi();
 	thisone.startusewifi();
 	}
@@ -108,7 +111,7 @@ static void usewifi() {
 static boolean usingWifi() {
 	return thisone!=null;
 	} */
-static void stopusewifi() {
+static synchronized void stopusewifi() {
 	if(!Applic.isWearable)
 		return;
 	if(thisone!=null) {
