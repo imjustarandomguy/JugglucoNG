@@ -1794,17 +1794,25 @@ static jlong ensureSensorShellInternal(const char *str, jlong startTimeSec,
   seedDirectStreamStateIfMissing(hist, static_cast<time_t>(startTimeSec));
 
   hist->sensorerror = false;
+  // As in ensureDirectStreamShell: a Dexcom record starts when the sensor did
+  // and its 5-minute slots count from there. A stream's earlier guess (a
+  // synced reading's time less an hour) must not move it: the driver's
+  // backfill is stamped from the start and would land that much early.
+  const auto *startinfo = hist->getinfo();
+  const bool fixedStart =
+      startinfo && startinfo->dexcom && startinfo->starttime > 0;
+  const bool moveStart = startTimeSec > 0 && !fixedStart;
   const int ind = hist->sensorIndex;
   if (auto *sens = sensors->getsensor(ind)) {
     sens->reactivateFromData();
-    if (startTimeSec > 0 &&
+    if (moveStart &&
         (sens->starttime == 0 ||
          static_cast<uint32_t>(startTimeSec) < sens->starttime)) {
       sens->starttime = static_cast<uint32_t>(startTimeSec);
     }
   }
   if (auto *info = hist->getinfo()) {
-    if (startTimeSec > 0 &&
+    if (moveStart &&
         (info->starttime == 0 ||
          static_cast<uint32_t>(startTimeSec) < info->starttime)) {
       info->starttime = static_cast<uint32_t>(startTimeSec);
