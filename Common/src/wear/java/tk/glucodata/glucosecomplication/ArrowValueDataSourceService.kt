@@ -179,7 +179,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
       val bitmap=
       if(glucose==null) {
          Log.i(LOG_ID,"glucose==null")
-         // No reading: an empty bitmap rather than the legacy renderer's, so
+         // No reading: the shared renderer's mark rather than the legacy one, so
          // this slot cannot drift back to the old geometry and colours.
          ComplicationRenderer.noValueBitmap(VALUE_ARROW_PX)
          }
@@ -189,6 +189,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
       // and palette like the others rather than the legacy geometry.
       ComplicationRenderer.valueWithArrowBitmap(
           VALUE_ARROW_PX, glucose.text, glucose.value, glucose.rate, ComplicationRenderer.isMmol(),
+          ComplicationRenderer.readingColor(glucose),
       )
 	}
 
@@ -211,14 +212,13 @@ fun getview(type: ComplicationType):WearComplicationValue {
     /**
      * Just the arrow, drawn as a mask for the face to tint. The SHORT_TEXT and
      * RANGED_VALUE forms already carry the value in their text field, so the
-     * time caption the ICON form uses would only shrink the arrow here.
+     * time caption the ICON form uses would only shrink the arrow here. None
+     * once the reading is stale.
      */
-    private fun arrowIcon(reading: GlucoseComplicationData.Reading): Icon =
-        Icon.createWithBitmap(
-            ComplicationRenderer.arrowBitmap(
-                ICON_PX, reading.rate, ComplicationRenderer.ICON_TINT,
-            )
-        )
+    private fun arrowIcon(reading: GlucoseComplicationData.Reading): Icon? =
+        reading.rate.takeIf { it.isFinite() }?.let { rate ->
+            Icon.createWithBitmap(ComplicationRenderer.arrowBitmap(ICON_PX, rate, ComplicationRenderer.ICON_TINT))
+        }
 
     companion object {
         private const val LOG_ID = "ArrowValueDataSourceService"
