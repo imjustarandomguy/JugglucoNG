@@ -68,6 +68,8 @@ private static final long DEXCOM_WARMUP_MSEC = 30L * 60L * 1000L;
 private static final long DEXCOM_WARMUP_RETRY_SLACK_MSEC = 15_000L;
 private static final long DEXCOM_CONNECT_ATTEMPT_TIMEOUT_MS = 45_000L;
 private static final long DEXCOM_RECONNECT_QUIET_MS = 5_000L;
+// A session takes seconds; this only bounds a link that is never closed.
+private static final long DEXCOM_WAKELOCK_TIMEOUT_MS = 2L * 60L * 1000L;
 private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
@@ -171,24 +173,33 @@ private void docmd0(BluetoothGatt bluetoothGatt) {
 //private long connectedtime=0L;
 //private ArrayList<String> triedsensors=new ArrayList<>();
 
+// Not reference counted: a second CONNECTED before the release extends the
+// one lock instead of stacking another, and a lock its timeout already let go
+// is not released again.
 private static PowerManager.WakeLock getwakelock() {
-      return ((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      final var lock=((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      lock.setReferenceCounted(false);
+      return lock;
       }
 private PowerManager.WakeLock wakelock=null;
 
 private void getlock() {
-    wakelock=getwakelock();
-    wakelock.acquire();
+    if(wakelock==null)
+        wakelock=getwakelock();
+    // Timed, so a link that never reports DISCONNECTED nor gets closed cannot
+    // keep the CPU awake.
+    wakelock.acquire(DEXCOM_WAKELOCK_TIMEOUT_MS);
     {if(doLog) {Log.i(LOG_ID,"getlock");};};
     }
 private synchronized void releaselock() {
     var lock=wakelock;
     if(lock!=null) {
         wakelock=null;
-        lock.release();
+        if(lock.isHeld())
+            lock.release();
         {if(doLog) {Log.i(LOG_ID,"releaselock");};};
         }
-   } 
+   }
 private int triedinvain=0;
 
 private boolean connected=false;

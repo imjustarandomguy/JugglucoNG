@@ -158,8 +158,12 @@ class PowerManager {
     List<WakeLock> created=new ArrayList<>();
     WakeLock newWakeLock(int level,String tag){WakeLock w=new WakeLock();created.add(w);return w;}
     static class WakeLock {
-        boolean held;
-        void acquire(){held=true;}
+        boolean held,referenceCounted=true;long timeout;
+        void setReferenceCounted(boolean counted){referenceCounted=counted;}
+        void acquire(){held=true;timeout=0;}
+        void acquire(long ms){held=true;timeout=ms;}
+        boolean isHeld(){return held;}
+        void expire(){held=false;}
         void release(){
             if(!Thread.holdsLock(owner))throw new AssertionError("wake lock released outside callback monitor");
             if(!held)throw new AssertionError("wake lock released twice");
@@ -426,6 +430,9 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();defaultAuto=true;check(cb.useAutoConnect()&&cb.connectionAttemptTimeoutMillis()==0,"application background setting ignored");
         cb=fresh();first=cb.mBluetoothGatt;cb.onConnectionStateChange(first,0,2);
         PowerManager.WakeLock firstLock=cb.wakelock;check(firstLock.held,"connection did not acquire wake lock");
+        check(firstLock.timeout>0&&!firstLock.referenceCounted,"connection wake lock was untimed or reference counted");
+        cb.onConnectionStateChange(first,0,2);
+        check(cb.wakelock==firstLock&&Applic.power.created.size()==1,"repeated connection stacked another wake lock");
         cb.close();check(!firstLock.held&&cb.wakelock==null&&PowerManager.releases==1,"Bluetooth-off close leaked wake lock");
         cb.close();check(PowerManager.releases==1,"repeated close released wake lock twice");
         cb.connectDevice(0);current=cb.mBluetoothGatt;cb.onConnectionStateChange(current,0,2);
@@ -435,6 +442,8 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);firstLock=cb.wakelock;cb.setPause(true);
         check(!firstLock.held&&cb.wakelock==null,"pause leaked wake lock");
         cb.close();check(PowerManager.releases==1,"close after pause released twice");
+        cb=fresh();cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);cb.wakelock.expire();
+        cb.close();check(cb.wakelock==null&&PowerManager.releases==0,"wake lock released again after its timeout");
         cb=fresh();current=cb.mBluetoothGatt;cb.bonded();check(cb.dataCommands==1&&current.discoveries==0,"bonded discovery not queued");
         Applic.runUi();check(current.discoveries==1,"current bonded discovery skipped");
         cb=fresh();first=cb.mBluetoothGatt;cb.bonded();cb.close();Applic.runUi();
