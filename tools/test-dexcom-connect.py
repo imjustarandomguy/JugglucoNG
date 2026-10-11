@@ -31,6 +31,7 @@ methods = '\n'.join(method(s) for s in [
     'protected void onConnectionAttemptTimeout(', 'public synchronized boolean connectDevice(',
     'private boolean connectNow(', 'public void free(', 'private String dialledAddress(',
     'private boolean dialledByAnotherCallback(',
+    'public boolean reconnect(', 'private synchronized boolean sessionUnderWay(',
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
     'static private PendingIntent mkintents(', 'static  PendingIntent  setalarm(',
@@ -91,6 +92,8 @@ class SuperGattCallback {
     protected boolean connectScheduled(){return false;}protected void pendingConnectEnded(){}
     // As the base class: without a device to dial, a scan looks for it.
     public synchronized boolean connectDevice(long delay){if(mActiveBluetoothDevice==null){scans++;foundtime=0;return false;}directCalls++;executorDelay=delay;mBluetoothGatt=new BluetoothGatt();return true;}
+    // As the base class past its own checks: the link is dropped and dialled again.
+    int reconnects;public boolean reconnect(long now){reconnects++;return connectDevice(0);}
     public void close(){closes++;mBluetoothGatt=null;}
     public void setPause(boolean pause){stop=pause;}
     public void onConnectionStateChange(BluetoothGatt g,int status,int state){}
@@ -335,6 +338,28 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.useAutoConnect(),"application background setting ignored");
             cb.connectDevice(0);
             check(cb.scans==1,"unbonded G7 dialled its stored address under the application setting");
+        }
+    }
+    static void lossAlarmSparesASessionUnderWay() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // A background connect issued minutes ago, answered at the G7's slot: the loss
+            // alarm then leaves the link alone.
+            DexGattCallback cb=fresh();isWearable=wear;BluetoothGatt gatt=cb.mBluetoothGatt;int calls=cb.directCalls;
+            System.now+=300000;cb.onConnectionStateChange(gatt,0,2);
+            System.now+=20000;
+            check(cb.reconnect(System.now)&&cb.reconnects==0&&cb.mBluetoothGatt==gatt&&cb.directCalls==calls,
+                "loss alarm closed a session under way");
+            // Another sensor's reading passes a time one showtime back.
+            check(cb.reconnect(System.now-cb.showtime+20)&&cb.reconnects==0,"another sensor's reading closed a session under way");
+            // A link up for a minute is not a session any more.
+            System.now+=40000;cb.reconnect(System.now);
+            check(cb.reconnects==1&&cb.directCalls==calls+1,"link up for a minute not reconnected");
+            // Once the session ended, and for a connect still pending, as before.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.onConnectionStateChange(gatt,19,0);cb.reconnect(System.now);
+            check(cb.reconnects==1,"ended session kept the loss alarm from reconnecting");
+            cb=fresh();isWearable=wear;System.now+=300000;cb.reconnect(System.now);
+            check(cb.reconnects==1,"pending connect not reconnected");
         }
     }
     static void duplicateCallbackKeepsTheBond() {
@@ -623,7 +648,8 @@ public class DexGattCallback extends SuperGattCallback {
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
         preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
         unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        lossAlarmSparesASessionUnderWay();
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''
