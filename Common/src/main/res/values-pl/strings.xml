@@ -1507,6 +1507,7 @@
     <string name="invalid_interval">Invalid interval value</string>
     <string name="status_waiting_for_connection">Oczekiwanie na połączenie</string>
     <string name="status_ready_in_minutes">Sensor gotowy za %1$d minut(y).</string>
+    <string name="status_waiting_for_first_reading">Oczekiwanie na pierwszy odczyt</string>
     <string name="navigate_back">Wróć</string>
     <string name="nightscout_upload_title">Przesyłanie do Nightscout</string>
     <string name="nightscout_upload_active">Przesyłanie w tle</string>

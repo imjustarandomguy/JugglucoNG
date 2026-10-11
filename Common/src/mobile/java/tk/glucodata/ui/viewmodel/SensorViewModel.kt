@@ -571,7 +571,7 @@ class SensorViewModel : ViewModel() {
                         // Get detailed status from native code
                         val nativeStatus = Natives.getsensortext(gatt.dataptr) ?: ""
                         val bleStatus = gatt.constatstatusstr ?: ""
-                        val warmupStatus = getLegacyWarmupStatus(tk.glucodata.Applic.app, gatt.dataptr, nativeStatus)
+                        val warmupStatus = getLegacyWarmupStatus(tk.glucodata.Applic.app, gatt, nativeStatus)
                         
                         // Edit 85: Check `stop` (paused) state via SensorBluetooth helper.
                         // SuperGattCallback.stop is protected, not accessible from this package,
