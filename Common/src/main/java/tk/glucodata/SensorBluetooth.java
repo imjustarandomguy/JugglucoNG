@@ -1410,6 +1410,37 @@ public class SensorBluetooth {
         return false;
     }
 
+    /** A kept callback whose record a G7 handoff made a Dexcom one; see DexcomDriverRebuild. */
+    private static boolean needsDexcomDriver(SuperGattCallback callback) {
+        return DexcomDriverRebuild.needed(
+                tk.glucodata.BuildConfig.DexCom == 1,
+                callback instanceof DexGattCallback,
+                callback instanceof ManagedBluetoothSensorDriver,
+                () -> Natives.dexHandoff(callback.SerialNumber) != null);
+    }
+
+    /** Replaces the callback at {@code index} by the one its record's kind needs now. */
+    private void rebuildDriver(int index) {
+        final SuperGattCallback stale = gattcallbacks.get(index);
+        final String serial = stale.SerialNumber;
+        final long dataptr = Natives.getdataptr(serial);
+        if (dataptr == 0L) {
+            Log.w(LOG_ID, "rebuild " + serial + ": no record to build a driver for");
+            return;
+        }
+        if (Natives.getLibreVersion(dataptr) != SensorSourceResolver.SENSOR_KIND_DEXCOM) {
+            // Not what the check found: keep the driver rather than rebuild it at every pass.
+            Natives.freedataptr(dataptr);
+            Log.w(LOG_ID, "rebuild " + serial + ": its record is no G7's");
+            return;
+        }
+        final SuperGattCallback rebuilt = getGattCallback(serial, dataptr);
+        Log.i(LOG_ID, "rebuild " + serial + ": " + stale.getClass().getSimpleName() + " -> "
+                + rebuilt.getClass().getSimpleName());
+        stale.free();
+        gattcallbacks.set(index, rebuilt);
+    }
+
     private static int consumeMatchingDeviceIds(String[] sensors, SuperGattCallback callback) {
         if (sensors == null || callback == null) {
             return 0;
@@ -1597,6 +1628,7 @@ public class SensorBluetooth {
             ArrayList<String> allDevs = distinctRuntimeSensorIds(candidateDevs);
             String[] devs = allDevs.toArray(new String[0]);
             ArrayList<Integer> rem = new ArrayList<>();
+            ArrayList<Integer> rebuild = new ArrayList<>();
             int gatnr = gattcallbacks.size();
             if (devs == null) {
                 for (int i = 0; i < gatnr; i++) {
@@ -1619,14 +1651,22 @@ public class SensorBluetooth {
                     } else {
                         gatt.stopHealth = false;
                         heb += matched;
+                        if (needsDexcomDriver(gatt)) {
+                            rebuild.add(i);
+                        }
                     }
                 }
-                if (devs.length == heb && rem.size() == 0) {
+                if (devs.length == heb && rem.size() == 0 && rebuild.isEmpty()) {
                     return false;
                 }
             }
             if (mBluetoothManager != null)
                 stopScan(false);
+            // In place, before any removal shifts the indices: the sensor stays
+            // where it was, current or not, and only its driver changes.
+            for (int index : rebuild) {
+                rebuildDriver(index);
+            }
             // rem.sort((x,y)->{return x-y;});
             Collections.sort(rem, (x, y) -> {
                 return x - y;
