@@ -15,6 +15,12 @@ package tk.glucodata
 interface GlucoseValueRefresh {
     /** Redraws every live complication value view. */
     fun updateAll()
+
+    /**
+     * Stored readings changed. The current reading reaches the views through
+     * [CurrentReadingHub]; this is for what draws history, and may be folded and delayed.
+     */
+    fun onStoredDataChanged() = updateAll()
 }
 
 object GlucoseValueRefreshAccess {

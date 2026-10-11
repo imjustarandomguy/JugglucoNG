@@ -15,4 +15,8 @@ object WearGlucoseValueRefresh : GlucoseValueRefresh {
     override fun updateAll() {
         WearComplicationValue.updateall()
     }
+
+    override fun onStoredDataChanged() {
+        tk.glucodata.WatchSurfaces.onStoredDataChanged()
+    }
 }

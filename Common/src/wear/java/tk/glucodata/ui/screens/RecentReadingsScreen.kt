@@ -56,8 +56,9 @@ fun RecentReadingsScreen(onCalibrateReading: ((GlucosePoint) -> Unit)? = null) {
     LaunchedEffect(Unit) {
         tk.glucodata.ui.WearGlucoseStore.start()
     }
-    val velocities = remember(storeSnapshot, readings, isMmol) {
-        readingVelocities(storeSnapshot, readings, isMmol)
+    val current by tk.glucodata.CurrentReadingHub.readings.collectAsState()
+    val velocities = remember(storeSnapshot, readings, isMmol, current) {
+        readingVelocities(storeSnapshot, readings, isMmol, current)
     }
     ScreenScaffold(timeText = { TimeText() }) {
         ScalingLazyColumn(contentPadding = PaddingValues(top = 32.dp, bottom = 28.dp, start = 20.dp, end = 20.dp)) {

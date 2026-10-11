@@ -40,26 +40,19 @@ import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUp
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import tk.glucodata.Applic
-import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.Log
 import tk.glucodata.MainActivity
-import tk.glucodata.Notify
 import tk.glucodata.R
 import java.lang.Math.min
 
 class IconValueDataSourceService: SuspendingComplicationDataSourceService()  {
     /** The number, drawn with the app's palette rather than the legacy colours. */
-    private fun valueBitmap(text: String, timeMillis: Long): android.graphics.Bitmap {
-        val isMmol = ComplicationRenderer.isMmol()
-        val value = GlucoseComplicationData.currentReading()?.value ?: Float.NaN
-        // ICON slots are tinted by the face, so the mask is drawn white; the
-        // SHORT_TEXT and RANGED_VALUE forms carry the value as text instead.
-        return ComplicationRenderer.valueBitmap(
-            256, text, value, isMmol, ComplicationRenderer.ICON_TINT,
+    private fun valueBitmap(reading: GlucoseComplicationData.Reading): android.graphics.Bitmap =
+        // ICON slots are tinted by the face, so the mask is drawn white (half
+        // strength once stale); the text forms carry the value as text instead.
+        ComplicationRenderer.valueBitmap(
+            ICON_PX, reading.text, reading.value, reading.isMmol, ComplicationRenderer.iconTint(reading),
         )
-    }
-
-private var glview: WearComplicationValue? =null
 
     override fun onComplicationActivated( complicationInstanceId: Int, type: ComplicationType) {
         Log.d(LOG_ID, "onComplicationActivated(): $complicationInstanceId")
@@ -67,32 +60,24 @@ private var glview: WearComplicationValue? =null
     override fun onComplicationDeactivated(complicationInstanceId: Int) {
         Log.d(LOG_ID, "onComplicationDeactivated(): $complicationInstanceId")
     }
-fun getview(type: ComplicationType):WearComplicationValue {
-     if(glview==null) {
-        val width:Int = 150
-        val height:Int = 150
-         glview= WearComplicationValue(width,height)
-         }
-      return glview as WearComplicationValue;
-      }
     override fun getPreviewData(type: ComplicationType): ComplicationData {
         val reading = GlucoseComplicationData.previewReading()
         val tapAction = GlucoseComplicationData.tapAction()
-        val now = System.currentTimeMillis()
         return when (type) {
             MONOCHROMATIC_IMAGE -> {
                 MonochromaticImageComplicationData.Builder(
-                    MonochromaticImage.Builder(
-                        Icon.createWithBitmap(
-                            valueBitmap(reading.text, reading.timeMillis),
-                        ),
-                    ).build(),
+                    MonochromaticImage.Builder(Icon.createWithBitmap(valueBitmap(reading))).build(),
                     contentDescription = PlainComplicationText.Builder(text = "Glucose Value").build(),
                 )
                     .setTapAction(tapAction)
                     .build()
             }
             SHORT_TEXT -> GlucoseComplicationData.shortValueData(
+                reading,
+                "Glucose Value",
+                tapAction,
+            )
+            LONG_TEXT -> GlucoseComplicationData.longTextData(
                 reading,
                 "Glucose Value",
                 tapAction,
@@ -111,13 +96,12 @@ fun getview(type: ComplicationType):WearComplicationValue {
         val type=        request.complicationType
         val glucose = GlucoseComplicationData.currentReading()
     if(type== MONOCHROMATIC_IMAGE) {
-            val now = System.currentTimeMillis()
-            val bitmap= if(glucose==null ||(now-glucose.timeMillis)>=tk.glucodata.Notify.glucosetimeout){
+            val bitmap= if(glucose==null){
                   Log.i(LOG_ID,"MonochromaticImage novalue")
-                 getview(type).getnovalue()
+                 ComplicationRenderer.noValueBitmap(ICON_PX, ComplicationRenderer.ICON_TINT, icon = true)
                  } else {
                      Log.i(LOG_ID,"MonochromaticImage ${glucose.text}")
-                    valueBitmap(glucose.text, glucose.timeMillis)
+                    valueBitmap(glucose)
                      }
              val image=Icon.createWithBitmap(bitmap)
              val complicationPendingIntent = GlucoseComplicationData.tapAction()
@@ -126,6 +110,14 @@ fun getview(type: ComplicationType):WearComplicationValue {
             } 
     else if (type == SHORT_TEXT) {
             return GlucoseComplicationData.shortValueData(
+                glucose,
+                "Glucose Value",
+                GlucoseComplicationData.tapAction(),
+            )
+            }
+    else if (type == LONG_TEXT) {
+            // Declared in the manifest, so a long slot offers this source; it has to answer.
+            return GlucoseComplicationData.longTextData(
                 glucose,
                 "Glucose Value",
                 GlucoseComplicationData.tapAction(),
@@ -146,6 +138,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
 
     companion object {
         private const val LOG_ID = "IconValueDataSourceService"
+        private const val ICON_PX = 256
    private val complicationDataSourceUpdateRequester = ComplicationDataSourceUpdateRequester.create( context=tk.glucodata.Applic.app, complicationDataSourceComponent = ComponentName(tk.glucodata.Applic.app, IconValueDataSourceService::class.java))
 
         public fun update() {

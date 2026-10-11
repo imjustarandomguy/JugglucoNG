@@ -64,15 +64,17 @@ abstract class ChartComplicationBase : SuspendingComplicationDataSourceService()
             width = width,
             height = height,
             isMmol = ComplicationRenderer.isMmol(),
-            valueText = reading?.text.takeIf { showValue },
+            valueText = (reading?.text ?: tk.glucodata.DisplayedReading.NO_VALUE_TEXT).takeIf { showValue },
             value = reading?.value ?: Float.NaN,
             rate = reading?.takeIf { showArrow }?.rate ?: Float.NaN,
             timeMillis = reading?.timeMillis ?: 0L,
-            showArrow = showArrow && reading != null,
+            // A stale reading has no arrow (its rate is NaN).
+            showArrow = showArrow && reading?.rate?.isFinite() == true,
             showTime = showTime && reading != null,
             // A background image is not cropped to a slot, so it fills.
             inset = !fill,
             allowSynthetic = preview,
+            stale = reading?.stale == true,
         ) ?: return null
         return Icon.createWithBitmap(bitmap)
     }
