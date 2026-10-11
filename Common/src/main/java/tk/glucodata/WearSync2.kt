@@ -667,9 +667,8 @@ object WearSync2 {
                 val mirrorNative = Applic.isWearable || !isLibre2NativeSensor(serial)
                 // Taken before storing: a reading filled in behind this device's own
                 // newest is history, not the current value.
-                val localNewestMs = if (missingOnly) {
-                    runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
-                } else 0L
+                val newestBeforeMs = runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
+                val localNewestMs = if (missingOnly) newestBeforeMs else 0L
                 var written = 0
                 var earliest = 0L
                 val stamps = LongArray(count)
@@ -745,6 +744,16 @@ object WearSync2 {
                         )
                     }
                 }
+                // The newest of them, when it is the current reading here, goes the
+                // way a reading this device takes goes: the screens show it at once
+                // and the loss alarm counts from it. Before the refresh below, so
+                // nothing resolves the reading it replaces.
+                if (written > 0 && Applic.isWearable) {
+                    val newest = (0 until written).maxByOrNull { stamps[it] } ?: 0
+                    if (isCurrentPeerReading(stamps[newest], newestBeforeMs, System.currentTimeMillis(), Notify.glucosetimeout)) {
+                        handlePeerReading(serial, stamps[newest], values[newest], raws[newest])
+                    }
+                }
                 if (written > 0) {
                     // The receiver follows the mirrored selection, not the
                     // sensor this chunk happens to carry: with two sensors
@@ -762,6 +771,28 @@ object WearSync2 {
                 }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }
         }
+    }
+
+    /**
+     * Whether the newest reading a chunk stored, taken at [storedMs], is the
+     * current reading here: newer than any this device had before it
+     * ([newestBeforeMs]) and not yet stale. A backfill's older readings and a
+     * repeat of the tail are history.
+     */
+    internal fun isCurrentPeerReading(storedMs: Long, newestBeforeMs: Long, nowMs: Long, staleAfterMs: Long): Boolean =
+        storedMs > 0L && storedMs > newestBeforeMs && nowMs - storedMs < staleAfterMs
+
+    /** [SuperGattCallback.processPeerReading] with the chunk's mg/dL lanes in display units. */
+    private fun handlePeerReading(serial: String, timestampMs: Long, autoMgdl: Float, rawMgdl: Float) {
+        runCatching {
+            val isMmol = Applic.unit == 1
+            fun display(mgdl: Float): Float = when {
+                !mgdl.isFinite() || mgdl <= 0f -> Float.NaN
+                isMmol -> (mgdl / MGDL_PER_MMOL).toFloat()
+                else -> mgdl
+            }
+            SuperGattCallback.processPeerReading(serial, timestampMs, display(autoMgdl), display(rawMgdl))
+        }.onFailure { Log.stack(LOG_ID, "handlePeerReading", it) }
     }
 
     /**
