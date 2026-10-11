@@ -48,15 +48,21 @@ internal object GlucoseComplicationData {
 
     fun tapAction(): PendingIntent = Notify.mkpending()
 
+    /**
+     * A complication request can be what started the process: it waits this long for the
+     * hub's first reading rather than answer "no value" and be redrawn a moment later.
+     */
+    private const val FIRST_READING_WAIT_MS = 1_500L
+
     /** The watch's current reading ([CurrentReadingHub]); null while no value is shown. */
-    fun currentReading(): Reading? = reading(CurrentReadingHub.current())
+    fun currentReading(): Reading? = reading(CurrentReadingHub.awaitCurrent(FIRST_READING_WAIT_MS))
 
     /**
      * [sensor]'s reading under the same rules: the hub's when it is the sensor the watch
      * displays, else resolved for it (the multi-sensor complication's other sensors).
      */
     fun currentReading(sensor: String): Reading? {
-        val shown = CurrentReadingHub.current()
+        val shown = CurrentReadingHub.awaitCurrent(FIRST_READING_WAIT_MS)
         if (tk.glucodata.SensorIdentity.matches(sensor, shown.sensorId)) return reading(shown)
         return reading(runCatching { CurrentReadingHub.resolveFor(sensor) }.getOrNull() ?: return null)
     }
