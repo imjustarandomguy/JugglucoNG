@@ -91,6 +91,23 @@ class DexcomFollowWiringTests {
         assertEquals(listOf("watch" to new.name), access.sent)
     }
 
+    @Test
+    fun switchingOnHandsTheG7TheFollowWouldHand() {
+        // The selected G7 is the old one, ended or forgotten on the watch: the newest goes.
+        val access = FakeAccess(listOf(old, new), dexcomIds = setOf(old.name, new.name))
+        assertEquals(new, ManagedSensorHandoff.switchOnDexcom(access, old.name))
+        // A watch handed it at the switch is not handed it again by the follow.
+        val prefs = prefs(
+            "direct.watch" to true,
+            "sensor.watch" to new.name,
+            "dexcom.watch" to DexcomFollow.handedValue(new),
+        )
+        ManagedSensorHandoff.followNewestDexcom(prefs, access)
+        assertTrue(access.sent.isEmpty())
+        // Another kind of sensor selected: no G7.
+        assertNull(ManagedSensorHandoff.switchOnDexcom(access, "ABCDEFGHIJK"))
+    }
+
     /** In-memory SharedPreferences; an editor's changes land together, on apply or commit. */
     private class FakePreferences : SharedPreferences {
         val values = HashMap<String, Any?>()

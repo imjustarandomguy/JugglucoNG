@@ -56,7 +56,7 @@ object ManagedSensorHandoff {
 
     @JvmStatic
     fun createOutgoingPayload(context: Context? = Applic.app): ByteArray =
-        buildPayload(context, dexcomPairing(SensorIdentity.resolveMainSensor()))
+        buildPayload(context, switchOnDexcom()?.let(::dexcomPayload))
 
     private fun buildPayload(context: Context?, dexcom: JSONObject?): ByteArray {
         val ctx = context ?: Applic.app
@@ -151,14 +151,12 @@ object ManagedSensorHandoff {
     }
 
     /**
-     * What the receiving device needs to pair with [sensorId]'s G7 itself, or
-     * null for any other sensor. A G7 record is native, so none of the
-     * preferences above describe it. Like Juggluco's own mirror this sends the
-     * scanned code (it ends in the PIN), the sensor's Bluetooth name and its
-     * start, not the pairing key: the receiver pairs with the PIN.
+     * What the receiving device needs to pair with [record]'s G7 itself. A G7
+     * record is native, so none of the preferences above describe it. Like
+     * Juggluco's own mirror this sends the scanned code (it ends in the PIN),
+     * the sensor's Bluetooth name and its start, not the pairing key: the
+     * receiver pairs with the PIN.
      */
-    private fun dexcomPairing(sensorId: String?): JSONObject? = dexcomRecord(sensorId)?.let(::dexcomPayload)
-
     private fun dexcomPayload(record: DexcomFollow.Record): JSONObject =
         JSONObject()
             .put("name", record.name)
@@ -167,12 +165,15 @@ object ManagedSensorHandoff {
             .put("start", record.start)
 
     /**
-     * What a watch handed the selected G7 remembers ([HANDED_DEXCOM_KEY_PREFIX]),
-     * as the switch's own handoff carries it; null for any other sensor.
+     * The G7 switching a watch on hands it ([DexcomFollow.onSwitchOn]), the one
+     * [followNewestDexcom] would hand it; null for none. What the watch then
+     * remembers ([HANDED_DEXCOM_KEY_PREFIX]) is this record.
      */
-    @JvmStatic
-    fun selectedDexcomHanded(): String? =
-        dexcomRecord(SensorIdentity.resolveMainSensor())?.let(DexcomFollow::handedValue)
+    internal fun switchOnDexcom(
+        access: FollowAccess = SystemFollowAccess,
+        selected: String? = SensorIdentity.resolveMainSensor(),
+    ): DexcomFollow.Record? =
+        DexcomFollow.onSwitchOn(access.activeDexcomRecords()) { access.isDexcom(selected) }
 
     /** Per watch: the G7 it was last handed and that G7's start ("Direct sensor on watch" preferences). */
     const val HANDED_DEXCOM_KEY_PREFIX = "dexcom."
@@ -184,11 +185,11 @@ object ManagedSensorHandoff {
     private val followSkips = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
-     * "Direct sensor on watch" hands the watch the phone's selected G7 when it
-     * is switched on. A sensor started later has to follow: called from the
-     * phone's ownership tick, this hands every such watch the newest G7 once
-     * the phone has paired it ([DexcomFollow]), and again only if its start
-     * moves.
+     * "Direct sensor on watch" hands the watch the newest G7 when it is
+     * switched on ([switchOnDexcom]). A sensor started later has to follow:
+     * called from the phone's ownership tick, this hands every such watch the
+     * newest G7 once the phone has paired it ([DexcomFollow]), and again only
+     * if its start moves.
      */
     @JvmStatic
     fun followNewestDexcom() {

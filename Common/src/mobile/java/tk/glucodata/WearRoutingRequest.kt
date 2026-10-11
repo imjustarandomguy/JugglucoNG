@@ -47,13 +47,14 @@ object WearRoutingRequest {
             ?.putBoolean(KEY_ENTER + nodeId, enter)
             ?: return
         if (direct) {
-            SensorIdentity.canonicalSensorId(SensorIdentity.resolveMainSensor())
+            // Switching on handed the watch the newest G7 already when the selected
+            // sensor is a G7, and that is the one it reads; later ones follow
+            // through ManagedSensorHandoff.followNewestDexcom.
+            val handed = ManagedSensorHandoff.switchOnDexcom()
+            SensorIdentity.canonicalSensorId(handed?.name ?: SensorIdentity.resolveMainSensor())
                 ?.takeIf { it.isNotBlank() }
                 ?.let { editor.putString(KEY_SENSOR + nodeId, it) }
-            // Switching on handed the watch the selected G7 already; later ones
-            // follow through ManagedSensorHandoff.followNewestDexcom.
-            ManagedSensorHandoff.selectedDexcomHanded()
-                ?.let { editor.putString(KEY_HANDED_DEXCOM + nodeId, it) }
+            handed?.let { editor.putString(KEY_HANDED_DEXCOM + nodeId, DexcomFollow.handedValue(it)) }
         } else {
             editor.remove(KEY_SENSOR + nodeId)
             editor.remove(KEY_HANDED_DEXCOM + nodeId)
