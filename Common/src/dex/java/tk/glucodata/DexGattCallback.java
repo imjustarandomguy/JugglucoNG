@@ -248,8 +248,11 @@ private boolean connected=false;
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
         if (bluetoothGatt != mBluetoothGatt) return;
         if (stop) {
-            releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
+            // Nothing reconnects a stopped callback: close its GATT (close() also
+            // releases the wake lock), or the client stays registered with the
+            // stack beside the next one, and a resumed callback never dials again.
+            close();
             return;
         }
         if (!acceptConnectionAttemptCallback(bluetoothGatt, newState)) return;
