@@ -24,11 +24,15 @@ import tk.glucodata.drivers.ManagedBluetoothSensorDriver
  * [PREF_ENABLED]; with the switch off, [evaluate] returns before touching
  * anything, so default behaviour is identical to before.
  *
- * [evaluate] runs on the [AlertRuntimeManager] tick (the same 15s cadence and
- * end-time source as the sensor-expiry alarm) and only decides and latches
- * there; the actual switch work (selection writes, BLE teardown on REMOVE,
- * notifications) runs on a dedicated single thread so the alert lock is not
- * held across it and incoming readings are never blocked.
+ * [evaluate] runs on the [AlertRuntimeManager] tick (the same 15s cadence as
+ * the sensor-expiry alarm) and only decides and latches there; the actual
+ * switch work (selection writes, BLE teardown on REMOVE, notifications) runs on
+ * a dedicated single thread so the alert lock is not held across it and
+ * incoming readings are never blocked.
+ *
+ * The trigger is the official end. The expiry alarm counts down to the expected
+ * end where a native sensor outlasts it ([sensorExpiryAlarmEndMs]), so for a
+ * G7 the handover can come up to 12 hours before the last expiry warning.
  */
 internal object SensorHandoverRuntime {
     private const val LOG_ID = "SensorHandover"
