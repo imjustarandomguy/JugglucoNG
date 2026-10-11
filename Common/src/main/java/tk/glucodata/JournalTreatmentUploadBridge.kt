@@ -19,4 +19,7 @@ interface JournalTreatmentUploadBridge {
      * once; repeated calls before the pass starts collapse into one.
      */
     fun sendAsFollower()
+
+    /** Whether a pass woken by a new glucose reading should also read treatments back. */
+    fun readingReceiveDue(useV3: Boolean): Boolean
 }
