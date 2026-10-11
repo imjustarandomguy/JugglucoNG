@@ -16,7 +16,7 @@ import org.junit.Test
  * reports, and the arbitration with them (see WearPayloadVersionPolicyTests).
  */
 class SensorOwnershipReportWireTests {
-    private val serial = "12147739749"
+    private val serial = "12345678901"
 
     /** What builds before the field put on the wire. */
     private fun legacyPayload(owns: Boolean, lastReadingMs: Long, sensor: String = serial): ByteArray {

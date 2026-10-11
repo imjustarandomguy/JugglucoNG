@@ -104,9 +104,9 @@ internal fun resolvePeerStandDownConfirmation(
  * in [localNames] the name is a native form of
  * ([SensorIdentity.nativeMatchesOfOne]); itself when that is none, or several.
  *
- * The second step is for a watch that reports a G7 it holds as "12147739749"
- * under the name native lists that record by, "739749". No record on the
- * phone has that name, so it was filed apart from 12147739749: the phone's
+ * The second step is for a watch that reports a G7 it holds as "12345678901"
+ * under the name native lists that record by, "678901". No record on the
+ * phone has that name, so it was filed apart from 12345678901: the phone's
  * card never found the watch's reports, and its arbitration stood down from
  * a sensor that did not exist.
  */
@@ -344,8 +344,8 @@ object SensorOwnershipRuntime {
 
     /**
      * One key per sensor, whichever of its names arrives — the phone's full
-     * 8958912147739749, the alias 12147739749 both devices go by, or the
-     * watch's listing "739749" — so a report, a release or a reading filed
+     * 5000012345678901, the alias 12345678901 both devices go by, or the
+     * watch's listing "678901" — so a report, a release or a reading filed
      * under one name is found under the others. See [resolveOwnershipKey].
      */
     private fun key(serial: String): String {
@@ -393,7 +393,7 @@ object SensorOwnershipRuntime {
     /**
      * Each record native lists, by that listing and by the full name native
      * keeps it under. A watch lists a record named after a G7's alias by a
-     * shorter name still ("739749" for 12147739749). Not the driver roster:
+     * shorter name still ("678901" for 12345678901). Not the driver roster:
      * [key] runs inside the connect gate, under a callback's monitor, and the
      * roster lock is always taken before a callback's.
      */
@@ -1281,8 +1281,8 @@ object SensorOwnershipRuntime {
      * Each sensor once, however many names it came under, and by the name both
      * devices resolve ([SensorIdentity.crossDeviceName], from the fullest one
      * known): the reports go out under it, and every log line says it. A watch
-     * holding a G7 as 12147739749 used to answer under its driver's name, the
-     * listing "739749", which the phone filed as a sensor of its own.
+     * holding a G7 as 12345678901 used to answer under its driver's name, the
+     * listing "678901", which the phone filed as a sensor of its own.
      */
     private fun sensors(): List<String> {
         val names = localSensorNames() + peerSerials.values

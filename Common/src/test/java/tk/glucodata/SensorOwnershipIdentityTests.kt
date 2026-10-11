@@ -8,17 +8,17 @@ import org.junit.Test
  * Which key an ownership report, a release or a reading is filed under
  * ([resolveOwnershipKey]): one per sensor, whichever name it arrives under.
  *
- * On 2026-10-07 a watch holding a G7 as 12147739749 reported it as "739749",
+ * On 2026-10-07 a watch holding a G7 as 12345678901 reported it as "678901",
  * the name native lists that record by. The phone, whose record is
- * 8958912147739749, filed those reports apart from its own sensor: its card
+ * 5000012345678901, filed those reports apart from its own sensor: its card
  * said "Watch: no report yet" while the watch read the G7 every five minutes,
- * and its arbitration stood down from a "739749" that did not exist.
+ * and its arbitration stood down from a "678901" that did not exist.
  */
 class SensorOwnershipIdentityTests {
-    private val full = "8958912147739749"
-    private val alias = "12147739749"
-    private val listing = "739749"
-    private val otherFull = "8958999999739749"
+    private val full = "5000012345678901"
+    private val alias = "12345678901"
+    private val listing = "678901"
+    private val otherFull = "5000099999678901"
 
     /**
      * What SensorIdentity.crossDeviceKey answers on the phone, whose record is
@@ -27,7 +27,7 @@ class SensorOwnershipIdentityTests {
      */
     private fun phoneKey(name: String): String? = when {
         name.length >= 11 && SensorIdentity.sameNativeSensor(name, full) -> alias
-        name.length >= 11 && SensorIdentity.sameNativeSensor(name, otherFull) -> "99999739749"
+        name.length >= 11 && SensorIdentity.sameNativeSensor(name, otherFull) -> "99999678901"
         else -> name.lowercase()
     }
 
