@@ -563,7 +563,8 @@ object AlertRuntimeManager {
             return
         }
 
-        if (glucoseValue <= threshold) {
+        // As shown, like HIGH: a reading shown as the threshold is not above it.
+        if (!ShownGlucose.isAbove(glucoseValue, threshold, Applic.unit == 1)) {
             persistentHighStartedAtMs = 0L
             clearRuntimeAlert(type, "persistent-high-cleared")
             return
