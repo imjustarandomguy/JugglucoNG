@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ColorRamp
 import androidx.wear.watchface.complications.data.ComplicationText
+import androidx.wear.watchface.complications.data.CountUpTimeReference
 import androidx.wear.watchface.complications.data.LongTextComplicationData
 import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.PlainComplicationText
@@ -11,6 +12,8 @@ import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageType
+import androidx.wear.watchface.complications.data.TimeDifferenceComplicationText
+import androidx.wear.watchface.complications.data.TimeDifferenceStyle
 import tk.glucodata.Applic
 import tk.glucodata.CurrentReadingHub
 import tk.glucodata.DisplayedReading
@@ -18,6 +21,8 @@ import tk.glucodata.GlucoseRangeColors
 import tk.glucodata.Natives
 import tk.glucodata.Notify
 import tk.glucodata.R
+import java.time.Instant
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
 
@@ -37,6 +42,11 @@ internal object GlucoseComplicationData {
         val stale: Boolean = false,
         /** The hub's revision it was drawn from, 0 for a sample. */
         val revision: Long = 0L,
+        /**
+         * When the newest reading was taken, 0 for a sample: a stale value's age counts
+         * from it.
+         */
+        val lastReadingMillis: Long = 0L,
     )
 
     private data class Thresholds(
@@ -80,6 +90,7 @@ internal object GlucoseComplicationData {
             sensorId = shown.sensorId,
             stale = shown.isDimmed,
             revision = shown.revision,
+            lastReadingMillis = shown.lastReadingMillis,
         )
     }
 
@@ -108,13 +119,13 @@ internal object GlucoseComplicationData {
     fun shortValueData(
         reading: Reading?,
         contentDescription: String,
-        tapAction: PendingIntent = tapAction(),
+        tapAction: PendingIntent? = tapAction(),
         icon: Icon? = null,
         /** Shown above the value by faces that render a title. */
         title: String? = null,
     ): ShortTextComplicationData {
         val builder = ShortTextComplicationData.Builder(
-            text = text(shownText(reading)),
+            text = valueText(reading, SHORT_AGE_SEPARATOR),
             contentDescription = text(contentDescription),
         ).setTapAction(tapAction)
         title?.let { builder.setTitle(text(it)) }
@@ -135,12 +146,12 @@ internal object GlucoseComplicationData {
     fun longTextData(
         reading: Reading?,
         contentDescription: String,
-        tapAction: PendingIntent = tapAction(),
+        tapAction: PendingIntent? = tapAction(),
         icon: Icon? = null,
         title: String? = null,
     ): LongTextComplicationData {
         val builder = LongTextComplicationData.Builder(
-            text = text(shownText(reading)),
+            text = valueText(reading, LONG_AGE_SEPARATOR),
             contentDescription = text(contentDescription),
         ).setTapAction(tapAction)
         title?.let { builder.setTitle(text(it)) }
@@ -154,7 +165,7 @@ internal object GlucoseComplicationData {
     fun rangedValueData(
         reading: Reading?,
         contentDescription: String,
-        tapAction: PendingIntent = tapAction(),
+        tapAction: PendingIntent? = tapAction(),
         icon: Icon? = null,
     ): RangedValueComplicationData {
         val builder = if (reading == null || !reading.value.isFinite() || reading.value <= 0.0f) {
@@ -172,7 +183,7 @@ internal object GlucoseComplicationData {
                 max = thresholds.veryHigh,
                 contentDescription = text(contentDescription),
             )
-                .setText(text(reading.text))
+                .setText(valueText(reading, SHORT_AGE_SEPARATOR))
                 .setColorRamp(
                     ColorRamp(
                         intArrayOf(
@@ -233,6 +244,29 @@ internal object GlucoseComplicationData {
 
     /** What the text forms show for [reading]: its value, or the no-value mark every surface shows. */
     internal fun shownText(reading: Reading?): String = reading?.text ?: noValueText()
+
+    /** Between a stale value and its age where room is short ("112·6m"), and where it is not. */
+    private const val SHORT_AGE_SEPARATOR = "·"
+    private const val LONG_AGE_SEPARATOR = " · "
+
+    /**
+     * The text of the text forms: [shownText], and once the reading is stale its age after
+     * it ("112 · 6m"). A text form cannot dim the value, which then looked current until it
+     * was taken down; the face counts the age itself, so the watch does not wake to keep it
+     * right.
+     */
+    internal fun valueText(reading: Reading?, separator: String): ComplicationText {
+        if (reading == null || !reading.stale || reading.lastReadingMillis <= 0L) {
+            return text(shownText(reading))
+        }
+        return TimeDifferenceComplicationText.Builder(
+            TimeDifferenceStyle.SHORT_SINGLE_UNIT,
+            CountUpTimeReference(Instant.ofEpochMilli(reading.lastReadingMillis)),
+        )
+            .setText(reading.text + separator + "^1")
+            .setMinimumTimeUnit(TimeUnit.MINUTES)
+            .build()
+    }
 
     private fun noValueText(): String = DisplayedReading.NO_VALUE_TEXT
 
