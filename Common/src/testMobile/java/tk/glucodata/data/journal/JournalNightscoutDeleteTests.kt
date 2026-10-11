@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import tk.glucodata.data.journal.JournalTreatmentUploader.IdentifierDocument
 import tk.glucodata.data.journal.JournalTreatmentUploader.MAX_DELETE_ATTEMPTS
+import tk.glucodata.data.journal.JournalTreatmentUploader.ReceiveRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.ReceivedDocumentRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.Settlement
 import tk.glucodata.data.journal.JournalTreatmentUploader.TombstoneAction
@@ -19,6 +20,7 @@ import tk.glucodata.data.journal.JournalTreatmentUploader.identifierLookupUrl
 import tk.glucodata.data.journal.JournalTreatmentUploader.isLookupDue
 import tk.glucodata.data.journal.JournalTreatmentUploader.lookupLetsGo
 import tk.glucodata.data.journal.JournalTreatmentUploader.receivedDocumentRead
+import tk.glucodata.data.journal.JournalTreatmentUploader.servedByRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.servedRemoteIds
 import tk.glucodata.data.journal.JournalTreatmentUploader.settlement
 import tk.glucodata.data.journal.JournalTreatmentUploader.tombstoneAction
@@ -148,6 +150,30 @@ class JournalNightscoutDeleteTests {
         // while still on the server, and dropping its tombstone let a follower's history bring it
         // back.
         assertEquals(Settlement.LOOK_UP, settlement(deleteConfirmed = false, readsBack = true, served = false))
+    }
+
+    @Test
+    fun aLightReadThatLeavesADocumentOutSaysNothingAboutIt() {
+        // Opening the app reads only the newest few treatments: a deleted one older than those is
+        // left out of the read while it may still be on the server.
+        val served = setOf(objectId)
+        val other = "65a1b2c3d4e5f60718293a4c"
+        assertNull(servedByRead(served, other, ReceiveRead.LIGHT))
+        assertEquals(true, servedByRead(served, objectId, ReceiveRead.LIGHT))
+        assertEquals(false, servedByRead(served, other, ReceiveRead.FULL))
+        assertNull(servedByRead(null, other, ReceiveRead.FULL))
+        assertNull(servedByRead(served, objectId, ReceiveRead.HOLD))
+
+        // A confirmed delete keeps its tombstone until a full read, a local-only one is not
+        // looked up on a light read's word, and one still served is caught either way.
+        val light = { id: String -> servedByRead(served, id, ReceiveRead.LIGHT) }
+        assertEquals(Settlement.KEEP, settlement(deleteConfirmed = true, readsBack = true, served = light(other)))
+        assertEquals(Settlement.KEEP, settlement(deleteConfirmed = false, readsBack = true, served = light(other)))
+        assertEquals(Settlement.NOT_TAKEN, settlement(deleteConfirmed = true, readsBack = true, served = light(objectId)))
+        assertEquals(
+            Settlement.DROP,
+            settlement(deleteConfirmed = true, readsBack = true, served = servedByRead(served, other, ReceiveRead.FULL))
+        )
     }
 
     @Test

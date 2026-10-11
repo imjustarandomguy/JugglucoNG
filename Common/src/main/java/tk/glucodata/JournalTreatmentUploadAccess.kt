@@ -51,4 +51,11 @@ object JournalTreatmentUploadAccess {
         runCatching { bridge?.readingReceiveDue(useV3) }
             .onFailure { Log.stack(TAG, "readingReceiveDue failed", it) }
             .getOrNull() ?: false
+
+    /** Nothing without a journal. */
+    @JvmStatic
+    fun requestLightReceive() {
+        runCatching { bridge?.requestLightReceive() }
+            .onFailure { Log.stack(TAG, "requestLightReceive failed", it) }
+    }
 }
