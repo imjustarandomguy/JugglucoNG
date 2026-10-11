@@ -2,9 +2,10 @@ package tk.glucodata.alerts
 
 /**
  * One sensor as the handover evaluation sees it. [endMs] is the official end
- * (start + wear duration, the same source the expiry alarm uses); 0 means
- * unknown. [hasRecentReading] is evaluated lazily because it needs a history
- * lookup - the decision only asks for it on the chosen successor.
+ * (start + wear duration; the expiry alarm may count down to a later expected
+ * end, see [sensorExpiryAlarmEndMs]); 0 means unknown. [hasRecentReading] is
+ * evaluated lazily because it needs a history lookup - the decision only asks
+ * for it on the chosen successor.
  */
 internal data class HandoverSensor(
     val serial: String,
