@@ -40,6 +40,10 @@ public    void handlealarm() {
     if(view!=null) {
         view.postInvalidate();
         }
+    // The current reading goes stale on every surface at once, the notification included:
+    // this wake brings it up to date, and stands in for the reading clock's own when the
+    // two fall together (PhoneReadingClock).
+    CurrentReadingHub.onClockChanged();
     final boolean haslossalarm=hasalarmloss();
     long wastime = SuperGattCallback.lastfoundL;
     if(wastime==0L) {
@@ -51,14 +55,10 @@ public    void handlealarm() {
         final long tryagain = nu + Notify.glucosetimeout;
 
     long nexttime=tryagain;
-        if(!haslossalarm) {
-            Notify.onenot.oldnotification(wastime);
-            }
-        else  {
+        if(haslossalarm) {
             final long afterwait = waitmmsec() + wastime;
             if(afterwait > nu) {
                 if(doLog) {Log.i(LOG_ID, "handlealarm notify");};;
-                Notify.onenot.oldnotification(wastime);
                 SuperGattCallback.previousglucose=null;
                 nexttime = (afterwait < tryagain)  ? afterwait : tryagain;
             } else {
@@ -74,7 +74,6 @@ public    void handlealarm() {
                     saidloss = true;
                     }
                  else {
-                    Notify.onenot.oldnotification(wastime);
                     if(doLog) {Log.i(LOG_ID, "handlealarm saidloss");};;
                     }
                }

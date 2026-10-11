@@ -59,6 +59,8 @@ data class DisplayedReading(
     val origin: Origin,
     val reason: Reason,
     val revision: Long,
+    /** The sensor generation, which bounds the values the status-bar icon spells out. */
+    val sensorGen: Int = 0,
 ) {
     enum class Freshness {
         /** The newest reading, while the next one is not yet overdue. */
@@ -139,6 +141,24 @@ data class DisplayedReading(
 
     /** The arrow a surface draws: [rate] while [showsArrow], else NaN. */
     val shownRate: Float get() = if (showsArrow) rate else Float.NaN
+
+    /**
+     * [shownText] with the view mode's other lanes after it, " · " between them, for a
+     * surface that has room for them.
+     */
+    val shownLanesText: String
+        get() = if (showsValue) listOfNotNull(valueText, secondaryText, tertiaryText).joinToString(" · ") else NO_VALUE_TEXT
+
+    /**
+     * The arrow an alarm on this reading draws, on its banner and its screen alike:
+     * [shownRate], or [firedRate] (the rate the alarm came with) for a fresh reading
+     * without a trend yet. A stale reading has no arrow here either.
+     */
+    fun alarmRate(firedRate: Float): Float = when {
+        showsArrow -> rate
+        freshness == Freshness.FRESH -> firedRate
+        else -> Float.NaN
+    }
 
     /** True when [other] draws exactly the same: everything but the revision, reason and origin. */
     fun sameDisplayAs(other: DisplayedReading): Boolean =

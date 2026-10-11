@@ -6,14 +6,26 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationRefreshPolicyTests {
-    @Test fun actualReadingTimestampControlsFreshnessAndDeadline() {
-        val reading = 1_000_000L
-        val timeout = 330_000L
-        assertTrue(NotificationRefreshPolicy.isFresh(reading, reading + timeout, timeout))
-        assertFalse(NotificationRefreshPolicy.isFresh(reading, reading + timeout + 1L, timeout))
-        assertEquals(1L, NotificationRefreshPolicy.deadlineDelayMs(reading, reading + timeout, timeout))
-        assertEquals(0L, NotificationRefreshPolicy.deadlineDelayMs(reading, reading + timeout + 1L, timeout))
-        assertTrue("clock rollback does not make a reading stale", NotificationRefreshPolicy.isFresh(reading, reading - 1L, timeout))
+    private val time = 1_700_000_000_000L
+
+    @Test fun theCurrentReadingsFreshnessPicksTheOngoingLook() {
+        fun look(freshness: DisplayedReading.Freshness, showsValue: Boolean = true, at: Long = time) =
+            NotificationRefreshPolicy.ongoingLook(true, freshness, showsValue, at)
+        assertEquals(NotificationRefreshPolicy.OngoingLook.READING, look(DisplayedReading.Freshness.FRESH))
+        // The next reading is overdue: the value stays, without its arrow.
+        assertEquals(NotificationRefreshPolicy.OngoingLook.STALE_READING, look(DisplayedReading.Freshness.STALE))
+        // Taken down: "no new value since" alone.
+        assertEquals(NotificationRefreshPolicy.OngoingLook.NO_VALUE, look(DisplayedReading.Freshness.NO_VALUE, false))
+        assertEquals(NotificationRefreshPolicy.OngoingLook.STATUS, look(DisplayedReading.Freshness.AWAITING, false, 0L))
+        assertEquals(NotificationRefreshPolicy.OngoingLook.NO_SENSOR, look(DisplayedReading.Freshness.NO_SENSOR, false, 0L))
+    }
+
+    @Test fun withoutGlucoseInTheNotificationOnlyAnOverdueReadingIsSaid() {
+        fun look(freshness: DisplayedReading.Freshness) =
+            NotificationRefreshPolicy.ongoingLook(false, freshness, true, time)
+        assertEquals(NotificationRefreshPolicy.OngoingLook.STATUS, look(DisplayedReading.Freshness.FRESH))
+        assertEquals(NotificationRefreshPolicy.OngoingLook.NO_VALUE, look(DisplayedReading.Freshness.STALE))
+        assertEquals(NotificationRefreshPolicy.OngoingLook.NO_VALUE, look(DisplayedReading.Freshness.NO_VALUE))
     }
 
     @Test fun repeatedDataRequestsCannotPostponePendingRefresh() {
@@ -23,11 +35,6 @@ class NotificationRefreshPolicyTests {
         assertEquals("an overdue callback still owns the slot until it runs",
             first, NotificationRefreshPolicy.boundedDebounceAt(first, 11_001L, 1_000L))
         assertEquals(12_001L, NotificationRefreshPolicy.boundedDebounceAt(0L, 11_001L, 1_000L))
-    }
-
-    @Test fun invalidReadingHasNoDeadline() {
-        assertEquals(0L, NotificationRefreshPolicy.deadlineDelayMs(0L, 10L, 330_000L))
-        assertFalse(NotificationRefreshPolicy.isFresh(0L, 10L, 330_000L))
     }
 
     @Test fun statusRefreshSharesFirstDeadlineWinsCoalescing() {
@@ -42,19 +49,6 @@ class NotificationRefreshPolicyTests {
         assertEquals(22_001L, NotificationRefreshPolicy.boundedDebounceAt(0L, 21_001L, 1_000L))
         assertEquals("non-positive delays fire immediately without going backwards",
             20_000L, NotificationRefreshPolicy.boundedDebounceAt(0L, 20_000L, -5L))
-    }
-
-    @Test fun retainedDisplayMustMatchSensorUnitsAndViewMode() {
-        assertTrue(NotificationRefreshPolicy.matchesRetainedDisplay(
-            "sensor-1", "sensor-1", true, true, 3, 3))
-        assertFalse(NotificationRefreshPolicy.matchesRetainedDisplay(
-            null, "sensor-1", true, true, 3, 3))
-        assertFalse(NotificationRefreshPolicy.matchesRetainedDisplay(
-            "sensor-2", "sensor-1", true, true, 3, 3))
-        assertFalse(NotificationRefreshPolicy.matchesRetainedDisplay(
-            "sensor-1", "sensor-1", true, false, 3, 3))
-        assertFalse(NotificationRefreshPolicy.matchesRetainedDisplay(
-            "sensor-1", "sensor-1", true, true, 1, 3))
     }
 
     @Test fun oldServiceCannotCancelReplacementWork() {
