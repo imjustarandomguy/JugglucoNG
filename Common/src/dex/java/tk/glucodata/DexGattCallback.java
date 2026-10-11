@@ -91,6 +91,10 @@ private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
 private BluetoothGatt connectedAttempt;
+// When connectedAttempt came up. A session takes seconds, a first pairing about
+// half a minute; this is the minute the base class gives a connect just issued.
+private long connectedAtMs;
+private static final long DEXCOM_SESSION_GRACE_MS = 60_000L;
 private boolean known=false;
 private int authSlot;
     public DexGattCallback(String SerialNumber, long dataptr) {
@@ -378,6 +382,28 @@ private boolean connected=false;
         }
     }
 
+    /**
+     * The loss-of-signal alarm can come while a session runs. The base class
+     * spares a link for a minute after connectGatt, but a G7 reconnecting in
+     * the background answers at its own slot, minutes after that, and asking
+     * again for a reply that was the reading before keeps the link a few
+     * seconds longer. Closing it then loses the reading it was about to give.
+     */
+    @Override
+    public boolean reconnect(long now) {
+        if (sessionUnderWay()) {
+            {if(doLog) {Log.i(LOG_ID, SerialNumber + " reconnect: session under way");};};
+            return true;
+        }
+        return super.reconnect(now);
+    }
+
+    // shouldreconnect() passes a time one showtime back, so this asks the clock.
+    private synchronized boolean sessionUnderWay() {
+        return connectedAttempt != null && connectedAttempt == mBluetoothGatt
+                && System.currentTimeMillis() - connectedAtMs < DEXCOM_SESSION_GRACE_MS;
+    }
+
     @SuppressLint("MissingPermission")
     @Override
     public synchronized void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
@@ -401,6 +427,7 @@ private boolean connected=false;
         }
         if(newState == BluetoothProfile.STATE_CONNECTED) {
           connectedAttempt = bluetoothGatt;
+          connectedAtMs = tim;
           glucoseAskedAgain = 0;
           if(bondstate == BluetoothDevice.BOND_BONDING) {
               {if(doLog) {Log.i(LOG_ID, "wait BOND_BONDING");};};
