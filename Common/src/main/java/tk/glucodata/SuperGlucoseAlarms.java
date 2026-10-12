@@ -66,8 +66,10 @@ public  void setLossAlarm() {
         // Without the loss-of-signal alert nothing armed this alarm before the
         // first reading, and for a sensor both devices read it is also what asks
         // the other one for a reading this one missed. The same alarm every
-        // reading re-arms, at the interval handlealarm() keeps it to.
-        LossOfSensorAlarm.setalarm(Applic.app, System.currentTimeMillis() + Notify.glucosetimeout);
+        // reading re-arms, at the interval handlealarm() keeps it to. This runs
+        // at every opening of the app too, so one a reading set to go off
+        // sooner stays: a missed reading is asked for when it is due.
+        LossOfSensorAlarm.setalarmNoLater(Applic.app, System.currentTimeMillis() + Notify.glucosetimeout);
         }
 }
 
