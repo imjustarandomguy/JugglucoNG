@@ -330,7 +330,7 @@ private static TokenExchange exchangeToken(int connectTimeoutMs,int readTimeoutM
         final int code=urlConnection.getResponseCode();
         final String body=getstring(urlConnection);
         if(doLog) {
-            Log.format("%s: token exchange code=%d len=%d %s",LOG_ID,code,body.length(),body);
+            Log.format("%s: %s",LOG_ID,NightscoutTokenGrant.exchangeLogText(code,body));
             }
         final NightscoutTokenGrant grant=code==HTTP_OK?NightscoutTokenGrant.parse(body):null;
         if(grant!=null)
