@@ -30,7 +30,7 @@ methods = [method(source, x) for x in [
 ]]
 methods.append(method(libre, 'protected long connectionAttemptTimeoutMillis('))
 if ng:
-    methods += [method(source,x) for x in ['private synchronized void markConnectRunnableStarted(', 'private synchronized void clearPendingConnect(', 'public synchronized void setPause(']]
+    methods += [method(source,x) for x in ['private synchronized void markConnectRunnableStarted(', 'private synchronized void clearPendingConnect(', 'protected void pendingConnectEnded(', 'public synchronized void setPause(']]
     methods += ['public void close() { closeGattTransport(); }']
 
 preamble = r'''
