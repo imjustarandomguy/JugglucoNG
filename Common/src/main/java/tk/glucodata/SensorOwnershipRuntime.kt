@@ -1305,17 +1305,24 @@ object SensorOwnershipRuntime {
     // ---------------------------------------------------------------- wire
 
     //   [u8 ver=1][u8 owns][u8 len][serial utf8][i64 lastReadingMs]
+    //   [u8 status]        appended later:
+    //                      bit 0 = on its charger (the watch),
+    //                      bit 1 = answer this report (Report.answerRequested),
+    //                      bit 2 = charger state unknown (bit 0 then means nothing)
     //   [i64 directAgeMs]  appended later; -1 = never read it itself
-    //   [u8 flags]         appended later, only when one is set:
-    //                      bit 0 = answer this report (Report.answerRequested)
     //
     // The appended fields leave the version alone: every build reads the fields
     // it knows and ignores what follows them, and a report without one reads as
-    // "unknown" (no flags). A version bump would instead have made each side
-    // drop the other's reports, and with them the arbitration.
+    // "unknown". A version bump would instead have made each side drop the
+    // other's reports, and with them the arbitration. The status byte may come
+    // alone; before directAgeMs it is always there, with bit 2 from a build
+    // that has no charger state to give.
 
     private const val VERSION = 1
-    private const val FLAG_ANSWER_REQUESTED = 1
+
+    /** Bits of the status byte. This build has no charger state: bit 0 is never sent. */
+    private const val STATUS_ANSWER_REQUESTED = 0x02
+    private const val STATUS_CHARGING_UNKNOWN = 0x04
 
     internal fun encode(
         serial: String,
@@ -1325,16 +1332,16 @@ object SensorOwnershipRuntime {
         answerRequested: Boolean = false,
     ): ByteArray {
         val serialBytes = serial.toByteArray(StandardCharsets.UTF_8)
-        val flags = if (answerRequested) FLAG_ANSWER_REQUESTED else 0
-        val buffer = ByteBuffer.allocate(1 + 1 + 1 + serialBytes.size + 8 + 8 + if (flags != 0) 1 else 0)
+        val status = STATUS_CHARGING_UNKNOWN or (if (answerRequested) STATUS_ANSWER_REQUESTED else 0)
+        return ByteBuffer.allocate(1 + 1 + 1 + serialBytes.size + 8 + 1 + 8)
             .put(VERSION.toByte())
             .put(if (owns) 1 else 0)
             .put(serialBytes.size.toByte())
             .put(serialBytes)
             .putLong(lastReadingMs)
+            .put(status.toByte())
             .putLong(directAgeMs)
-        if (flags != 0) buffer.put(flags.toByte())
-        return buffer.array()
+            .array()
     }
 
     /** One ownership report as read off the wire. */
@@ -1365,8 +1372,8 @@ object SensorOwnershipRuntime {
         val serial = String(serialBytes, StandardCharsets.UTF_8)
         if (!SensorIdentity.isUsableSensorId(serial)) return null
         val lastReadingMs = buffer.long
+        val status = if (buffer.remaining() >= 1) buffer.get().toInt() else 0
         val directAgeMs = if (buffer.remaining() >= 8) buffer.long else null
-        val flags = if (directAgeMs != null && buffer.remaining() >= 1) buffer.get().toInt() else 0
-        return Report(serial, owns, lastReadingMs, directAgeMs, (flags and FLAG_ANSWER_REQUESTED) != 0)
+        return Report(serial, owns, lastReadingMs, directAgeMs, (status and STATUS_ANSWER_REQUESTED) != 0)
     }
 }
