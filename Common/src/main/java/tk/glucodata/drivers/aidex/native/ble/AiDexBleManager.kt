@@ -5892,11 +5892,8 @@ class AiDexBleManager(
             )
         ) {
             val catchUpTimestamp = sensorstartmsec + (lastHistoryNewestOffset.toLong() * 60_000L)
-            val catchUpDisplayGlucose = if (Applic.unit == 1) {
-                lastHistoryNewestGlucose / 18.0f
-            } else {
-                lastHistoryNewestGlucose
-            }
+            val catchUpDisplayGlucose =
+                tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(lastHistoryNewestGlucose, Applic.unit == 1)
             // Publish the catch-up sample without routing it back through shared
             // storage. The history row was already persisted above.
             SuperGattCallback.processExternalCurrentReading(
@@ -7119,11 +7116,8 @@ class AiDexBleManager(
         // ephemeral; true broadcast-only mode still persists broadcasts because it
         // has no connected history/live backfill to rely on.
         if (source == "connected-broadcast" && waitingForFirstDirectLive && !reconnect.isBroadcastOnlyMode) {
-            val displayGlucose = if (Applic.unit == 1) {
-                sample.glucoseMgDl / 18.0f
-            } else {
-                sample.glucoseMgDl.toFloat()
-            }
+            val displayGlucose =
+                tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(sample.glucoseMgDl.toFloat(), Applic.unit == 1)
             Log.i(
                 TAG,
                 "Connected broadcast bootstrap bridge: offset=${sample.offsetMinutes} glucose=${sample.glucoseMgDl} mg/dL (ephemeral; persistence deferred to history/direct live)"
