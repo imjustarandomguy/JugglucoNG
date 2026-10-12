@@ -3235,4 +3235,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
         <item quantity="one">%d tervezett naplóbejegyzés beszámítva</item>
         <item quantity="other">%d tervezett naplóbejegyzés beszámítva</item>
     </plurals>
+    <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
+    <string name="status_bar_icon_colored_desc">Az állapotsorban lévő érték megjelenítése a tartományának színében</string>
 </resources>
