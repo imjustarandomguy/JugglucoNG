@@ -82,7 +82,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
           }
       else  {
                 time=glucose.timeMillis
-                rate= glucose.rate
+                rate= GlucoseComplicationData.displayRate(glucose)
                 }
       return MonochromaticImageComplicationData.Builder(
 //          MonochromaticImage.Builder( Icon.createWithBitmap(getview(type).getArrowBitmap(rate))).build(),
@@ -103,9 +103,10 @@ fun getview(type: ComplicationType):WearComplicationValue {
                  Log.i(LOG_ID,"MonochromaticImage novalue")
                  getview(type).getnovalue()
                  } else {
-                     Log.i(LOG_ID,"MonochromaticImage rate: ${glucose.rate}")
+                     val rate = GlucoseComplicationData.displayRate(glucose)
+                     Log.i(LOG_ID,"MonochromaticImage rate: $rate")
 //                    getview(type).getArrowBitmap(glucose.rate)
-                      arrowTimeBitmap(glucose.rate, glucose.timeMillis);
+                      arrowTimeBitmap(rate, glucose.timeMillis);
                      }
              val image=Icon.createWithBitmap(bitmap)
              val complicationPendingIntent = GlucoseComplicationData.tapAction()

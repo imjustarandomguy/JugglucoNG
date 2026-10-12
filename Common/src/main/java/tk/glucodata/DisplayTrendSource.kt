@@ -11,6 +11,68 @@ object DisplayTrendSource {
      */
     const val TREND_WINDOW_MS = 25L * 60L * 1000L
 
+    /** The shortest interval any sensor reads at. */
+    private const val SHORTEST_CADENCE_MS = 60_000L
+
+    /** The widest a same-reading window gets, whatever the cadence. */
+    private const val MAX_SAME_READING_MS = 60_000L
+
+    /** How many of the newest rows can hold the live reading. */
+    private const val NEWEST_ROWS = 2
+
+    /** How many of the newest gaps estimate a series' cadence. */
+    private const val CADENCE_GAPS = 4
+
+    /**
+     * Closer than this, two times in [rows] (oldest first) are one reading: four fifths
+     * of the series' reading interval, at most [MAX_SAME_READING_MS]. It stays short of
+     * the next reading, with room for jitter, so two genuine one-minute readings are
+     * never one; an unknown interval counts as the shortest.
+     */
+    internal fun sameReadingWindowMs(rows: List<GlucosePoint>): Long {
+        val gaps = ArrayList<Long>(CADENCE_GAPS)
+        var index = rows.lastIndex
+        while (index > 0 && gaps.size < CADENCE_GAPS) {
+            val gap = rows[index].timestamp - rows[index - 1].timestamp
+            // Under half the shortest interval is one reading stored twice, not a cadence.
+            if (gap >= SHORTEST_CADENCE_MS / 2) gaps.add(gap)
+            index--
+        }
+        val cadence = if (gaps.isEmpty()) SHORTEST_CADENCE_MS else gaps.sorted()[(gaps.size - 1) / 2]
+        return (cadence * 4 / 5).coerceIn(SHORTEST_CADENCE_MS / 2, MAX_SAME_READING_MS)
+    }
+
+    /**
+     * The index in [rows] (oldest first) of the stored row holding the reading taken at
+     * [timeMillis], or -1: the nearest of the newest rows, if within [sameReadingWindowMs].
+     * The live reading is the newest one, or one behind a row stored just after it.
+     */
+    internal fun storedRowIndex(rows: List<GlucosePoint>, timeMillis: Long): Int {
+        if (rows.isEmpty()) return -1
+        var best = -1
+        var bestDistance = sameReadingWindowMs(rows)
+        for (index in rows.lastIndex downTo maxOf(0, rows.size - NEWEST_ROWS)) {
+            val distance = kotlin.math.abs(rows[index].timestamp - timeMillis)
+            if (distance < bestDistance) {
+                best = index
+                bestDistance = distance
+            }
+        }
+        return best
+    }
+
+    /**
+     * [historyPoints] with [current]'s reading merged in: onto its own stored row
+     * ([storedRowIndex]) when there is one, else as a point of its own.
+     *
+     * A live reading and its stored row do not always share a timestamp. Room keeps
+     * the live reading's time, but a native row keeps whole seconds while a G7 read
+     * on the watch keeps the milliseconds it arrived at. Added beside its row, the
+     * same reading went in twice, under a second apart: counted double in the slope
+     * or, when the snapshot carries a smoothed value, a step TrendEngine rejects as a
+     * > 20 mg/dL/min artifact, after which it measured the newest point alone and
+     * read flat on any rise.
+     */
     @JvmStatic
     fun augmentHistory(
         historyPoints: List<GlucosePoint>?,
@@ -40,7 +102,12 @@ object DisplayTrendSource {
             return history
         }
 
-        val candidate = GlucosePoint(current.timeMillis, autoValue, rawValue)
+        val storedRow = storedRowIndex(history, current.timeMillis)
+        val candidate = GlucosePoint(
+            if (storedRow >= 0) history[storedRow].timestamp else current.timeMillis,
+            autoValue,
+            rawValue
+        )
         if (history.isEmpty()) {
             return listOf(candidate)
         }
@@ -112,6 +179,54 @@ object DisplayTrendSource {
             }
         }
         return current?.rate?.takeIf { it.isFinite() } ?: fallbackRate
+    }
+
+    /**
+     * The rate a display arrow shows: [resolveTrendPoints], then [resolveArrowRate], the
+     * computation behind the dashboard hero and the notification arrow.
+     *
+     * [historyPoints] must be measured rows, neither calibrated nor smoothed (both reshape
+     * the recent slope), reaching back at least [TREND_WINDOW_MS] before the newest one.
+     *
+     * Not [CurrentDisplaySource.Snapshot.rate]: that one feeds the alert engine and is
+     * measured over the locally smoothed series, which "collapse into chunks" can leave
+     * without the newest reading. Near the ±0.5 mg/dL/min flat band the two differ enough
+     * to put one arrow flat and the other one up for the same readings.
+     */
+    @JvmStatic
+    fun resolveDisplayArrowRate(
+        historyPoints: List<GlucosePoint>?,
+        current: CurrentDisplaySource.Snapshot?,
+        activeSensorSerial: String?,
+        viewMode: Int,
+        isMmol: Boolean
+    ): Float = resolveArrowRate(
+        resolveTrendPoints(historyPoints, current, activeSensorSerial),
+        current,
+        viewMode,
+        isMmol,
+        Float.NaN
+    )
+
+    /**
+     * [resolveDisplayArrowRate] for [current], over the rows stored for its sensor: for
+     * surfaces that hold a snapshot but no history, such as the watch's complications.
+     */
+    @JvmStatic
+    fun loadDisplayArrowRate(current: CurrentDisplaySource.Snapshot): Float {
+        // Two windows back, as the alarm notification reads: resolveTrendPoints cuts at
+        // the newest point, and the reading at the far edge of the window must not
+        // depend on where this read starts.
+        val history = try {
+            NotificationHistorySource.getDisplayHistory(
+                current.timeMillis - 2 * TREND_WINDOW_MS,
+                current.isMmol,
+                current.sensorId
+            )
+        } catch (_: Throwable) {
+            emptyList()
+        }
+        return resolveDisplayArrowRate(history, current, current.sensorId, current.viewMode, current.isMmol)
     }
 
     private fun hasUsableTrendHistory(points: List<GlucosePoint>, useRaw: Boolean): Boolean {

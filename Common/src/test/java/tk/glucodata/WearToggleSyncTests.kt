@@ -99,4 +99,20 @@ class WearToggleSyncTests {
         val future = "v:${WearProtocol.VERSION + 1}\np:prediction=true\n".toByteArray()
         assertTrue(WearToggleSync.decode(future).isEmpty())
     }
+
+    @Test
+    fun thePhonesReplyIsObservable() {
+        // onState must publish the reply to state, which the switches render from.
+        val reply = listOf(toggle(WearToggleSync.SCOPE_EXCHANGE, ExchangeToggles.ID_GADGETBRIDGE, true))
+        WearToggleSync.onState(WearToggleSync.encode(reply))
+        assertEquals(reply, WearToggleSync.state.value)
+        assertEquals(
+            true,
+            WearToggleSync.knownEnabled(
+                WearToggleSync.state.value,
+                WearToggleSync.SCOPE_EXCHANGE,
+                ExchangeToggles.ID_GADGETBRIDGE,
+            ),
+        )
+    }
 }
