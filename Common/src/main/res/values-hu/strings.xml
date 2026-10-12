@@ -3029,6 +3029,18 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="nightscout_secret_label">API-titok vagy hozzáférési token</string>
     <string name="nightscout_api_help">A v1-hez API-titkot, a v3-hoz Nightscout-hozzáférési tokent használj.</string>
     <string name="nightscout_iob_help">Az eIOB és COB a devicestatus jugglucong mezőjében kerül elküldésre, a hagyományos IOB-tól külön.</string>
+    <string name="floating_tap_details">Részletek koppintásra</string>
+    <string name="floating_tap_details_desc">Koppintásra megjelenik a grafikon és a részletek</string>
+    <string name="floating_details_opacity_percent">A részletek hátterének fedettsége: %1$d%%</string>
+    <string name="floating_next_reading">Idő a következő mérésig</string>
+    <string name="floating_next_reading_desc">A trendnyíl körüli gyűrű a következő mérésig telik meg</string>
+    <string name="floating_above_status_bar">Az állapotsor felett</string>
+    <string name="floating_above_status_bar_desc">Az állapotsor felett is koppintható marad</string>
+    <string name="floating_accessibility_service_off">Kapcsolja be a(z) „%1$s” szolgáltatást a Kisegítő lehetőségek beállításaiban</string>
+    <string name="floating_accessibility_service_label">JugglucoNG lebegő glükózérték</string>
+    <string name="floating_accessibility_service_desc">Lehetővé teszi, hogy a lebegő glükózérték az állapotsor felett is koppintható legyen. Nem olvassa a képernyőt.</string>
+    <string name="floating_mirrored">Tükrözött elrendezés</string>
+    <string name="floating_mirrored_desc">Előbb a nyíl, aztán az érték</string>
     <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
     <string name="floating_open_app_info">Alkalmazásinformáció</string>
 </resources>
