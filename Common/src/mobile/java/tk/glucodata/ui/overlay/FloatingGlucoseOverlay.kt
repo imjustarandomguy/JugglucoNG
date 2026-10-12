@@ -717,8 +717,8 @@ fun FloatingDetailsCard(
             )
         }
     }
-    val background = (if (isDark) Color(0xFF202124) else Color(0xFFF6F4F1)).copy(alpha = backgroundOpacity)
-    val textColor = if (isDark) Color.White else Color(0xFF27231F)
+    val background = (if (isDark) FloatingDetailsPalette.darkSurface else FloatingDetailsPalette.lightSurface).copy(alpha = backgroundOpacity)
+    val textColor = if (isDark) Color.White else FloatingDetailsPalette.lightInk
     val time = remember(state.readingTime) {
         android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date(state.readingTime))
     }
