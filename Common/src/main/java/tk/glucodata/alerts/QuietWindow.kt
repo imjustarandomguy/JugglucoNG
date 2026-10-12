@@ -194,8 +194,11 @@ object QuietWindow {
         prefs.edit().putInt(KEY_DEFAULT_MINUTES, sanitizeDefaultMinutes(minutes)).apply()
     }
 
-    /** Changes the mode; a running window keeps its end time and shows the new mode. */
-    fun setMode(context: Context, mode: String) {
+    /**
+     * Changes the mode; a running window keeps its end time and shows the new mode.
+     * [fromPeer]: the other device changed it ([AlarmSilenceSync]); it is not sent back.
+     */
+    fun setMode(context: Context, mode: String, fromPeer: Boolean = false) {
         val normalized = parseMode(mode)
         prefs.edit().putString(KEY_MODE, normalized).apply()
         val now = System.currentTimeMillis()
@@ -204,6 +207,8 @@ object QuietWindow {
         if (until > 0L) {
             showActiveNotification(context, until, normalized)
             requestTileRefresh(context)
+            // The running window silences the other device too, now in the new mode.
+            if (!fromPeer) AlarmSilenceSync.onLocalQuietWindowChanged()
         }
     }
 
@@ -217,7 +222,17 @@ object QuietWindow {
         startFor(context, TimeUnit.MINUTES.toMillis(defaultMinutes().toLong()))
     }
 
-    fun startUntil(context: Context, untilMs: Long, mode: String = mode(), nowMs: Long = System.currentTimeMillis()) {
+    /**
+     * [fromPeer]: the other device started this window ([AlarmSilenceSync]); it is
+     * not sent back. Any other start silences the other device too.
+     */
+    fun startUntil(
+        context: Context,
+        untilMs: Long,
+        mode: String = mode(),
+        nowMs: Long = System.currentTimeMillis(),
+        fromPeer: Boolean = false,
+    ) {
         val until = cappedUntil(untilMs, nowMs)
         val normalized = parseMode(mode)
         prefs.edit().putLong(KEY_UNTIL, until).putString(KEY_MODE, normalized).apply()
@@ -227,11 +242,14 @@ object QuietWindow {
         scheduleExpiry(context, until)
         showActiveNotification(context, until, normalized)
         requestTileRefresh(context)
+        if (!fromPeer) AlarmSilenceSync.onLocalQuietWindowChanged()
         Log.i(LOG_ID, "Quiet window until $until mode=$normalized")
     }
 
-    fun end(context: Context) {
+    /** Ends the window here, and on the other device unless [fromPeer] (it ended it there). */
+    fun end(context: Context, fromPeer: Boolean = false) {
         endInternal(context, expired = false)
+        if (!fromPeer) AlarmSilenceSync.onLocalQuietWindowChanged()
     }
 
     /** App start: an expired window ends, a running one re-arms its alarm and notification. */
