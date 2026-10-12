@@ -544,6 +544,42 @@ public class Floating extends View {
         floatCanvas.drawRect(midx, gety, xpos + w, gety + h, floatPaint);
     }
 
+    private static String arrowRateSensor = null;
+    private static long arrowRateTime = Long.MIN_VALUE;
+    private static long arrowRateRevision = Long.MIN_VALUE;
+    private static int arrowRateViewMode = Integer.MIN_VALUE;
+    private static float arrowRate = Float.NaN;
+
+    /**
+     * The rate the dashboard and notification arrows show for this reading, over the
+     * stored rows as they do. The snapshot's own rate is the alert engine's, measured
+     * over the series "smooth all data" smooths, and could tilt this arrow differently.
+     * Worked out once per reading and data change: this view redraws far more often.
+     */
+    private static float displayArrowRate(CurrentDisplaySource.Snapshot current) {
+        final long revision = UiRefreshBus.INSTANCE.getRevision().getValue();
+        final String sensor = current.getSensorId();
+        if (current.getTimeMillis() == arrowRateTime && revision == arrowRateRevision
+                && current.getViewMode() == arrowRateViewMode && java.util.Objects.equals(sensor, arrowRateSensor)) {
+            return arrowRate;
+        }
+        float rate;
+        try {
+            final var history = NotificationHistorySource.getDisplayHistory(
+                    current.getTimeMillis() - 2 * DisplayTrendSource.TREND_WINDOW_MS, current.isMmol(), sensor);
+            rate = DisplayTrendSource.resolveArrowRate(DisplayTrendSource.resolveTrendPoints(history, current, sensor),
+                    current, current.getViewMode(), current.isMmol(), current.getRate());
+        } catch (Throwable th) {
+            rate = current.getRate();
+        }
+        arrowRateSensor = sensor;
+        arrowRateTime = current.getTimeMillis();
+        arrowRateRevision = revision;
+        arrowRateViewMode = current.getViewMode();
+        arrowRate = rate;
+        return rate;
+    }
+
     // private static final boolean colorAge=true;
     @Override
     protected void onDraw(Canvas floatCanvas) {
@@ -579,7 +615,7 @@ public class Floating extends View {
                 floatPaint.setColor(floatingforeground);
                 var gety = (floatCanvas.getHeight() - timeHeight) * 0.98f;
                 var xpos = floatglucosex;
-                var rate = current.getRate();
+                var rate = displayArrowRate(current);
                 if (!isNaN(rate)) {
                     float weightrate = (rate > 1.6 ? -1.0f : (rate < -1.6 ? 1.0f : (rate / -1.6f)));
                     float arrowy = gety - floatfontsize * .4f + weightrate * floatfontsize * .4f;
