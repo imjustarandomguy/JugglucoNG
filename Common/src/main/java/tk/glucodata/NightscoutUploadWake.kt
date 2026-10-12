@@ -31,13 +31,14 @@ object NightscoutUploadWake {
      * The app came to the front.
      *
      * Treatments entered on the server are read back only by a treatment pass, and the readings
-     * that wake the uploader all day do not run one: opening the app to look would show nothing
-     * new until a pass came by for another reason (leaving the app, a journal change, a network
-     * change). This is the treatments' own wake, not a full pass: a full "Send now" pass also
-     * ends the backoff after a refusal, and this is no reason to. It asks for a light read, the
-     * newest few treatments on a short interval of their own, as the full read's five minutes
-     * held back a dose entered just after a read, however often the app was opened to look.
-     * Does nothing unless the server is set up and treatments are received.
+     * that wake the uploader all day run one only every quarter of an hour: opening the app to
+     * look would show nothing new until a pass came by for another reason (leaving the app, a
+     * journal change, a network change). This is the treatments' own wake, not a full pass: a
+     * full "Send now" pass also ends the backoff after a refusal, and this is no reason to. It
+     * asks for a light read, the newest few treatments on a short interval of their own, as the
+     * full read's five minutes would hold back a dose entered just after a read, however often
+     * the app is opened to look. Does nothing unless the server is set up and treatments are
+     * received.
      */
     @JvmStatic
     fun afterAppToFront() {

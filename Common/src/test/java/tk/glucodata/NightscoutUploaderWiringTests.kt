@@ -32,8 +32,8 @@ class NightscoutUploaderWiringTests {
     }
 
     /**
-     * A 404 from v1 used to turn the v3 setting on for good. It is the user's setting, and the
-     * answer may not even come from Nightscout (another device at a LAN address, away from home).
+     * A 404 from v1 must not turn the v3 setting on. It is the user's setting, and the answer
+     * may not even come from Nightscout (another device at a LAN address, away from home).
      */
     @Test
     fun theUploaderNeverChangesTheConfiguredApiVersion() {
@@ -64,7 +64,7 @@ class NightscoutUploaderWiringTests {
         }
     }
 
-    /** steady_clock stops while the phone sleeps, so a 15-minute hold lasted hours. */
+    /** steady_clock stops while the phone sleeps, so a 15-minute hold on it would last hours. */
     @Test
     fun theTreatmentBackoffRunsOnTheClockThatCountsSleep() {
         val text = uploader()
@@ -134,10 +134,9 @@ class NightscoutUploaderWiringTests {
     }
 
     /**
-     * Treatments entered on the server were read only when something else raised a treatment
-     * pass, so opening the app to look found nothing new. Coming to the front raises one, and
-     * the treatments' own wake: a full "Send now" pass would also end the backoff after a
-     * refusal.
+     * Treatments entered on the server are read only by a treatment pass, so without one,
+     * opening the app to look finds nothing new. Coming to the front raises one, and the
+     * treatments' own wake: a full "Send now" pass would also end the backoff after a refusal.
      */
     @Test
     fun comingToTheFrontWakesATreatmentReadOnTheTreatmentsWake() {
@@ -166,9 +165,9 @@ class NightscoutUploaderWiringTests {
     }
 
     /**
-     * The full read's five-minute floor held a dose entered just after a read for up to five
-     * minutes, however often the app was opened. Coming to the front asks for a light read, and
-     * asks before it wakes, or the pass the wake brings could run without seeing the request.
+     * The full read's five-minute floor would hold a dose entered just after a read for up to
+     * five minutes, however often the app is opened. Coming to the front asks for a light read,
+     * and asks before it wakes, or the pass the wake brings could run without seeing the request.
      */
     @Test
     fun comingToTheFrontAsksForALightReadBeforeItsWake() {

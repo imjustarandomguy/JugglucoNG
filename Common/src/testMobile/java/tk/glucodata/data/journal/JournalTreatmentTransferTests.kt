@@ -343,7 +343,7 @@ class JournalTreatmentTransferTests {
         )
     }
 
-    /** The importer removes copies received before the documents were recognised, by these ids. */
+    /** The importer removes the copies an earlier version received of such documents, by these ids. */
     @Test
     fun aCopyReceivedEarlierIsNamedByTheIdsTheImporterRemoves() {
         val document = ownV1DocumentServedByV3()

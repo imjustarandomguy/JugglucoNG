@@ -1194,10 +1194,9 @@ static void uploaderthread() {
             treatmentbackoffmin=0;
             treatmentnextattemptms=0;
             }
-        /* The API version is the user's setting. A 404 is reported like any other refusal;
-           it used to turn v3 on for good (and with it a token exchange in place of the
-           secret), on the strength of one answer that need not even have come from
-           Nightscout. */
+        /* The API version is the user's setting. A 404 is reported like any other refusal and
+           changes nothing: one answer, which need not even come from Nightscout, is no ground
+           to turn v3 on for good, and with it a token exchange in place of the secret. */
         const bool useV3=settings->data()->nightscoutV3;
         glucosefailed=false;
         const bool prioritizeRecent=(current&Backup::wakestream);

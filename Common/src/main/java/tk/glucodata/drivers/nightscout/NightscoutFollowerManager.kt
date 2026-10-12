@@ -127,8 +127,8 @@ class NightscoutFollowerManager(
 
     /**
      * Apply the persisted follower secret and API choice to an already-running virtual sensor.
-     * A new secret for the same server keeps this follower; without this it went on polling
-     * with the old one until the app restarted.
+     * A new secret for the same server keeps this follower; without this it would go on polling
+     * with the old one until the app restarts.
      */
     internal fun updateSettings(secret: String, useV3: Boolean) {
         if (this.secret == secret && this.useV3 == useV3) return
