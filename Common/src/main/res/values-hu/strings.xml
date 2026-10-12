@@ -3089,4 +3089,9 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="dexcom_share_auth_blocked">Bejelentkezés letiltva — ellenőrizze a fiókot és a jelszót</string>
     <string name="dexcom_share_credentials_required">Először adja meg a fiókot és a jelszót</string>
     <string name="dexcom_share_warning">Nem hivatalos felület: a Dexcom bármikor megváltoztathatja vagy letilthatja. Ez nem orvostechnikai eszköz funkciója.</string>
+    <string name="chart_readings_style_title">Mérések megjelenítése</string>
+    <string name="chart_readings_style_desc">Hogyan jelennek meg a mérések a grafikonokon: az alkalmazásban, az értesítésben, a widgeten és az órán</string>
+    <string name="chart_readings_style_line">Vonal</string>
+    <string name="chart_readings_style_dots">Pontok</string>
+    <string name="chart_readings_style_line_and_dots">Vonal és pontok</string>
 </resources>
