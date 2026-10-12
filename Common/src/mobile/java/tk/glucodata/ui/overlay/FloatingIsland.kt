@@ -14,7 +14,7 @@ import kotlin.math.max
  * works the gap out from the measured pill, and the setting is only a nudge from there.
  */
 internal object FloatingIsland {
-    /** The gap, in dp, where the device reports no cutout: what the offset setting defaulted to. */
+    /** The gap, in dp, between the screen edge and the pill where the device reports no cutout. */
     const val NO_CUTOUT_GAP_DP = 8f
 
     /** True for the edges of an island standing upright beside the camera in landscape. */

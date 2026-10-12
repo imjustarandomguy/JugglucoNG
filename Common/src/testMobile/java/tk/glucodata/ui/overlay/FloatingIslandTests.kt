@@ -91,7 +91,7 @@ class FloatingIslandTests {
     }
 
     @Test
-    fun withoutACutoutTheGapIsTheOldDefaultPlusTheNudge() {
+    fun withoutACutoutTheGapIsTheFixedGapPlusTheNudge() {
         assertEquals(8f * density, FloatingIsland.edgeGap(0f, 0f, 96f, noCutoutGap), eps)
         // Whatever the pill's thickness.
         assertEquals(8f * density, FloatingIsland.edgeGap(0f, 0f, 400f, noCutoutGap), eps)
