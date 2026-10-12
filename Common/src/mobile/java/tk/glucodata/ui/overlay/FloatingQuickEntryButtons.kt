@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
@@ -79,7 +79,7 @@ private fun RowScope.FloatingQuickEntryButton(
     onLog: (JournalEntryType) -> Unit
 ) {
     val description = stringResource(descriptionRes)
-    val shape = RoundedCornerShape(18.dp)
+    val shape = CircleShape
     Surface(
         color = textColor.copy(alpha = 0.08f),
         shape = shape,
@@ -95,7 +95,7 @@ private fun RowScope.FloatingQuickEntryButton(
             modifier = Modifier
                 .fillMaxSize()
                 .clickable { onLog(type) }
-                .padding(horizontal = 10.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
