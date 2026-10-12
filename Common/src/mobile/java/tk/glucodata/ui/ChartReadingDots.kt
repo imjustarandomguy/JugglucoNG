@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.nativePaint
 
 /**
  * The positions of the readings one series draws as dots ([tk.glucodata.ChartReadingsStyle]),
@@ -53,5 +54,5 @@ internal fun DrawScope.drawReadingDots(
     paint.style = PaintingStyle.Stroke
     paint.strokeWidth = radius * 2f
     paint.strokeCap = StrokeCap.Round
-    drawContext.canvas.nativeCanvas.drawPoints(dots.coordinates, 0, dots.size, paint.asFrameworkPaint())
+    drawContext.canvas.nativeCanvas.drawPoints(dots.coordinates, 0, dots.size, paint.nativePaint)
 }
