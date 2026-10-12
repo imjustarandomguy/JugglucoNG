@@ -179,6 +179,9 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                 val details = remember(row, revision, now / SENSOR_TICK_MS) {
                     loadWearSensorPresentation(row.serial, now)
                 }
+                val label = remember(row, revision, details.serial) {
+                    loadSensorListLabel(row.serial, details.serial)
+                }
                 val displayed = displayedSensor != null &&
                     tk.glucodata.SensorIdentity.matches(displayedSensor, row.serial)
                 // The check is the phone's sensor-card control: it shows or
@@ -229,7 +232,7 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                             )
                         }
                         Text(
-                            text = details.serial,
+                            text = label,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (selectable && !row.isShown) identityColor.copy(alpha = 0.6f) else identityColor,
