@@ -134,7 +134,8 @@ def gatt(directory):
     base = (ROOT / 'Common/src/main/java/tk/glucodata/SuperGattCallback.java').read_text()
     base_methods = '\n'.join(method(base, signature) for signature in [
         'protected final synchronized boolean acceptConnectionAttemptCallback(',
-        'public void onConnectionStateChange(', 'public final boolean hasLocallyConnectedGatt('])
+        'public void onConnectionStateChange(', 'public final boolean hasLocallyConnectedGatt(',
+        'public boolean holdsSensor('])
     air_methods = '\n'.join(method(air, signature) for signature in [
         'private boolean isCurrentGatt(', 'private synchronized void enableNotificationIfCurrent(',
         'public void onConnectionStateChange(',
