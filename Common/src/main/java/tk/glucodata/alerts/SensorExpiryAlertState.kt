@@ -36,9 +36,10 @@ internal fun selectSensorExpiryEndMs(
  *
  * Native sensors that outlast their official end (Libre 2 and Dexcom
  * G7/ONE+/Stelo by 12 hours) keep delivering until the expected end, which is
- * what the sensor card and the dashboard countdown show. Counting from the
- * official end made a G7 warn "expires in 1 hour" half a day before it stopped,
- * and left it with no warning at all once the official end had passed.
+ * what the sensor card and the dashboard countdown show. The warnings count
+ * down to that same end: from the official end they would come up to 12 hours
+ * before the sensor stops, and none would be left once the official end has
+ * passed.
  *
  * The official end is kept for:
  *  - Kotlin-managed drivers: their expected end is only an advisory horizon
