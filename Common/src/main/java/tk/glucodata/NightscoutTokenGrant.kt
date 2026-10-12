@@ -49,6 +49,16 @@ data class NightscoutTokenGrant(
             return out.toList()
         }
 
+        /**
+         * The trace line for one exchange: the status and the size of the answer, never the
+         * answer itself. A grant's body is the JWT, whose payload carries the access token, and
+         * traces are what users are asked to share. A refusal's reason is logged where the
+         * failure is reported.
+         */
+        @JvmStatic
+        fun exchangeLogText(code: Int, body: String): String =
+            "token exchange code=$code len=${body.length}"
+
         /** The server's own words for a refusal, or the start of whatever it sent instead. */
         @JvmStatic
         fun refusalMessage(body: String): String {
