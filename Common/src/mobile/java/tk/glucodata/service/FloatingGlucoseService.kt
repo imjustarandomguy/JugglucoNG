@@ -455,6 +455,7 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             setViewTreeViewModelStoreOwner(this@FloatingGlucoseService)
             setViewTreeSavedStateRegistryOwner(this@FloatingGlucoseService)
         }
+        root.optOutOfForceDark()
         val card = ComposeView(this).apply {
             setContent {
                 val opacity by detailsOpacity.collectAsState()
