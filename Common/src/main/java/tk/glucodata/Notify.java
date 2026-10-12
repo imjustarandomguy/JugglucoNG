@@ -4348,7 +4348,8 @@ public class Notify {
                 : null;
 
         String sensorStatusText = resolveNotificationStatusText(activeSensorSerial, statusText,
-                fallbackDisplay != null ? fallbackDisplay.getTimeMillis() : 0L);
+                shown != null ? shown.getTimeMillis()
+                        : fallbackDisplay != null ? fallbackDisplay.getTimeMillis() : 0L);
 
         // The status line carries the journal IOB/eIOB/COB (when enabled) and
         // the sensor status (gated by its own pref). IOB goes first — the

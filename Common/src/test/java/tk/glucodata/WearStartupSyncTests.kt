@@ -42,7 +42,7 @@ class WearStartupSyncTests {
     fun aDeviceThatHasNotHeardThePeerSinceItStartedAsksItToAnswer() {
         val announce = body(runtime, "private fun announce(answering: Boolean = false)")
         assertTrue(announce, announce.contains("val askAnswer = !peerHeardSinceStart"))
-        assertTrue(announce, announce.contains("DirectReadingStatus.wireAge(direct, now), askAnswer)"))
+        assertTrue(announce, announce.contains("answerRequested = askAnswer)"))
         // An answer goes out whatever changed.
         assertTrue(announce, announce.contains("if (!answering && previous == owns"))
     }
