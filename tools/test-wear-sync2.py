@@ -146,6 +146,7 @@ object WearSensorSelectionSync {
 object UiRefreshBus {
     var refreshes = 0
     fun requestDataRefresh() { refreshes++ }
+    fun requestDataRefresh(newestReadingMs: Long) { refreshes++ }
 }
 object Log {
     const val doLog = false
