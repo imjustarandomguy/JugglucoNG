@@ -138,17 +138,31 @@ class JournalTreatmentUploaderTests {
 
     @Test
     fun readingsAskOncePerFifteenMinutesNotOncePerReading() {
-        // Each read is the newest 240 documents: a reading every minute must not read every
-        // minute, and neither must a reading past the 5-minute floor (it only says a read may go).
-        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        // A reading every minute must not read every minute, and neither must a reading past
+        // the light read's floor (it only says a read may go).
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 30_000L)
         val key = "v1 https://ns.example.com"
+        val slack = JournalTreatmentUploader.READING_RECEIVE_SLACK_MILLIS
         floor.recordRead(key, 1_000_000L)
         for (minute in 1..14) {
             assertFalse("minute $minute", readingTriggers(floor, 1_000_000L + minute * 60_000L))
         }
-        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis - 1))
-        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis))
-        assertEquals(0L, floor.waitMillis(key, 1_000_000L + ageMillis))
+        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis - slack - 1))
+        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis - slack))
+        assertEquals(0L, floor.waitMillis(key, 1_000_000L + ageMillis - slack))
+    }
+
+    @Test
+    fun theThirdReadingFiveMinutesApartAsksThoughItsReadLandedSecondsLate() {
+        // The read is recorded when its answer comes, a few seconds after its reading; the
+        // readings themselves drift by a second or two. Every third reading still asks.
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 30_000L)
+        val key = "v1 https://ns.example.com"
+        val firstReading = 1_000_000L
+        floor.recordRead(key, firstReading + 4_000L)
+        assertFalse(readingTriggers(floor, firstReading + 5 * 60_000L + 2_000L))
+        assertFalse(readingTriggers(floor, firstReading + 10 * 60_000L - 2_000L))
+        assertTrue(readingTriggers(floor, firstReading + 15 * 60_000L - 2_000L))
     }
 
     @Test
@@ -270,13 +284,59 @@ class JournalTreatmentUploaderTests {
     }
 
     @Test
-    fun aLightReadStartsNeitherTheFullIntervalNorTheReadingsFifteenMinutes() {
+    fun aLightReadStartsTheReadingsQuarterHourButNotTheFullInterval() {
         val schedule = schedule()
         schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
-        schedule.recordRead(ReceiveRead.LIGHT, key, 1_000_000L + fullInterval - 1_000L)
+        val lightAt = 1_000_000L + fullInterval - 1_000L
+        schedule.recordRead(ReceiveRead.LIGHT, key, lightAt)
         assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + fullInterval).read)
-        schedule.recordRead(ReceiveRead.LIGHT, key, 1_000_000L + ageMillis - 1_000L)
-        assertTrue(readingTriggers(schedule.full, 1_000_000L + ageMillis))
+        // Either kind of read holds the newest documents, which is all a reading asks for.
+        assertFalse(readingTriggers(schedule.light, 1_000_000L + ageMillis))
+        assertTrue(readingTriggers(schedule.light, lightAt + ageMillis))
+    }
+
+    // -- the read a reading asks for -----------------------------------------
+
+    @Test
+    fun aPassAReadingRaisedReadsLightWhateverTheFullIntervalSays() {
+        for (fullWait in listOf(0L, 120_000L)) {
+            for (lightWanted in listOf(false, true)) {
+                val plan = JournalTreatmentUploader.receivePlan(fullWait, lightWanted, 0L, readingOnly = true)
+                assertEquals("fullWait=$fullWait lightWanted=$lightWanted", ReceiveRead.LIGHT, plan.read)
+                assertNull("a reading's read books a full one", plan.wakeInMillis)
+            }
+        }
+    }
+
+    @Test
+    fun readingsAloneMakeALightReadEveryQuarterHourAndNoFullOne() {
+        // A day of readings five minutes apart, nothing else happening. The newest 240
+        // documents every quarter of an hour would be close to a hundred full reads.
+        val schedule = schedule()
+        val start = 1_000_000L
+        var reads = 0
+        for (n in 0 until 24 * 12) {
+            val readingAt = start + n * 5 * 60_000L + (n % 5 - 2) * 1_000L
+            if (!readingTriggers(schedule.light, readingAt)) continue
+            schedule.requestReadingRead()
+            val plan = schedule.plan(key, readingAt + 1_000L)
+            assertEquals("reading $n", ReceiveRead.LIGHT, plan.read)
+            assertNull("reading $n books a read", plan.wakeInMillis)
+            schedule.recordRead(plan.read, key, readingAt + 4_000L)
+            schedule.endPass()
+            reads++
+        }
+        assertEquals(24 * 4, reads)
+    }
+
+    @Test
+    fun aReadingsRequestLastsItsOwnPassOnly() {
+        // The pass stopped before its read; the next one, a journal change, reads in full.
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestReadingRead()
+        schedule.endPass()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + ageMillis).read)
     }
 
     @Test

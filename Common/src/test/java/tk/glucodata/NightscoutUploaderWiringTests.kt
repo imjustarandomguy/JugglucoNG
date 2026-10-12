@@ -97,7 +97,9 @@ class NightscoutUploaderWiringTests {
      * A reading wakes the uploader for glucose only. It also gets treatments read back, but
      * through the treatments' own branch and only where that branch would run anyway: after the
      * Wi-Fi gate, outside the hold after a refusal, not on the heels of a failed glucose upload,
-     * and never as a full pass.
+     * and never as a full pass. It is asked only on a pass nothing else raised treatments for:
+     * Java takes a yes to mean the pass is the reading's alone and reads light, so a pass owed
+     * a full read for another reason must not ask.
      */
     @Test
     fun aReadingRaisesATreatmentReadNotAFullPass() {
@@ -112,7 +114,11 @@ class NightscoutUploaderWiringTests {
         val start = thread.lastIndexOf("if(treatmentsdue", ask)
         assertTrue("the question is asked outside the treatment hold", start >= 0 && ask - start < 300)
         val condition = thread.substring(start, ask)
-        for (part in listOf("!glucosefailed", "(current&Backup::wakestream)")) {
+        for (part in listOf(
+            "!glucosefailed",
+            "(current&Backup::wakestream)",
+            "!(current&(Backup::wakenums|Backup::wakeall|Backup::waketreatments))",
+        )) {
             assertTrue("a reading raises the read without $part", condition.contains(part))
         }
         val raised = thread.substring(ask, thread.indexOf("}", ask))
