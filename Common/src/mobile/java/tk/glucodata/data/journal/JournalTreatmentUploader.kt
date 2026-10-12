@@ -330,7 +330,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * server reachable only at home, seen from elsewhere), a busy or unreachable server, or a page
      * that is not Nightscout's, whatever its status, says nothing about the document and does not
      * count ([operationFailure]). Past the cap the delete is no longer sent, but the tombstone
-     * stays: dropped, the next read brought the deleted treatment back.
+     * stays: dropped, the next read would bring the deleted treatment back.
      */
     internal fun tombstoneAction(
         code: Int,
@@ -1876,8 +1876,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
      * next journal changes back as well, up to four hours.
      *
      * A refused read is the receive's own failure (a token without api:treatments:read answers
-     * 403 every time): it is retried on the receive's interval, and folding it in held every new
-     * entry back for nothing. A read nobody answered is folded in like a delete nobody answered,
+     * 403 every time): it is retried on the receive's interval, and folding it in would hold
+     * every new entry back for nothing. A read nobody answered is folded in like a delete nobody answered,
      * as a server out of reach, unless this pass's own writes have just reached it.
      */
     internal fun treatmentPassOk(
@@ -1939,7 +1939,7 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
             if (error is IOException) {
                 ReceiveResult.UNANSWERED
             } else {
-                // No backoff covers a refusal any more (see treatmentPassOk): the interval does.
+                // No backoff covers a refusal (see treatmentPassOk): the interval does.
                 receiveSchedule.recordRead(plan.read, floorKey, System.currentTimeMillis())
                 ReceiveResult.REFUSED
             }

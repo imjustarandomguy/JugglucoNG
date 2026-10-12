@@ -65,8 +65,8 @@ class JournalRepository {
     /**
      * Writes a treatment as Nightscout serves it, unless the row it lands on holds an edit of the
      * user's that the server has not confirmed yet ([receivedCopyMayReplace]). That edit is on its
-     * way to the server; writing the server's copy over it is what used to undo it before it was
-     * ever sent. A document the server changed since it was received still wins, as before.
+     * way to the server; writing the server's copy over it would undo it before it is ever sent.
+     * A document the server changed since it was received still wins.
      *
      * @param serverRevision the document's revision as the server gives it, if it does
      *        ([JournalTreatmentTransfer.serverModifiedMillis]); kept with the row
@@ -980,7 +980,7 @@ internal fun nightscoutDeleteRemoteId(source: String, nsRemoteId: String?): Stri
  * writer's updated_at, null when it gives neither or since an edit was written to it. Both clocks
  * stay apart: whether the user edited the row is read from the row's own times (this phone's),
  * whether the server changed the document from its revisions (the server's), compared only with
- * each other. A server whose clock is ahead of the phone's no longer reads as having changed a
+ * each other, so a server whose clock is ahead of the phone's does not read as having changed a
  * document after every edit.
  *
  * Such a row is never one of this app's own uploads: JournalDao's own-upload queries leave the
@@ -994,7 +994,7 @@ internal fun receivedRevisionOf(source: String, lvUploadedAt: Long?): Long? =
 /**
  * The received revision kept after a write: the one a receive brings ([serverRevision]), the one
  * the row had for the user's edit of it (the base that edit was made on), else unknown. Rows of
- * every other source are written without one, as they always were.
+ * every other source are written without one.
  */
 internal fun receivedRevisionAfterWrite(
     storedSource: String,
@@ -1038,8 +1038,8 @@ internal fun hasPendingNightscoutEdit(source: String, updatedAt: Long, nsUploade
 /**
  * Whether a receive may write the server's copy over this row: always, unless the row holds a
  * pending edit ([hasPendingNightscoutEdit]); then only when the server changed the document since
- * the row was received ([serverChangedSinceReceived]), in which case the server wins as it always
- * has. Where that cannot be told, the edit is kept, to be sent.
+ * the row was received ([serverChangedSinceReceived]), in which case the server wins. Where that
+ * cannot be told, the edit is kept, to be sent.
  */
 internal fun receivedCopyMayReplace(
     source: String,

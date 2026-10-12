@@ -142,7 +142,7 @@ class JournalRepositoryIdentityPolicyTests {
 
     @Test
     fun aDeletedRowReceivedFromNightscoutLeavesATombstone() {
-        // Without one, the next read of the server received the deleted treatment straight back.
+        // Without one, the next read of the server would receive the deleted treatment straight back.
         assertEquals(
             "remote-treatment-id",
             nightscoutDeleteRemoteId(JournalEntrySource.NIGHTSCOUT.storageValue, "remote-treatment-id"),

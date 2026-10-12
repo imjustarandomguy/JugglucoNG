@@ -290,7 +290,7 @@ object NightscoutFollowerRegistry {
      * Stops every running follower that is not the enabled one, takes it off the callback
      * list, and ends its native record ([endInactiveFollowerRecords]). A follower is tied to
      * the server it was created for, so after the URL changes the old one would otherwise go on
-     * polling the old server, and writing to its record, until the app restarted.
+     * polling the old server, and writing to its record, until the app restarts.
      */
     fun stopInactiveFollowers(context: Context) {
         val config = loadConfig(context)
@@ -363,9 +363,9 @@ object NightscoutFollowerRegistry {
     /**
      * Ends the native record of every follower that is not the enabled one, the way a finished
      * sensor ends: its readings stay, but [Natives.activeSensors] stops listing it. While listed,
-     * a stopped follower's record was still served to the watch, and the next roster rebuild gave
-     * it a Libre callback that scanned for a sensor that does not exist. Enabling the follower
-     * again reactivates the record with its next reading.
+     * a stopped follower's record would still be served to the watch, and the next roster
+     * rebuild would give it a Libre callback scanning for a sensor that does not exist. Enabling
+     * the follower again reactivates the record with its next reading.
      *
      * Runs when the follower stops, and at startup for records an earlier version left active.
      */

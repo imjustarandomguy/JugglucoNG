@@ -373,8 +373,9 @@ object JournalTreatmentTransfer {
      *
      * A v1 write is remembered by the _id Nightscout answered with, but v3 serves a document
      * that carries an identifier under that identifier alone, without the _id. So once the
-     * uploader is switched to v3, its own v1 documents no longer match what it remembers and
-     * were received back as new treatments: every recent dose and meal in the journal twice.
+     * uploader is switched to v3, its own v1 documents would no longer match what it remembers
+     * and would be received back as new treatments: every recent dose and meal in the journal
+     * twice.
      * The v1 identifier is the bare row id, which another install, or this one after a
      * reinstall, also uses; it names this install's document only together with the row's time.
      *
@@ -511,8 +512,8 @@ object JournalTreatmentTransfer {
         "$sourcePrefix:$baseId:$kind"
 
     /**
-     * The preset a received dose is filed under: the one it names ([presetNamedBy]), else, as
-     * before, the first long-acting preset when it reads as basal and the first rapid one when not.
+     * The preset a received dose is filed under: the one it names ([presetNamedBy]), else the
+     * first long-acting preset when it reads as basal and the first rapid one when not.
      */
     internal fun chooseInsulinPreset(
         presets: List<JournalInsulinPreset>,
@@ -545,7 +546,7 @@ object JournalTreatmentTransfer {
      *
      * Another app that writes a dose usually names the insulin (insulinType "Tresiba", or the name
      * in its notes) without saying it is long-acting; filed by the basal words alone, such a dose
-     * went under the first rapid preset and counted toward IOB.
+     * would go under the first rapid preset and count toward IOB.
      *
      * insulinType is read first, then the notes, then eventType; the first of them that names a
      * preset decides. A name counts when its words stand in the field as whole words, in order,

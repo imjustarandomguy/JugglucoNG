@@ -417,7 +417,7 @@ class NightscoutFollowerRegistryTests {
 
     @Test
     fun followerSettingsAction_disablesWhetherOrNotTheFollowerWasEnabled() {
-        // The cleanup no longer depends on the stored flag: a follower left running while it
+        // The cleanup does not depend on the stored flag: a follower left running while it
         // reads disabled is the one that has to be stopped.
         assertEquals(
             NightscoutFollowerRegistry.FollowerSettingsAction.DISABLE,

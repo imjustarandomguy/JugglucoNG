@@ -70,8 +70,8 @@ object NightscoutJournalFollowerImporter : NightscoutTreatmentImportBridge {
             val treatment = array.optJSONObject(index) ?: continue
             if (JournalTreatmentTransfer.hasAnyRemoteIdentifier(treatment, ownUploadedRemoteIds)) continue
             if (JournalTreatmentTransfer.isOwnV1Document(treatment, ownV1Rows)) {
-                // Copies received before these documents were recognised are the install's own
-                // rows a second time.
+                // Copies an earlier version received of these documents, not knowing them for
+                // the install's own, are its own rows a second time.
                 ownV1Copies += JournalTreatmentTransfer.sourceRecordIdsForTreatment(treatment, sourcePrefix)
                 continue
             }
