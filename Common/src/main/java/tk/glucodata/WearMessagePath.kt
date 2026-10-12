@@ -34,6 +34,9 @@ enum class WearMessagePath(val wire: String) {
     SENSOR_CLAIM_STATUS("/sensorclaimstatus"),
     SENSOR_HANDOFF("/sensorhandoff"),
     START("/start"),
+    // Watch to phone: the watch's alarm history events. Under /sync2 so the existing
+    // manifest prefix delivers it; an older phone logs it as unknown and drops it.
+    SYNC2_ALARM_HISTORY("/sync2/alarmhistory"),
     SYNC2_CAL("/sync2/cal"),
     SYNC2_CALCMD("/sync2/calcmd"),
     SYNC2_CHUNK("/sync2/chunk"),

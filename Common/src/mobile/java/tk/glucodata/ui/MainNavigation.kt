@@ -1004,6 +1004,7 @@ private fun NavGraphBuilder.appDestinations(
     composable("settings/app-updates") { AppUpdatesScreen(navController) }
     composable("settings/alerts") { tk.glucodata.ui.alerts.AlertSettingsScreen(navController) }
     composable("settings/alerts/talker") { tk.glucodata.ui.alerts.TalkerSettingsScreen(navController) }
+    composable("settings/alerts/history") { tk.glucodata.ui.alerts.AlarmHistoryScreen(navController) }
     composable("settings/journal") { JournalSettingsScreen(navController, dashboardViewModel) }
     composable("settings/journal/calculations") { JournalCalculationsSettingsScreen(navController, dashboardViewModel) }
     composable("settings/journal/history") {

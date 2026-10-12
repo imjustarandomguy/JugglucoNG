@@ -186,6 +186,7 @@ class WearMessagePathManifestTests {
             "SENSOR_CLAIM_STATUS" to "/sensorclaimstatus",
             "SENSOR_HANDOFF" to "/sensorhandoff",
             "START" to "/start",
+            "SYNC2_ALARM_HISTORY" to "/sync2/alarmhistory",
             "SYNC2_CAL" to "/sync2/cal",
             "SYNC2_CALCMD" to "/sync2/calcmd",
             "SYNC2_CHUNK" to "/sync2/chunk",
