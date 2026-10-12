@@ -51,14 +51,23 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     private const val RECEIVE_MIN_INTERVAL_MILLIS = 5L * 60 * 1000
 
     /**
-     * The light read the app asks for when it comes to the front: the newest few documents, for
-     * a dose just entered on the server, on a floor of its own (see [receivePlan]).
+     * The light read the app asks for when it comes to the front, and a new reading once the
+     * last read is old enough: the newest few documents, for a dose just entered on the server,
+     * on a floor of its own (see [receivePlan]).
      */
     internal const val LIGHT_FETCH_COUNT = 20
     private const val LIGHT_RECEIVE_MIN_INTERVAL_MILLIS = 30_000L
 
     /** How old the last read must be before a new glucose reading asks for another. */
     internal const val READING_RECEIVE_MIN_AGE_MILLIS = 15L * 60 * 1000
+
+    /**
+     * How far short of [READING_RECEIVE_MIN_AGE_MILLIS] a reading may still ask. A read is
+     * recorded when its answer arrives, seconds after the reading that asked for it, so with
+     * readings five minutes apart the third one after a read comes those seconds short of the
+     * quarter hour; this lets it ask rather than the fourth, twenty minutes on.
+     */
+    internal const val READING_RECEIVE_SLACK_MILLIS = 30_000L
 
     /**
      * Failed attempts a delete, or an edit of a received treatment, gets before it is no longer
@@ -577,21 +586,38 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     internal class ReceivePlan(val read: ReceiveRead, val wakeInMillis: Long?)
 
     /**
-     * The full read goes whenever its interval allows, whatever woke the pass. Inside the
-     * interval a pass read nothing and booked one read for its end, so a dose entered on the
-     * server just after a read took up to five minutes to show, however often the app was
-     * opened to look for it. Coming to the front asks for a light read instead: only the newest
-     * [LIGHT_FETCH_COUNT] documents, which hold a dose just entered, on a floor of its own a
-     * tenth as long. It takes nothing from the full read: the wake for the end of the interval
-     * is still booked, so a pass that was also owed a full read (a journal change raised at the
-     * same moment) still gets one. A light request inside its own floor waits for the earlier
-     * of the two ends.
+     * What a treatment pass reads. The full read goes whenever its interval allows, whatever
+     * woke the pass; inside the interval nothing is read and one wake is booked for its end, so
+     * a change on the server still arrives without waiting for another reason to pass.
+     *
+     * A light read, only the newest [LIGHT_FETCH_COUNT] documents, holds a dose just entered on
+     * the server and has a floor of its own a tenth as long. Coming to the front asks for one,
+     * so such a dose shows within half a minute of opening the app rather than at the end of
+     * the full interval. It takes nothing from the full read: the wake for the end of the
+     * interval is still booked, so a pass that was also owed a full read (a journal change
+     * raised at the same moment) still gets one. A light request inside its own floor waits for
+     * the earlier of the two ends.
+     *
+     * A pass raised by a new reading alone ([readingTriggersReceive]) reads light whatever the
+     * full interval says, and books nothing. Readings come all day, and the newest 240
+     * documents every quarter of an hour would be close to a hundred full reads a day, so full
+     * reads stay with the passes that make them anyway.
      *
      * @param fullWaitMillis how long until a full read may go (0: now)
      * @param lightWanted the app came to the front since the last read
      * @param lightWaitMillis how long until a light read may go (0: now)
+     * @param readingOnly a new reading alone raised this pass
      */
-    internal fun receivePlan(fullWaitMillis: Long, lightWanted: Boolean, lightWaitMillis: Long): ReceivePlan = when {
+    internal fun receivePlan(
+        fullWaitMillis: Long,
+        lightWanted: Boolean,
+        lightWaitMillis: Long,
+        readingOnly: Boolean = false
+    ): ReceivePlan = when {
+        readingOnly -> ReceivePlan(
+            if (lightWaitMillis <= 0L) ReceiveRead.LIGHT else ReceiveRead.HOLD,
+            wakeInMillis = null
+        )
         fullWaitMillis <= 0L -> ReceivePlan(ReceiveRead.FULL, wakeInMillis = null)
         !lightWanted -> ReceivePlan(ReceiveRead.HOLD, fullWaitMillis)
         lightWaitMillis <= 0L -> ReceivePlan(ReceiveRead.LIGHT, fullWaitMillis)
@@ -599,26 +625,54 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     }
 
     /**
-     * The two floors treatment reads keep ([receivePlan]), and the app's request for a light
-     * read, which stays until a read of either kind is made: one held back is made by the pass
-     * the booked wake brings.
+     * The two floors treatment reads keep ([receivePlan]); the app's request for a light read,
+     * which stays until a read of either kind is made (one held back is made by the pass the
+     * booked wake brings); and a reading's, which is for the pass that follows it alone.
      */
     internal class ReceiveSchedule(fullIntervalMillis: Long, lightIntervalMillis: Long) {
-        /** Full reads only. A reading's own question looks at it too ([readingTriggersReceive]). */
-        val full = ReceiveFloor(fullIntervalMillis)
-        private val light = ReceiveFloor(lightIntervalMillis)
+        /** Full reads only. */
+        private val full = ReceiveFloor(fullIntervalMillis)
+
+        /**
+         * Every read, light or full, as each one holds the newest documents: the light read's
+         * floor, and what a reading's own question looks at ([readingTriggersReceive]).
+         */
+        val light = ReceiveFloor(lightIntervalMillis)
         private val lightWanted = AtomicBoolean(false)
+        private val readingWanted = AtomicBoolean(false)
 
         fun requestLight() {
             lightWanted.set(true)
         }
 
+        /**
+         * A new reading found the last read old enough. The native uploader runs the treatment
+         * pass for it straight after asking, so the request lasts that pass only ([endPass]).
+         */
+        fun requestReadingRead() {
+            readingWanted.set(true)
+        }
+
         /** The read this pass makes. */
         fun plan(key: String, nowMillis: Long): ReceivePlan {
+            val reading = readingWanted.getAndSet(false)
             val wanted = lightWanted.getAndSet(false)
-            val plan = receivePlan(full.waitMillis(key, nowMillis), wanted, light.waitMillis(key, nowMillis))
+            val plan = receivePlan(
+                full.waitMillis(key, nowMillis),
+                wanted,
+                light.waitMillis(key, nowMillis),
+                readingOnly = reading
+            )
             if (plan.read == ReceiveRead.HOLD && wanted) lightWanted.set(true)
             return plan
+        }
+
+        /**
+         * The pass is over. A reading's request it never planned with (it stopped before the
+         * read) goes with it, so it cannot make a later pass, one owed a full read, read light.
+         */
+        fun endPass() {
+            readingWanted.set(false)
         }
 
         /**
@@ -660,29 +714,31 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
     /**
      * Whether the pass a new glucose reading woke should also read treatments back, so a dose
      * entered on the server turns up without the app being opened or left. A reading is the
-     * wake that keeps coming, every minute or every five, and each read is the newest 240
-     * documents, so it takes its turn only once the last read for [key] in [floor] is
-     * [READING_RECEIVE_MIN_AGE_MILLIS] old. A read nobody answered is not counted, but the
-     * native backoff that follows it holds this pass off first. The receive interval still
-     * bounds the read this asks for. Only full reads count here: a light read on opening the
-     * app holds the newest few documents, not an edit of an older one.
+     * wake that keeps coming, every minute or every five, so it asks only once the last read of
+     * either kind for [key] in [floor] is [READING_RECEIVE_MIN_AGE_MILLIS] old (less
+     * [READING_RECEIVE_SLACK_MILLIS]), and what it asks for is a light read ([receivePlan]). A
+     * read nobody answered is not counted, but the native backoff that follows it holds this
+     * pass off first.
      */
     internal fun readingTriggersReceive(
         receiveEnabled: Boolean,
         floor: ReceiveFloor,
         key: String,
         nowMillis: Long
-    ): Boolean = receiveEnabled && floor.readOlderThan(key, nowMillis, READING_RECEIVE_MIN_AGE_MILLIS)
+    ): Boolean = receiveEnabled &&
+        floor.readOlderThan(key, nowMillis, READING_RECEIVE_MIN_AGE_MILLIS - READING_RECEIVE_SLACK_MILLIS)
 
     @Keep
     override fun readingReceiveDue(useV3: Boolean): Boolean {
         val baseUrl = Natives.getnightuploadurl()?.takeIf { it.isNotBlank() } ?: return false
-        return readingTriggersReceive(
+        val due = readingTriggersReceive(
             getReceiveTreatments(),
-            receiveSchedule.full,
+            receiveSchedule.light,
             receiveFloorKey(baseUrl, useV3),
             System.currentTimeMillis()
         )
+        if (due) receiveSchedule.requestReadingRead()
+        return due
     }
 
     /** When the booked treatment wake is due (uptime); Long.MAX_VALUE while none is. */
@@ -726,6 +782,8 @@ object JournalTreatmentUploader : JournalTreatmentUploadBridge {
         } catch (th: Throwable) {
             Log.e(LOG_ID, "uploadAll failed: ${Log.stackline(th)}")
             false
+        } finally {
+            receiveSchedule.endPass()
         }
     }
 

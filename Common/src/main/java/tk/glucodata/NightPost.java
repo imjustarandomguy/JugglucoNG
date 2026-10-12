@@ -459,7 +459,8 @@ static public boolean uploadJournalTreatments(boolean useV3) {
 /**
  * Whether the pass a new glucose reading woke should also read treatments back
  * ("Receive treatments" on, and the last read old enough). Asked by the native uploader on
- * such a pass, which then runs the treatments branch as a journal change would.
+ * such a pass, which then runs the treatments branch; the read it makes there is a light one,
+ * the newest few treatments.
  */
 @Keep
 static public boolean treatmentReadDue(boolean useV3) {
