@@ -1647,6 +1647,9 @@ class DashboardViewModel(
             Natives.hasalarmprelow(), Natives.hasalarmprehigh(),
             Natives.alarmprelow(), Natives.alarmprehigh()
         )
+        // These are the very low/high alarm thresholds too, written past
+        // AlertRepository.saveConfig, so the watch's copy is pushed from here.
+        tk.glucodata.WearToggleSync.push()
         refreshData()
         refreshNotificationPredictionSurfaces(tk.glucodata.Applic.app)
         tk.glucodata.GlucoseColorSync.push()
