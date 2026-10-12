@@ -3091,4 +3091,22 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="dexcom_share_warning">Nem hivatalos felület: a Dexcom bármikor megváltoztathatja vagy letilthatja. Ez nem orvostechnikai eszköz funkciója.</string>
     <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
     <string name="status_bar_icon_colored_desc">Az állapotsorban lévő érték megjelenítése a tartományának színében</string>
+    <string name="widget_value_label">Glükóz</string>
+    <string name="widget_chart_label">Glükózgrafikon</string>
+    <string name="widget_value_description">Aktuális glükóz, trendnyíl és mérési idő</string>
+    <string name="widget_chart_description">Aktuális glükóz a legutóbbi mérések grafikonjával</string>
+    <string name="widget_settings_title">Widget beállításai</string>
+    <string name="widgets_title">Widgetek</string>
+    <string name="widgets_subtitle">Widgetek a kezdőképernyőn és a lezárási képernyőn</string>
+    <string name="widgets_empty">Még nincs elhelyezett widget. Adja hozzá a „Glükóz” vagy a „Glükózgrafikon” widgetet a kezdőképernyő widgetlistájából.</string>
+    <string name="widget_customize">Testreszabás</string>
+    <string name="widget_size">%1$d × %2$d dp</string>
+    <string name="widget_range_colors">Tartományszínek</string>
+    <string name="widget_range_colors_desc">Az érték színezése a tartománya szerint</string>
+    <string name="widget_delta">Változás az előző mérés óta</string>
+    <string name="widget_reading_time">Mérési idő</string>
+    <string name="widget_chart_when_tall">Grafikon, ha elég magas</string>
+    <string name="widget_chart_range">Grafikon időtartama</string>
+    <string name="widget_hours">%1$d ó</string>
+    <string name="widget_background_none">Nincs</string>
 </resources>
