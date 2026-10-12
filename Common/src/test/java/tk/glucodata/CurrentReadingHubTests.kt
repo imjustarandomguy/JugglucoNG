@@ -315,6 +315,60 @@ class CurrentReadingHubTests {
     }
 
     @Test
+    fun aReadingStoredBeforeItsPathHandsItOverIsPublishedOnce() {
+        val rig = Rig(inputs(reading(t0)))
+        // The stored row comes first, in whole seconds; the path that read it then hands
+        // the same reading over with its milliseconds.
+        val stored = t0 + 5 * minute
+        val handed = stored + 988L
+        rig.inputs = inputs(reading(stored, text = "125"))
+        rig.now = handed + 200L
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+        rig.inputs = inputs(reading(handed, text = "125"), newestReadingMillis = handed)
+        rig.hub.onReadingAccepted(sensor, handed, Origin.LOCAL)
+        // Back to the stored row alone: still the same reading.
+        rig.inputs = inputs(reading(stored, text = "125"))
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+
+        assertEquals(listOf(Reason.STARTUP, Reason.NEW_READING), rig.published.map { it.reason })
+        assertEquals(stored, rig.hub.current().timeMillis)
+        assertEquals(stored, rig.hub.current().lastReadingMillis)
+        // Its deadlines stay where the surfaces have them, and it goes stale there.
+        assertEquals(stored + 5 * minute + 20_000L, rig.scheduler.at)
+        rig.advanceTo(stored + 5 * minute + 20_000L)
+        assertEquals(Freshness.STALE, rig.hub.current().freshness)
+        assertEquals(Reason.STALE_TICK, rig.hub.current().reason)
+        assertEquals(3, rig.published.size)
+    }
+
+    @Test
+    fun theSameReadingHandedOverWithAnotherArrowIsABackfill() {
+        val rig = Rig(inputs(reading(t0)))
+        val stored = t0 + 5 * minute
+        rig.inputs = inputs(reading(stored, text = "125"))
+        rig.now = stored + 2_000L
+        rig.hub.onDisplayInputsChanged(Reason.BACKFILL)
+        rig.inputs = inputs(reading(stored + 400L, text = "125", rate = 2.4f), newestReadingMillis = stored + 400L)
+        rig.hub.onReadingAccepted(sensor, stored + 400L, Origin.LOCAL)
+
+        assertEquals(listOf(Reason.STARTUP, Reason.NEW_READING, Reason.BACKFILL), rig.published.map { it.reason })
+        assertEquals(2.4f, rig.hub.current().shownRate, 0f)
+        assertEquals(stored, rig.hub.current().timeMillis)
+        assertEquals(Origin.LOCAL, rig.hub.current().origin)
+        assertEquals(stored + 5 * minute + 20_000L, rig.scheduler.at)
+    }
+
+    @Test
+    fun aTimeASecondAfterTheOneShownIsANewerReading() {
+        val rig = Rig(inputs(reading(t0), declaredIntervalMs = minute))
+        rig.inputs = inputs(reading(t0 + 1_000L, text = "121"), declaredIntervalMs = minute)
+        rig.now = t0 + 1_500L
+        rig.hub.onReadingAccepted(sensor, t0 + 1_000L, Origin.LOCAL)
+        assertEquals(Reason.NEW_READING, rig.published.last().reason)
+        assertEquals(t0 + 1_000L, rig.hub.current().timeMillis)
+    }
+
+    @Test
     fun anotherUnitOrSensorIsASettingWhateverAskedForIt() {
         val rig = Rig(inputs(reading(t0)))
         rig.inputs = inputs(reading(t0, text = "6.7", isMmol = true))

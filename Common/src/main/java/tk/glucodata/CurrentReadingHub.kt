@@ -225,8 +225,8 @@ class ReadingHub internal constructor(
         try {
             val at = now()
             val origins = synchronized(lock) { HashMap(acceptedOrigins) }
-            val next = compose(source.read(at), at) { time -> originOf(origins, time) }
             val previous = published
+            val next = compose(source.read(at), at, { time -> originOf(origins, time) }, previous)
             if (previous == null || !next.sameDisplayAs(previous)) {
                 val publish = next.copy(reason = classify(previous, next, trigger), revision = ++revision)
                 published = publish
@@ -251,31 +251,42 @@ class ReadingHub internal constructor(
         private const val LOG_ID = "CurrentReadingHub"
         private const val MAX_ORIGINS = 8
 
-        /** A reading and the time an accepting path gave it, at most this far apart, are one. */
+        /**
+         * Two times less than this apart are one reading: its stored row's, in whole seconds,
+         * and the one the accepting path gave it.
+         */
         private const val SAME_READING_MS = 1_000L
 
         /**
          * [inputs] at [nowMillis], as shown. [originOf] names where the reading at a time
-         * came from. Pure: the publishing rules are tested through it.
+         * came from; [published] is the reading published before, if any. Pure: the
+         * publishing rules are tested through it.
          */
         internal fun compose(
             inputs: Inputs,
             nowMillis: Long,
             originOf: (Long) -> Origin = { Origin.STORED },
+            published: DisplayedReading? = null,
         ): DisplayedReading {
+            // One reading reaches the hub with two times a fraction of a second apart: its
+            // stored row's, in whole seconds, then the one the path that read it gives, in
+            // milliseconds. It keeps the time it was published with, so it is not taken for a
+            // newer reading and its deadlines stay where every surface already has them.
             val reading = inputs.reading?.takeIf {
                 it.timeMillis > 0L && it.value.isFinite() && it.value > 0f && it.valueText.isNotBlank()
-            }
-            val timeMillis = reading?.timeMillis ?: inputs.latestTimeMillis.coerceAtLeast(0L)
+            }?.let { it.copy(timeMillis = publishedTime(published, it.timeMillis)) }
+            val timeMillis = reading?.timeMillis
+                ?: publishedTime(published, inputs.latestTimeMillis.coerceAtLeast(0L))
+            val newestReadingMillis = publishedTime(published, inputs.newestReadingMillis)
             // Freshness and every deadline count from the newest reading taken, not from the
             // point shown: a chunk's end would leave a one-minute sensor stale most of the time.
-            val lastReadingMillis = maxOf(timeMillis, inputs.newestReadingMillis)
+            val lastReadingMillis = maxOf(timeMillis, newestReadingMillis)
             val interval = ReadingCadence.intervalMillis(
                 inputs.declaredIntervalMillis,
                 buildList {
                     addAll(inputs.recentTimes)
                     if (reading != null) add(reading.timeMillis)
-                    if (inputs.newestReadingMillis > 0L) add(inputs.newestReadingMillis)
+                    if (newestReadingMillis > 0L) add(newestReadingMillis)
                 },
             )
             var freshness = ReadingCadence.freshness(
@@ -344,7 +355,8 @@ class ReadingHub internal constructor(
                     next.isMmol != previous.isMmol ||
                     next.viewMode != previous.viewMode
                 ) -> Reason.SETTINGS
-            // Asked for by a reading that turned out not to be newer: one filled in behind.
+            // Asked for by a reading that turned out not to be newer: one filled in behind, or
+            // the one shown, handed over again by the path that read it.
             trigger == Reason.NEW_READING || trigger == Reason.STARTUP -> Reason.BACKFILL
             else -> trigger
         }
@@ -366,6 +378,15 @@ class ReadingHub internal constructor(
         private fun originOf(origins: Map<Long, Origin>, timeMillis: Long): Origin =
             origins.entries.firstOrNull { kotlin.math.abs(it.key - timeMillis) < SAME_READING_MS }?.value
                 ?: Origin.STORED
+
+        /** [timeMillis], or the time [published] gave the same reading. */
+        private fun publishedTime(published: DisplayedReading?, timeMillis: Long): Long {
+            if (published == null || timeMillis <= 0L) return timeMillis
+            for (shown in longArrayOf(published.timeMillis, published.lastReadingMillis)) {
+                if (shown > 0L && kotlin.math.abs(shown - timeMillis) < SAME_READING_MS) return shown
+            }
+            return timeMillis
+        }
 
         private fun describe(reading: DisplayedReading): String =
             "publish rev=${reading.revision} ${reading.reason} ${reading.freshness} " +
