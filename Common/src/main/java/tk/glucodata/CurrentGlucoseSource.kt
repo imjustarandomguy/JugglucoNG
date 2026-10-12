@@ -70,7 +70,7 @@ object CurrentGlucoseSource {
         return resolveForOwnership(
             isCloneSensor = CloneSensorRegistry.isCloneSensor(targetSensor),
             targetSensorId = targetSensor,
-            readNative = { getFromNative(now, maxAgeMillis, targetSensor) },
+            readNative = { withStoredNativeValue(getFromNative(now, maxAgeMillis, targetSensor)) },
             readLocal = { getFromLocalOrNative(now, maxAgeMillis, targetSensor, preferredSensorId) }
         )
     }
@@ -199,6 +199,10 @@ object CurrentGlucoseSource {
         )
     }
 
+    /**
+     * Native's latest reading with the value of its formatted text. Every route that
+     * shows it, the Clone one included, passes it through [withStoredNativeValue].
+     */
     private fun getFromNative(now: Long, maxAgeMillis: Long, targetSensor: String? = null): Snapshot? {
         if (targetSensor != null) {
             for (nativeName in SensorIdentity.resolveNativeHistorySensorNames(targetSensor)) {
@@ -270,7 +274,12 @@ object CurrentGlucoseSource {
             return Float.NaN
         }
         val history = runCatching { Natives.getGlucoseHistoryForSensor(sensorId, timeSec - 1L) }.getOrNull()
-            ?: return Float.NaN
+        return storedMgdlAt(history, timeSec)
+    }
+
+    /** The auto mg/dL of native's `[time_sec, auto_mgdl*10, raw_mgdl*10, ...]` row at [timeSec], or NaN. */
+    internal fun storedMgdlAt(history: LongArray?, timeSec: Long): Float {
+        history ?: return Float.NaN
         var i = 0
         while (i + 2 < history.size) {
             if (history[i] == timeSec && history[i + 1] > 0L) {
