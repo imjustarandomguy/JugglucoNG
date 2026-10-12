@@ -1761,6 +1761,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="invalid_interval">Érvénytelen időköz</string>
     <string name="status_waiting_for_connection">Várakozás a kapcsolatra</string>
     <string name="status_ready_in_minutes">A szenzor %1$d perc múlva használható.</string>
+    <string name="status_waiting_for_first_reading">Várakozás az első mérésre</string>
     <string name="range_custom">Egyéni</string>
     <string name="stats_patterns">Mintázatok</string>
     <string name="stats_no_readings_in_range">Ebben az időszakban nincsenek mérések.</string>

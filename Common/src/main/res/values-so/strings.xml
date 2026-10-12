@@ -1794,6 +1794,7 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="invalid_interval">Inta aan sax ahayn</string>
     <string name="status_waiting_for_connection">Sugitaanka isku xidhka</string>
     <string name="status_ready_in_minutes">Dareemuhu %1$d daqiiqo gudahood ayuu diyaar noqonayaa.</string>
+    <string name="status_waiting_for_first_reading">Sugitaanka akhrinta koowaad</string>
     <string name="range_custom">Gaar ah</string>
     <string name="stats_patterns">Qaababka</string>
     <string name="stats_no_readings_in_range">Ma jiraan wax akhriyo la heli karo inta lagu jiro wakhtigan.</string>
