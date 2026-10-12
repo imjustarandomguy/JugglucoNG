@@ -930,15 +930,31 @@ object SensorOwnershipRuntime {
 
     // ---------------------------------------------------------------- wire
 
+    //   [u8 ver=1][u8 owns][u8 len][serial utf8][i64 lastReadingMs]
+    //   [u8 status]        appended later:
+    //                      bit 0 = on its charger (the watch),
+    //                      bit 1 = answer this report,
+    //                      bit 2 = charger state unknown (bit 0 then means nothing)
+    //   [i64 directAgeMs]  appended later, by builds that report each device's
+    //                      newest direct reading; not read here
+    //
+    // The appended fields leave the version alone: every build reads the fields
+    // it knows and ignores what follows them, and a report without one reads as
+    // "unknown". A version bump would instead have made each side drop the
+    // other's reports, and with them the arbitration. The status byte may come
+    // alone; before directAgeMs it is always there, with bit 2 from a build
+    // that has no charger state to give.
+
     private const val VERSION = 1
 
-    /** Bit 0 of the optional trailing status byte: the sender is on its charger. */
+    /** Bits of the status byte. This build asks no answer: bit 1 is never sent. */
     private const val STATUS_CHARGING = 0x01
+    private const val STATUS_ANSWER_REQUESTED = 0x02
+    private const val STATUS_CHARGING_UNKNOWN = 0x04
 
     /**
-     * [charging], when known, goes in one trailing status byte. [decode] reads
-     * exactly its own fields, so a build without this byte ignores it, and
-     * [VERSION] stays: a bump would make the peer drop these reports altogether.
+     * [charging], when known, goes in the status byte; without it there is none.
+     * [decode] reads exactly its own fields, so a build without this byte ignores it.
      */
     internal fun encode(serial: String, owns: Boolean, lastReadingMs: Long, charging: Boolean? = null): ByteArray {
         val serialBytes = serial.toByteArray(StandardCharsets.UTF_8)
@@ -952,13 +968,19 @@ object SensorOwnershipRuntime {
         return buffer.array()
     }
 
-    /** The trailing status byte's charger state, or null when the report has none or is not one. */
+    /**
+     * The status byte's charger state, or null when the report has no status
+     * byte, says the state is unknown, or is not a report. Whatever follows the
+     * byte is not read.
+     */
     internal fun decodeCharging(data: ByteArray?): Boolean? {
         val bytes = data ?: return null
         if (decode(bytes) == null) return null
         val statusAt = 3 + (bytes[2].toInt() and 0xFF) + 8
         if (bytes.size <= statusAt) return null
-        return bytes[statusAt].toInt() and STATUS_CHARGING != 0
+        val status = bytes[statusAt].toInt()
+        if (status and STATUS_CHARGING_UNKNOWN != 0) return null
+        return status and STATUS_CHARGING != 0
     }
 
     /** [serial, owns, lastReadingMs], or null when malformed. */
