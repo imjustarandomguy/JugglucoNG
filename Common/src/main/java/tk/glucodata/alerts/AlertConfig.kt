@@ -19,7 +19,8 @@ enum class AlertType(val id: Int, val nameResId: Int) {
     PERSISTENT_HIGH(10, R.string.alert_persistent_high),
     SENSOR_EXPIRY(11, R.string.alert_sensor_expiry),
     FALLING_FAST(12, R.string.alert_falling_fast),
-    RISING_FAST(13, R.string.alert_rising_fast);
+    RISING_FAST(13, R.string.alert_rising_fast),
+    PERSISTENT_LOW(14, R.string.alert_persistent_low);
 
     companion object {
         fun fromId(id: Int): AlertType? = entries.find { it.id == id }
@@ -38,6 +39,7 @@ enum class AlertType(val id: Int, val nameResId: Int) {
             PRE_HIGH,
             MISSED_READING,
             PERSISTENT_HIGH,
+            PERSISTENT_LOW,
             LOSS,
             SENSOR_EXPIRY,
             FALLING_FAST,
@@ -70,7 +72,8 @@ const val MAX_SOUND_DELAY_SECONDS_LOW = 60
 const val MAX_SOUND_DELAY_SECONDS_VERY_LOW = 30
 
 fun maxSoundDelaySecondsFor(type: AlertType): Int = when (type) {
-    AlertType.LOW -> MAX_SOUND_DELAY_SECONDS_LOW
+    // A persistent low is a hypo that has already waited out its duration.
+    AlertType.LOW, AlertType.PERSISTENT_LOW -> MAX_SOUND_DELAY_SECONDS_LOW
     AlertType.VERY_LOW -> MAX_SOUND_DELAY_SECONDS_VERY_LOW
     else -> MAX_SOUND_DELAY_SECONDS
 }
@@ -132,6 +135,12 @@ data class AlertConfig(
     // opt-in marker for suppressing while its displayed arrow points down.
     // 0/null = off.
     val fallRateSuppress: Float? = null,
+    // PERSISTENT_LOW only, the mirror of fallRateSuppress: hold (not reset) the
+    // alarm while the value rises at least this fast (mg/dl per minute,
+    // magnitude). A separate field because its null means off, where
+    // PERSISTENT_HIGH reads a null fallRateSuppress as its default rate.
+    // 0/null = off.
+    val riseRateSuppress: Float? = null,
 
     // Delta-counter settings (FALLING_FAST / RISING_FAST): GDH-style robust rate-of-change alarm.
     val deltaThreshold: Float? = null,      // Min change per interval (display units) to count as steep
@@ -251,6 +260,9 @@ object AlertDefaults {
     const val FORECAST_LOW_THRESHOLD_MMOL = 3.9f
     const val FORECAST_HIGH_THRESHOLD_MMOL = 8.0f
     const val PERSISTENT_HIGH_THRESHOLD_MMOL = 10.0f
+    // The level-1 hypo line (3.9 mmol/L / 70 mg/dL), above the LOW default on
+    // purpose: this alert waits out a duration, so it can afford to look earlier.
+    const val PERSISTENT_LOW_THRESHOLD_MMOL = 3.9f
     const val LEGACY_HIGH_THRESHOLD_MMOL = 10.0f
     const val LEGACY_VERY_HIGH_THRESHOLD_MMOL = 13.9f
     const val LEGACY_LOW_THRESHOLD_MMOL = 3.9f
@@ -265,6 +277,7 @@ object AlertDefaults {
     const val FORECAST_LOW_THRESHOLD_MGDL = 70f
     const val FORECAST_HIGH_THRESHOLD_MGDL = 144f
     const val PERSISTENT_HIGH_THRESHOLD_MGDL = 180f
+    const val PERSISTENT_LOW_THRESHOLD_MGDL = 70f
     const val LEGACY_HIGH_THRESHOLD_MGDL = 180f
     const val LEGACY_VERY_HIGH_THRESHOLD_MGDL = 250f
     const val LEGACY_LOW_THRESHOLD_MGDL = 70f
@@ -274,6 +287,8 @@ object AlertDefaults {
     // Duration defaults
     const val MISSED_READING_MINUTES = 30
     const val PERSISTENT_HIGH_MINUTES = 60
+    // Four 5-minute readings: long enough for most compression dips to recover.
+    const val PERSISTENT_LOW_MINUTES = 15
     const val FORECAST_LOOK_AHEAD_MINUTES = 20
 
     // Forecast rearm hysteresis. The projection moves 30 mg/dL for a
@@ -296,6 +311,16 @@ object AlertDefaults {
      * configurable minimum is useful here; ordinary HIGH instead follows its visible arrow.
      */
     const val FALL_RATE_SUPPRESS_MGDL_PER_MIN = 1.0f
+
+    /** PERSISTENT_LOW's "hold while rising" rate once switched on; off by default. */
+    const val RISE_RATE_SUPPRESS_MGDL_PER_MIN = 1.0f
+
+    // PERSISTENT_LOW reset hysteresis: the timer restarts only once the value is
+    // this far ABOVE the threshold, so a low hovering at the line (3.8, 4.0, 3.8)
+    // keeps its count. Smaller than THRESHOLD_REARM_MARGIN: a real recovery
+    // should still end the episode promptly.
+    const val PERSISTENT_LOW_REARM_MARGIN_MGDL = 3f
+    const val PERSISTENT_LOW_REARM_MARGIN_MMOL = 0.2f
 
     // PRE_HIGH IOB coverage: suppress when remaining insulin effect covers the
     // projected overshoot x this factor. Off: it silences a safety alert on the
@@ -412,6 +437,22 @@ object AlertDefaults {
                 deliveryMode = AlertDeliveryMode.SYSTEM_ALARM,
                 hapticProfile = HapticProfile.STEADY,
                 defaultSnoozeMinutes = 60
+            )
+            AlertType.PERSISTENT_LOW -> AlertConfig(
+                type = type,
+                enabled = false,
+                threshold = if (isMmol) PERSISTENT_LOW_THRESHOLD_MMOL else PERSISTENT_LOW_THRESHOLD_MGDL,
+                durationMinutes = PERSISTENT_LOW_MINUTES,
+                rearmMargin = if (isMmol) PERSISTENT_LOW_REARM_MARGIN_MMOL else PERSISTENT_LOW_REARM_MARGIN_MGDL,
+                // Opt-in, unlike PERSISTENT_HIGH's fall rule: holding delays a due
+                // hypo alarm for as long as the rise lasts, and that is the user's
+                // call to make.
+                riseRateSuppress = null,
+                deliveryMode = AlertDeliveryMode.SYSTEM_ALARM,
+                hapticProfile = HapticProfile.STRONG,
+                // A hypo alarm, like LOW: it has to wake somebody up at night.
+                overrideDND = true,
+                defaultSnoozeMinutes = 15
             )
             AlertType.SENSOR_EXPIRY -> AlertConfig(
                 type = type,

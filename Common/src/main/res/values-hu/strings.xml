@@ -844,6 +844,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="alert_loss">Jelvesztés</string>
     <string name="alert_missed_reading">Kimaradt mérés</string>
     <string name="alert_persistent_high">Tartósan magas</string>
+    <string name="alert_persistent_low">Tartósan alacsony</string>
     <string name="alert_sensor_expiry">Szenzor lejárata</string>
     <string name="missed_reading_channel_description">Riasztás, ha a beállított ideig nem érkezik glükózmérés</string>
     <string name="sensor_expiry_channel_description">Riasztás, ha az aktuális szenzor közeledik a lejárathoz</string>
@@ -1286,6 +1287,8 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="tap_to_change">Módosítás koppintással</string>
     <string name="threshold_label">Küszöbérték</string>
     <string name="persistent_high_fall_suppress_label">Némítás csökkenés közben</string>
+    <string name="persistent_low_rise_hold_label">Némítás emelkedés közben</string>
+    <string name="persistent_low_explanation">Akkor szól, ha a glükóz ennyi ideig a küszöb alatt marad. 5 perces méréseknél (G7): 10 perc = 3 egymást követő mérés, 15 perc = 4.</string>
     <string name="time_range_summary">%1$s - %2$s</string>
     <string name="volume_vibration_profile">Hangerő-/rezgésprofil</string>
     <string name="font_source">Betűtípus forrása</string>

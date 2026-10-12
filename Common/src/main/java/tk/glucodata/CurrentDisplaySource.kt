@@ -180,6 +180,51 @@ object CurrentDisplaySource {
         )
     }
 
+    /**
+     * The stored readings of [sensorId] from [startTimeMs] on, oldest first, each
+     * as the time and value a snapshot of it shows: display units, the sensor's
+     * view mode, the display calibration and the local smoothing, resolved like
+     * the history [resolveCurrent] merges the live reading into. For alerts that
+     * look back over an episode, so a stored value and the live one compare like
+     * for like. Smoothing sees the neighbours on both sides of a stored reading,
+     * as on the chart.
+     */
+    @JvmStatic
+    fun resolveHistoryValues(startTimeMs: Long, sensorId: String?): List<Pair<Long, Float>> {
+        val resolvedSensorId = sensorId ?: SensorIdentity.resolveMainSensor()
+        val isMmol = Applic.unit == 1
+        return resolveStoredValues(
+            points = NotificationHistorySource.getDisplayHistory(startTimeMs, isMmol, resolvedSensorId),
+            historyStart = startTimeMs,
+            viewMode = resolveSensorViewMode(resolvedSensorId),
+            isMmol = isMmol,
+            smoothingMode = localSmoothingMode(),
+            sensorId = resolvedSensorId
+        )
+    }
+
+    /** The part of [resolveHistoryValues] that touches no storage. */
+    internal fun resolveStoredValues(
+        points: List<GlucosePoint>,
+        historyStart: Long,
+        viewMode: Int,
+        isMmol: Boolean,
+        smoothingMode: SmoothingMode,
+        sensorId: String?
+    ): List<Pair<Long, Float>> =
+        prepareRecentPointsForCurrent(
+            recentPoints = points,
+            current = null,
+            historyStart = historyStart,
+            viewMode = viewMode,
+            smoothAllData = smoothingMode.smoothAllData,
+            smoothingMinutes = smoothingMode.smoothingMinutes,
+            collapseChunks = smoothingMode.collapseChunks
+        ).mapNotNull { point ->
+            val value = resolveDisplayValuesForPoint(point, viewMode, isMmol, sensorId).primaryValue
+            if (value.isFinite() && value > 0f) point.timestamp to value else null
+        }
+
     /** The part of both resolutions that touches no storage. */
     internal fun resolveSnapshot(
         current: CurrentGlucoseSource.Snapshot?,
