@@ -1324,14 +1324,17 @@ static void uploaderthread() {
         retrypending|=nightscout_backlog::carriedAfter(pass,current,glucosewakes,treatmentwakes);
         const int64_t nowms=elapsedRealtimeMilliseconds();
         const bool treatmentsdue=(nowms>=treatmentnextattemptms);
-        /* A reading wakes this thread all day but asks for glucose only, so treatments entered
-           on the server were read back only when something else raised a treatment pass. With
-           "Receive treatments" on, a reading raises one once the last read is old enough (Java
-           decides: every read is the newest 240 documents, so never one per reading). Not
-           during the hold after a refusal, nor right after a failed glucose upload: the server
-           has not answered, and a read would only wait out the same timeout. Nothing here
-           raises a wake of its own, so it cannot feed itself. */
-        if(treatmentsdue&&!glucosefailed&&(current&Backup::wakestream)
+        /* A reading wakes this thread all day for glucose only. With "Receive treatments" on, it
+           also raises a treatment pass once the last read is old enough, so a dose entered on
+           the server turns up without the app being opened. Java decides, and reads only the
+           newest few treatments for it: never a full read per reading. Asked only when nothing
+           else wants treatments this pass, as Java plans that read for the reading alone, and a
+           pass owed a full read must still make one. For the same reason only on a pass whose
+           treatments go out now: one that gave way for a live reading leaves them to the next
+           pass, which asks again. Not during the hold after a refusal, nor right after a failed
+           glucose upload: the server has not answered, and a read would only wait out the same
+           timeout. Nothing here raises a wake of its own, so it cannot feed itself. */
+        if(treatmentsdue&&aside&&!glucosefailed&&(current&Backup::wakestream)
             &&!(current&(Backup::wakenums|Backup::wakeall|Backup::waketreatments))
             &&treatmentReadDueViaJava(useV3)) {
             current|=Backup::waketreatments;
