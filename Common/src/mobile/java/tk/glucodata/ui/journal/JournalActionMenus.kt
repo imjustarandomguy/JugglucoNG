@@ -89,6 +89,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -471,11 +472,23 @@ fun BoxScope.JournalExpandableFab(
     var buttonCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     BackHandler(enabled = expanded) { onExpandedChange(false) }
     CatchNavigationTaps(active = expanded) { onExpandedChange(false) }
-    if (expanded) {
+    // The outside-tap catcher also dims the screen behind the open menu, so the items do not
+    // blend into the chart and cards below. It fades with the menu; closing, it no longer
+    // takes taps.
+    val scrimColor = MaterialTheme.colorScheme.scrim
+    val scrimProgress = animateFloatAsState(
+        targetValue = if (expanded) 1f else 0f,
+        animationSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    )
+    val scrimShown by remember { derivedStateOf { scrimProgress.value > 0f } }
+    if (expanded || scrimShown) {
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .pointerInput(Unit) { detectTapGestures { onExpandedChange(false) } }
+                .drawBehind { drawRect(scrimColor, alpha = FabMenuScrimAlpha * scrimProgress.value) }
+                .pointerInput(expanded) {
+                    if (expanded) detectTapGestures { currentOnExpandedChange(false) }
+                }
         )
     }
     FloatingActionButtonMenu(
@@ -619,6 +632,9 @@ private val FabMenuItemHeight = 44.dp
 private val FabMenuItemPaddingTrim = 8.dp
 private val FabMenuItemExtraGap = 2.dp
 private const val PressedStateLayerAlpha = 0.1f
+
+// Material's modal scrim opacity, the same the app's bottom sheets use.
+private const val FabMenuScrimAlpha = 0.32f
 
 private fun Modifier.reachIntoPadding(start: Dp = 0.dp, end: Dp = 0.dp) = layout { measurable, constraints ->
     val placeable = measurable.measure(constraints)
