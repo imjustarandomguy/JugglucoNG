@@ -564,7 +564,7 @@ fun FloatingGlucoseSettingsScreen(
     val cornerRadius by repository.cornerRadius.collectAsStateWithLifecycle(initialValue = 28f)
     val opacity by repository.backgroundOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val verticalOffset by repository.islandVerticalOffset.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
+    val islandNudge by repository.islandNudge.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_ISLAND_NUDGE)
     val manualGap by repository.islandGap.collectAsStateWithLifecycle(initialValue = 0f)
     val aboveStatusBar by repository.isAboveStatusBar.collectAsStateWithLifecycle(initialValue = false)
     val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsStateWithLifecycle().value != null
@@ -693,13 +693,13 @@ fun FloatingGlucoseSettingsScreen(
 
         if (isDynamicIsland) {
             Spacer(modifier = Modifier.height(8.dp))
-            val offsetLabel = "${stringResource(R.string.offset)}: ${stringResource(R.string.dp_value, verticalOffset.toInt())}"
+            val offsetLabel = "${stringResource(R.string.offset)}: ${stringResource(R.string.dp_value, islandNudge.toInt())}"
             LegacySliderControl(
                 label = offsetLabel,
-                value = verticalOffset,
-                onValueChange = { repository.setIslandVerticalOffset(it) },
-                range = 0f..50f,
-                steps = 50
+                value = islandNudge,
+                onValueChange = { repository.setIslandNudge(it) },
+                range = -20f..20f,
+                steps = 39
             )
 
             Spacer(modifier = Modifier.height(4.dp))
