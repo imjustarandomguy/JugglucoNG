@@ -111,7 +111,10 @@ data class DisplayedReading(
         /** A newer reading than the one shown before. */
         NEW_READING,
 
-        /** Stored data changed under the same reading: a backfill, a calibration. */
+        /**
+         * The same reading, with something drawn changed: stored data under it (a backfill, a
+         * calibration), or the path that read it handing it over after its stored row.
+         */
         BACKFILL,
 
         /** A deadline passed: the same reading went stale or was taken down. */
