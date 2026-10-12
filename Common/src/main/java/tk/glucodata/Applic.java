@@ -230,6 +230,9 @@ public class Applic extends Application implements androidx.work.Configuration.P
             SuperGattCallback.previousglucosevalue = 0.0f;
         Natives.setunit(unit);
         Notify.mkunitstr(app, unit);
+        // Every unit change passes here: the current reading is resolved again in the new
+        // unit at once, not at the next reading.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS);
     }
 
     public void sendlabels() {
