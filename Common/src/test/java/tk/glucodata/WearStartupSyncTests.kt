@@ -77,8 +77,10 @@ class WearStartupSyncTests {
                     "                    SensorOwnershipRuntime.readsAlongside(serial)",
             ),
         )
-        assertTrue(onChunk, after(onChunk, "val alreadyHave = if (missingOnly) {").trimStart()
-            .startsWith("runCatching { Natives.streamSlotsFilled(times, serial) }"))
+        val missingOnly = after(onChunk, "val alreadyHave = if (missingOnly) {").substringBefore("} else null")
+        assertTrue(missingOnly, missingOnly.contains("runCatching { Natives.streamSlotsFilled(times, serial) }"))
+        // Except a Libre 2: its polls are not minute slots (tools/test-wear-sync2.py).
+        assertTrue(missingOnly, missingOnly.trimStart().startsWith("val filled = if (isLibre2NativeSensor(serial)) null"))
     }
 
     @Test
