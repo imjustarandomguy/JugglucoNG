@@ -416,14 +416,14 @@ class SensorExpiryAlertStateTests {
             ).also { fired -> fired.forEach { s.confirmDelivered(it) } }
         }
         assertEquals(emptySet<Int>(), tick(official - min(120)))
-        // The official end was only an hour away here, yet the sensor ran another 12.
+        // 57 minutes before the official end is nearly 13 hours before the expected one.
         assertEquals(emptySet<Int>(), tick(official - min(57)))
         // Past the official end the sensor is still delivering: it must stay armed.
         assertEquals(emptySet<Int>(), tick(official + min(30)))
         assertEquals(emptySet<Int>(), tick(expected - min(61)))
         assertEquals(setOf(60), tick(expected - min(60)))
         assertEquals(emptySet<Int>(), tick(expected - min(30)))
-        // Counting from the official end instead leaves nothing to warn with once it passed.
+        // The official end alone is rejected as expired once it has passed.
         assertEquals(0L, selectSensorExpiryEndMs(listOf("G7" to official), "G7", official + min(30)))
     }
 
