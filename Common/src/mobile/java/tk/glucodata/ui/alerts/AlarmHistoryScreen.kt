@@ -14,27 +14,19 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -48,6 +40,7 @@ import tk.glucodata.alerts.AlarmHistory
 import tk.glucodata.alerts.AlarmHistoryPolicy
 import tk.glucodata.alerts.AlarmOutcome
 import tk.glucodata.alerts.AlertType
+import tk.glucodata.ui.components.AppTopBar
 import tk.glucodata.ui.components.CardPosition
 import tk.glucodata.ui.components.cardShape
 import tk.glucodata.ui.components.formatAlertMinutes
@@ -72,17 +65,9 @@ fun AlarmHistoryScreen(navController: NavController) {
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.alarm_history)) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.navigate_back)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            AppTopBar(
+                title = stringResource(R.string.alarm_history),
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     ) { padding ->
@@ -117,9 +102,8 @@ fun AlarmHistoryScreen(navController: NavController) {
                             DateUtils.FORMAT_SHOW_WEEKDAY or DateUtils.FORMAT_SHOW_DATE or
                                 DateUtils.FORMAT_ABBREV_WEEKDAY
                         ),
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleSmallEmphasized,
                         color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 8.dp)
                     )
                 }
