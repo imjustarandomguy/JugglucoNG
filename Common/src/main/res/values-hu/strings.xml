@@ -3029,4 +3029,9 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="nightscout_secret_label">API-titok vagy hozzáférési token</string>
     <string name="nightscout_api_help">A v1-hez API-titkot, a v3-hoz Nightscout-hozzáférési tokent használj.</string>
     <string name="nightscout_iob_help">Az eIOB és COB a devicestatus jugglucong mezőjében kerül elküldésre, a hagyományos IOB-tól külön.</string>
+    <string name="chart_readings_style_title">Mérések megjelenítése</string>
+    <string name="chart_readings_style_desc">Hogyan jelennek meg a mérések a grafikonokon: az alkalmazásban, az értesítésben, a widgeten és az órán</string>
+    <string name="chart_readings_style_line">Vonal</string>
+    <string name="chart_readings_style_dots">Pontok</string>
+    <string name="chart_readings_style_line_and_dots">Vonal és pontok</string>
 </resources>
