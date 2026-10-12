@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -33,11 +34,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import tk.glucodata.R
 import tk.glucodata.alerts.SnoozeManager
 import tk.glucodata.ui.components.CardPosition
+import tk.glucodata.ui.components.IconButtonTooltip
 import tk.glucodata.ui.components.cardShape
 import tk.glucodata.ui.components.formatAlertMinutes
 import tk.glucodata.ui.components.rememberActiveSnoozes
@@ -89,8 +90,7 @@ fun ActiveSnoozesCard(refreshKey: Any? = Unit) {
                         Spacer(Modifier.width(12.dp))
                         Text(
                             text = stringResource(R.string.active_snoozes_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
+                            style = MaterialTheme.typography.titleMediumEmphasized
                         )
                     }
                     rows.forEach { row ->
@@ -111,16 +111,19 @@ fun ActiveSnoozesCard(refreshKey: Any? = Unit) {
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.weight(1f)
                             )
-                            IconButton(
-                                onClick = {
-                                    runCatching { SnoozeManager.clearSnooze(row.type) }
-                                    cancelled++
+                            IconButtonTooltip(stringResource(R.string.cancel)) {
+                                IconButton(
+                                    onClick = {
+                                        runCatching { SnoozeManager.clearSnooze(row.type) }
+                                        cancelled++
+                                    },
+                                    shapes = IconButtonDefaults.shapes()
+                                ) {
+                                    Icon(
+                                        Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.cancel)
+                                    )
                                 }
-                            ) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = stringResource(R.string.cancel)
-                                )
                             }
                         }
                     }
