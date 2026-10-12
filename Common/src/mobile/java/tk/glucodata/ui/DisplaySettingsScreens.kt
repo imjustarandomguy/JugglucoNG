@@ -378,7 +378,7 @@ fun DisplayAndColorSettingsScreen(
         2 -> stringResource(R.string.preview_window_never)
         else -> stringResource(R.string.preview_window_expanded_only)
     }
-    val chartReadingsStyle by viewModel.chartReadingsStyle.collectAsState()
+    val chartReadingsStyle by viewModel.chartReadingsStyle.collectAsStateWithLifecycle()
     var showChartReadingsStyleDialog by rememberSaveable { mutableStateOf(false) }
     val chartReadingsStyleLabel = when (chartReadingsStyle) {
         tk.glucodata.ChartReadingsStyle.DOTS -> stringResource(R.string.chart_readings_style_dots)
