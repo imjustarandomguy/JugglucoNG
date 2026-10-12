@@ -11,10 +11,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * A queued connect used to latch out every other connect request for the same sensor until it
- * ran. Behind a Dexcom warmup retry, scheduled half an hour out on an executor whose clock stops
- * while the CPU sleeps, that dropped the loss-of-signal reconnect, every app start and the loss
- * alarm's reconnectall; only pausing the sensor let a connect through again.
+ * A queued connect must not latch out other connect requests for the same sensor that are due
+ * sooner. Behind a Dexcom warmup retry, scheduled half an hour out on an executor whose clock
+ * stops while the CPU sleeps, the loss-of-signal reconnect, every app start and the loss
+ * alarm's reconnectall would otherwise never run; only pausing the sensor would let a connect
+ * through.
  */
 class PendingConnectPolicyTests {
 
