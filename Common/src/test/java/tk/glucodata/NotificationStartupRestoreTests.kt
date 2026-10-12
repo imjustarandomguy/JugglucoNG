@@ -10,24 +10,26 @@ import org.junit.Test
 /**
  * Integration-style JVM harness for the N1 startup subset. Unlike the predicate
  * tests, this compiles the actual Notify foreground-startup/restore/fornotify
- * method bodies (extracted from Notify.java) against recording stub Android
- * types, with a controllable worker queue and blockable resolver/render fakes.
+ * method bodies and the ongoing notification's refresh lifecycle (extracted from
+ * Notify.java) against recording stub Android types, with a controllable worker
+ * queue and blockable current-reading/render fakes.
  *
- * Covered production wiring: placeholder-first promotion before any blocked
- * history query, ticket invalidation by any genuine fornotify publication,
- * superseded epochs, stop/destroy invalidation, Wear synchronous path, Wear
- * ongoing-status refresh on data changes (coalesced, phone untouched), pinned
- * snapshot time passed to the renderer, honest stale/waiting/no-sensor statuses,
- * history-failure propagation, and header-timestamp application.
+ * Covered production wiring: placeholder-first promotion before the current reading
+ * is awaited, ticket invalidation by any genuine fornotify publication, superseded
+ * epochs, stop/destroy invalidation, Wear synchronous path, Wear ongoing-status
+ * refresh on data changes (coalesced, phone untouched), the current reading passed
+ * to the renderer, honest stale/no-value/waiting/no-sensor looks, the current
+ * reading's publish driving the notification (no deadline of its own), alertwatch
+ * delivery only for a new reading, and header-timestamp application.
  */
 class NotificationStartupRestoreTests {
     private fun harness(): Any {
         val h = compiled.getConstructor().newInstance()
-        setStaticOwner("NotificationHistorySource", h)
         setStaticOwner("GlucoseUpdateBroadcaster", h)
         setStaticOwner("OngoingNotificationAccess", h)
         setStaticOwner("Service", h)
         setStaticOwner("Log", h)
+        setStaticOwner("DisplayedReading", h)
         call(h, "resetStatics")
         call(h, "openGate", "resolver")
         call(h, "openGate", "render")
@@ -117,15 +119,19 @@ class NotificationStartupRestoreTests {
         }
     }
 
-    private fun snapshotAt(time: Long, value: Float = 100f): Any {
-        val cls = nested("CurrentDisplaySource").declaredClasses.first { it.simpleName == "Snapshot" }
+    /** The hub's current reading as the stub carries it: [freshness] is one of DisplayedReading.Freshness. */
+    private fun readingAt(time: Long, value: Float = 100f, freshness: String = "FRESH", reason: String = "NEW_READING"): Any {
+        val cls = nested("DisplayedReading")
+        val freshnessType = cls.declaredClasses.first { it.simpleName == "Freshness" }
+        val reasonType = cls.declaredClasses.first { it.simpleName == "Reason" }
+        @Suppress("UNCHECKED_CAST")
+        fun enumOf(type: Class<*>, name: String) = java.lang.Enum.valueOf(type as Class<out Enum<*>>, name)
         return nestNewIn(cls,
             Long::class.javaPrimitiveType to time,
-            Float::class.javaPrimitiveType to value)
+            Float::class.javaPrimitiveType to value,
+            freshnessType to enumOf(freshnessType, freshness),
+            reasonType to enumOf(reasonType, reason))
     }
-
-    private fun pointAt(time: Long): Any =
-        nestNew("GlucosePoint", Long::class.javaPrimitiveType to time)
 
     private fun foregroundno(h: Any, svc: Any) {
         call(h, "setCurrentService", svc)
@@ -150,10 +156,15 @@ class NotificationStartupRestoreTests {
     private fun whenOf(notif: Any?): Long =
         nestField(notif!!, "when").getLong(notif)
 
-    @Test fun promotionPrecedesBlockedHistoryQuery() {
+    private fun renderField(h: Any, name: String): Any? {
+        val render = get(h, "lastRender")!!
+        return render.javaClass.getField(name).also { it.isAccessible = true }.get(render)
+    }
+
+    @Test fun promotionPrecedesTheAwaitedCurrentReading() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", snapshotAt(now - 60_000L))
+        set(h, "cannedReading", readingAt(now - 60_000L))
         call(h, "closeGate", "resolver")
         val svc = newService(h)
         foregroundno(h, svc)
@@ -164,45 +175,41 @@ class NotificationStartupRestoreTests {
         assertFalse(boolOf(placeholder, "showWhen"))
         assertTrue(boolOf(placeholder, "ongoing"))
         assertEquals(1, queued(h))
-        // The restore is stuck inside the blocked resolver: no second publish.
+        // The restore waits for the hub's first reading: no second publish meanwhile.
         val w = thread { drainOne(h) }
         poll(5000) { get(h, "resolverEntered") as Boolean }
         Thread.sleep(100)
-        assertEquals("no publish while history query is blocked", 1, serviceCalls(svc).size)
-        // Ordering: promotion event strictly before resolver entry.
+        assertEquals("no publish while the current reading is awaited", 1, serviceCalls(svc).size)
+        // Ordering: promotion event strictly before the wait.
         val order = events(h)
         assertTrue(order.indexOf("fg:81431") < order.indexOf("resolve"))
         call(h, "openGate", "resolver")
         w.join(5000)
         assertFalse(w.isAlive)
-        // Restore rendered the resolved reading through the quiet visual path.
+        // Restore rendered the current reading through the quiet visual path.
         assertEquals(listOf("fg:81431", "fg:81431"), serviceCalls(svc))
         assertEquals(listOf("fg:81431", "resolve", "render", "fg:81431"), events(h))
         assertEquals(0, get(h, "broadcastSends") as Int)
     }
 
-    @Test fun freshRestoreRendersPinnedSnapshotTime() {
+    @Test fun freshRestoreRendersTheCurrentReading() {
         val h = harness()
         val now = System.currentTimeMillis()
         val readingTime = now - 45_000L
-        set(h, "cannedSnapshot", snapshotAt(readingTime, 132f))
+        set(h, "cannedReading", readingAt(readingTime, 132f))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
-        val render = get(h, "lastRender")!!
-        val rc = render.javaClass
-        fun rf(name: String) = rc.getField(name).also { it.isAccessible = true }
-        assertEquals(132f, rf("value").getFloat(render))
-        assertEquals(readingTime, rf("glucoseTime").getLong(render))
-        assertEquals(true, rf("once").getBoolean(render))
-        assertEquals("glucoseNotification", rf("type").get(render))
+        assertEquals(132f, renderField(h, "value"))
+        assertEquals(readingTime, renderField(h, "glucoseTime"))
+        assertEquals("a restore never alerts", true, renderField(h, "once"))
         assertEquals(2, serviceCalls(svc).size)
     }
 
     @Test fun genuinePublicationDuringRenderInvalidatesPendingRestore() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", snapshotAt(now - 30_000L))
+        set(h, "cannedReading", readingAt(now - 30_000L))
         call(h, "closeGate", "render")
         val svc = newService(h)
         foregroundno(h, svc)
@@ -223,19 +230,19 @@ class NotificationStartupRestoreTests {
     @Test fun repeatedStartupSupersedesQueuedRestore() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", snapshotAt(now - 20_000L))
+        set(h, "cannedReading", readingAt(now - 20_000L))
         call(h, "closeGate", "resolver")
         val svc = newService(h)
         foregroundno(h, svc)
         val w = thread { drainOne(h) }
         poll(5000) { get(h, "resolverEntered") as Boolean }
-        // Second foreground entry while the first restore is still resolving.
+        // Second foreground entry while the first restore is still waiting.
         foregroundno(h, svc)
         assertEquals(listOf("fg:81431", "fg:81431"), serviceCalls(svc))
         call(h, "openGate", "resolver")
         w.join(5000)
         assertFalse(w.isAlive)
-        // The superseded restore resolved but never rendered nor published.
+        // The superseded restore got its reading but never rendered nor published.
         assertEquals(0, get(h, "renderCalls") as Int)
         assertEquals(2, serviceCalls(svc).size)
         assertTrue("second epoch restores", drainOne(h))
@@ -246,13 +253,13 @@ class NotificationStartupRestoreTests {
     @Test fun queuedRestoreDoesNotAdoptNewerEpoch() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", snapshotAt(now - 20_000L))
+        set(h, "cannedReading", readingAt(now - 20_000L))
         val svc = newService(h)
         foregroundno(h, svc)
         foregroundno(h, svc)
         assertEquals(listOf("fg:81431", "fg:81431"), serviceCalls(svc))
         // The first queued restore carries the superseded ticket: it must drop
-        // before resolving, never adopt the newer epoch and never publish.
+        // before waiting, never adopt the newer epoch and never publish.
         assertTrue(drainOne(h))
         assertEquals(0, get(h, "resolverCalls") as Int)
         assertEquals(2, serviceCalls(svc).size)
@@ -264,7 +271,7 @@ class NotificationStartupRestoreTests {
 
     @Test fun stopInvalidationDropsPendingRestore() {
         val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 20_000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L))
         call(h, "closeGate", "resolver")
         val svc = newService(h)
         foregroundno(h, svc)
@@ -286,7 +293,7 @@ class NotificationStartupRestoreTests {
         fornotify(h, newNotification(h))
         assertEquals(1, get(h, "broadcastSends") as Int)
         // A new service epoch may restore the same reading again.
-        set(h, "cannedSnapshot", snapshotAt(now - 90_000L))
+        set(h, "cannedReading", readingAt(now - 90_000L))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
@@ -296,7 +303,7 @@ class NotificationStartupRestoreTests {
 
     @Test fun destroyingOldServiceDoesNotCancelReplacementRestore() {
         val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 20_000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L))
         val old = newService(h)
         val replacement = newService(h)
         foregroundno(h, old)
@@ -310,7 +317,7 @@ class NotificationStartupRestoreTests {
 
     @Test fun placeholderRestoreAndGenuinePostsSharePublicationGate() {
         val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 20_000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
@@ -323,16 +330,16 @@ class NotificationStartupRestoreTests {
         assertTrue(nestField(manager, "publicationHeldLock").getBoolean(manager))
     }
 
-    @Test fun startupRendererUsesClassifiedSnapshotWithoutResolvingAgain() {
+    @Test fun startupRendererUsesTheAwaitedReadingWithoutAskingAgain() {
         val h = harness()
         val readingTime = System.currentTimeMillis() - 20_000L
-        set(h, "cannedSnapshot", snapshotAt(readingTime, 110f))
-        set(h, "subsequentSnapshot", snapshotAt(readingTime - 600_000L, 180f))
+        set(h, "cannedReading", readingAt(readingTime, 110f))
+        set(h, "subsequentReading", readingAt(readingTime - 600_000L, 180f))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
-        assertEquals("the startup renderer must use the classified snapshot", 1, get(h, "resolverCalls"))
-        assertEquals(readingTime, get(h, "renderedSnapshotTime"))
+        assertEquals("the startup renderer must use the awaited reading", 1, get(h, "resolverCalls"))
+        assertEquals(readingTime, get(h, "renderedReadingTime"))
     }
 
     @Test fun wearKeepsSynchronousPathWithoutPlaceholderOrQueue() {
@@ -347,14 +354,14 @@ class NotificationStartupRestoreTests {
         assertEquals(false, get(h, "resolverEntered"))
     }
 
-    @Test fun staleSnapshotYieldsTimestampedStatusWithoutValueRender() {
+    @Test fun staleReadingYieldsTimestampedStatusWithoutValueRender() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", snapshotAt(now - 400_000L, 150f))
+        set(h, "cannedReading", readingAt(now - 400_000L, 150f, "STALE"))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
-        assertEquals("stale must not render a value", 0, get(h, "renderCalls") as Int)
+        assertEquals("stale must not render a current value", 0, get(h, "renderCalls") as Int)
         assertEquals(2, serviceCalls(svc).size)
         val status = lastServiceNotification(svc)
         val title = titleOf(status)
@@ -362,25 +369,25 @@ class NotificationStartupRestoreTests {
         assertTrue(title.length > "No new value since ".length + 3)
         assertTrue(boolOf(status, "showWhen"))
         assertEquals(now - 400_000L, whenOf(status))
+        assertEquals("the value is kept, without arrow", "150", nestField(status!!, "text").get(status))
     }
 
-    @Test fun nullSnapshotWithStaleHistoryYieldsTimestampedStatus() {
+    @Test fun readingTakenDownYieldsTimestampedStatusAlone() {
         val h = harness()
         val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", null)
-        set(h, "history", arrayListOf(pointAt(now - 600_000L)))
+        set(h, "cannedReading", readingAt(now - 31 * 60_000L, Float.NaN, "NO_VALUE"))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
         assertEquals(0, get(h, "renderCalls") as Int)
-        assertTrue(titleOf(lastServiceNotification(svc))!!.startsWith("No new value since "))
+        val status = lastServiceNotification(svc)
+        assertTrue(titleOf(status)!!.startsWith("No new value since "))
+        assertNull("no value is kept once it is taken down", nestField(status!!, "text").get(status))
     }
 
-    @Test fun nullSnapshotWithFreshHistoryWaitsWithoutInventedValue() {
+    @Test fun awaitedReadingWaitsWithoutInventedValue() {
         val h = harness()
-        val now = System.currentTimeMillis()
-        set(h, "cannedSnapshot", null)
-        set(h, "history", arrayListOf(pointAt(now - 60_000L)))
+        set(h, "cannedReading", readingAt(0L, Float.NaN, "AWAITING"))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
@@ -390,19 +397,7 @@ class NotificationStartupRestoreTests {
 
     @Test fun absentSensorReportsNoSensor() {
         val h = harness()
-        set(h, "cannedSnapshot", null)
-        set(h, "sensorSerial", null)
-        set(h, "history", arrayListOf<Any>())
-        val svc = newService(h)
-        foregroundno(h, svc)
-        assertTrue(drainOne(h))
-        assertEquals("No sensors connected", titleOf(lastServiceNotification(svc)))
-    }
-
-    @Test fun cachedReadingWithoutSensorIdentityReportsNoSensor() {
-        val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 60_000L, 150f))
-        set(h, "sensorSerial", null)
+        set(h, "cannedReading", readingAt(0L, Float.NaN, "NO_SENSOR"))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
@@ -410,10 +405,10 @@ class NotificationStartupRestoreTests {
         assertEquals("No sensors connected", titleOf(lastServiceNotification(svc)))
     }
 
-    @Test fun historyFailurePropagatesLoggedWithPlaceholderKept() {
+    @Test fun renderFailureIsLoggedWithPlaceholderKept() {
         val h = harness()
-        set(h, "cannedSnapshot", null)
-        set(h, "historyThrow", true)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L))
+        set(h, "renderThrow", true)
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
@@ -435,30 +430,20 @@ class NotificationStartupRestoreTests {
         return f.get(handler) as List<Long>
     }
 
-    @Test fun freshRestoreArmsSingleDeadlineOnDisplayedReading() {
+    @Test fun freshRestoreArmsNoDeadlineOfItsOwn() {
         val h = harness()
-        val now = System.currentTimeMillis()
-        val readingTime = now - 20_000L
-        set(h, "cannedSnapshot", snapshotAt(readingTime, 132f))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L, 132f))
         val svc = newService(h)
         foregroundno(h, svc)
         assertTrue(drainOne(h))
-        // One deadline callback armed on the actual displayed reading, not a poll loop.
-        val delays = deadlineDelays(h)
-        assertEquals(1, delays.size)
-        val delay = delays[0]
-        assertTrue("deadline delay must be positive, was $delay", delay > 0L)
-        assertTrue("deadline must be timeout+1ms past the reading, was $delay",
-            delay <= 330_000L + 1L && delay >= 300_000L)
-        // The displayed snapshot is retained for later staleness fallback.
-        val retained = get(h, "lastDisplayedGlucoseSnapshot")!!
-        val time = getNested(retained, "time") as Long
-        assertEquals(readingTime, time)
+        // The current reading's clock takes it stale on every surface at once.
+        assertEquals(emptyList<Long>(), deadlineDelays(h))
+        assertEquals(0, queued(h))
     }
 
     @Test fun genuinePublicationBumpsVisualGeneration() {
         val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 20_000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 20_000L))
         val svc = newService(h)
         foregroundno(h, svc)
         val afterStartup = visualGeneration()
@@ -501,11 +486,11 @@ class NotificationStartupRestoreTests {
 
     @Test fun visualPublicationInvalidatesPendingStartupRestore() {
         val h = harness()
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 1000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L))
         val service = newService(h)
         foregroundno(h, service)
         val visual = newNotification(h)
-        invokePrivate(h, "publishVisualNotification", visualGeneration(), service, visual, null)
+        invokePrivate(h, "publishVisualNotification", visualGeneration(), service, visual)
         assertTrue(drainOne(h))
         assertSame("restore cannot overwrite the newer visual", visual, getNested(service, "last"))
         assertEquals("visual update never rebroadcasts a reading", 0, get(h, "broadcastSends"))
@@ -520,7 +505,7 @@ class NotificationStartupRestoreTests {
         val oldGeneration = visualGeneration()
         assertTrue(drainOne(h))
         val restored = getNested(service, "last")
-        invokePrivate(h, "publishVisualNotification", oldGeneration, service, newNotification(h), null)
+        invokePrivate(h, "publishVisualNotification", oldGeneration, service, newNotification(h))
         assertSame(restored, getNested(service, "last"))
     }
 
@@ -535,7 +520,7 @@ class NotificationStartupRestoreTests {
         assertEquals(generation, visualGeneration())
         invokePrivate(h, "cancelOngoingNotificationRefreshes", replacement)
         assertTrue(visualGeneration() > generation)
-        invokePrivate(h, "publishVisualNotification", generation, replacement, newNotification(h), null)
+        invokePrivate(h, "publishVisualNotification", generation, replacement, newNotification(h))
         assertNull(getNested(replacement, "last"))
         assertEquals(0, call(h, "queuedCount"))
     }
@@ -550,70 +535,144 @@ class NotificationStartupRestoreTests {
         assertEquals("overdue callbacks are still owned", 2, call(h, "queuedCount"))
     }
 
-    @Test fun failedVisualPublicationRetriesOnceWithoutMarkingSnapshotDisplayed() {
+    @Test fun failedVisualPublicationRetriesOnce() {
         val h = harness()
-        val snapshot = snapshotAt(System.currentTimeMillis() - 1000L)
-        set(h, "cannedSnapshot", snapshot)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L))
         set(h, "failPublication", true)
         invokePrivate(h, "scheduleVisualNotificationRefresh")
         assertTrue(drainOne(h))
-        assertNull(get(h, "lastDisplayedGlucoseSnapshot"))
         assertEquals(1, call(h, "queuedCount"))
         assertTrue(drainOne(h))
         assertEquals("persistent failure cannot spin", 0, call(h, "queuedCount"))
-        assertNull(get(h, "lastDisplayedGlucoseSnapshot"))
+        assertNull(getNested(get(h, "notificationManager")!!, "last"))
     }
 
-    @Test fun missingSensorOrChangedUnitsCannotReuseRetainedReading() {
-        val h = harness()
-        val snapshot = snapshotAt(System.currentTimeMillis() - 1000L)
-        set(h, "lastDisplayedGlucoseSnapshot", snapshot)
-        assertNull(invokePrivate(h, "effectiveDisplaySnapshot", snapshot, null))
-        assertSame(snapshot, invokePrivate(h, "effectiveDisplaySnapshot", null, "sensor-1"))
-        call(h, "setMmol", true)
-        assertNull(invokePrivate(h, "effectiveDisplaySnapshot", null, "sensor-1"))
-        call(h, "setMmol", false)
-        set(h, "modeFailure", true)
-        assertNull(invokePrivate(h, "effectiveDisplaySnapshot", null, "sensor-1"))
-    }
-
-    @Test fun genuinePublicationCommitsReadingOnlyAfterSuccessAndArmsSilentExpiry() {
+    @Test fun aReadingPostOnThePhoneRedrawsTheCurrentReading() {
         val h = harness()
         val time = System.currentTimeMillis() - 1000L
+        set(h, "cannedReading", readingAt(time, 123f))
         val reading = nestNew("notGlucose", Long::class.javaPrimitiveType to time)
-        set(h, "cannedSnapshot", snapshotAt(time, 123f))
-        set(h, "failPublication", true)
-        try {
-            invokePrivate(h, "postForegroundGlucoseNotification", -1, 123f, "123", reading, false)
-            fail("expected publisher failure")
-        } catch (failure: java.lang.reflect.InvocationTargetException) {
-            assertTrue(failure.cause is IllegalStateException)
-        }
-        assertEquals(0L, get(h, "lastForegroundGlucoseTimeMs"))
-        assertNull(get(h, "lastDisplayedGlucoseSnapshot"))
-        set(h, "failPublication", false)
-        assertTrue("quiet retry runs without another reading event", drainOne(h))
+        invokePrivate(h, "postForegroundGlucoseNotification", -1, 123f, "123", reading, false)
+        // Nothing drawn from the arguments: one coalesced redraw of the current reading.
+        assertEquals(0, get(h, "renderCalls"))
         assertEquals(1, call(h, "queuedCount"))
-        assertNotNull(get(h, "lastDisplayedGlucoseSnapshot"))
-        assertEquals("recovery is visual-only", 0, get(h, "broadcastSends"))
+        assertTrue(drainOne(h))
+        assertEquals(1, get(h, "renderCalls"))
+        assertEquals(true, renderField(h, "once"))
+        assertEquals(0, get(h, "broadcastSends"))
+        assertEquals(0, call(h, "queuedCount"))
     }
 
-    @Test fun noInputDeadlineReplacesCurrentPresentationWithStaleReading() {
+    @Test fun aStalePublishRedrawsTheReadingInItsStaleLook() {
         val h = harness()
-        val snapshot = snapshotAt(System.currentTimeMillis() - 1000L)
-        set(h, "cannedSnapshot", snapshot)
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "cannedReading", readingAt(time, 140f))
         invokePrivate(h, "scheduleVisualNotificationRefresh")
         assertTrue(drainOne(h))
-        assertEquals(1, call(h, "queuedCount"))
-        nestField(snapshot, "time").setLong(snapshot, System.currentTimeMillis() - 331_000L)
-        // Run the existing deadline callback after time has advanced; no new reading event.
-        assertTrue(drainOne(h))
+        // No deadline of its own: the hub's clock publishes the same reading gone stale.
+        assertEquals(0, call(h, "queuedCount"))
+        set(h, "cannedReading", readingAt(time, 140f, "STALE", "STALE_TICK"))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        // At once, not after a delay counted in uptime, which stops while the phone sleeps:
+        // the alarm that brought the stale moment holds the phone awake until it is drawn.
+        val released = java.util.concurrent.atomic.AtomicBoolean()
+        staticCall("afterPendingRefresh", Runnable { released.set(true) })
+        assertEquals(emptyList<Long>(), deadlineDelays(h))
         assertTrue(drainOne(h))
         val manager = get(h, "notificationManager")!!
         val stale = getNested(manager, "last")!!
+        assertFalse("released before the stale look was drawn", released.get())
         assertTrue((getNested(stale, "title") as String).startsWith("No new value"))
-        assertEquals(getNested(snapshot, "time"), getNested(stale, "when"))
+        assertEquals(time, getNested(stale, "when"))
+        assertTrue(drainOne(h))
+        assertTrue(released.get())
         assertEquals(0, get(h, "broadcastSends"))
+        assertEquals(0, call(h, "queuedCount"))
+    }
+
+    @Test fun aSettingRedrawsAtOnceAndABackfillThroughTheDebounce() {
+        val h = harness()
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "cannedReading", readingAt(time, 140f, "FRESH", "SETTINGS"))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertEquals(emptyList<Long>(), deadlineDelays(h))
+        assertTrue(drainOne(h))
+        assertEquals(1, get(h, "renderCalls"))
+        assertEquals(true, renderField(h, "once"))
+        staticCall("onReadingPublished", readingAt(time, 141f, "FRESH", "BACKFILL"))
+        assertEquals(listOf(1000L), deadlineDelays(h))
+    }
+
+    @Test fun alertwatchDeliversOnlyANewReadingAsOne() {
+        val h = harness()
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(time, 120f))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        // A quiet redraw folded into the same run keeps the delivery.
+        invokePrivate(h, "scheduleVisualNotificationRefresh")
+        assertTrue(drainOne(h))
+        assertEquals("a new reading alerts", false, renderField(h, "once"))
+        assertEquals(0, call(h, "queuedCount"))
+        staticCall("onReadingPublished", readingAt(time, 120f, "FRESH", "BACKFILL"))
+        assertTrue(drainOne(h))
+        assertTrue(drainOne(h))
+        assertEquals("a backfill does not", true, renderField(h, "once"))
+        set(h, "alertwatch", false)
+        staticCall("onReadingPublished", readingAt(time + 300_000L, 125f))
+        assertTrue(drainOne(h))
+        assertEquals("nor anything without alertwatch", true, renderField(h, "once"))
+    }
+
+    @Test fun aNewReadingOvertakenWhileDrawingIsStillDeliveredAsOne() {
+        val h = harness()
+        val time = System.currentTimeMillis() - 1000L
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(time, 120f))
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        call(h, "closeGate", "render")
+        val w = thread { drainOne(h) }
+        poll(5000) { get(h, "renderEntered") as Boolean }
+        // A quiet redraw (a status change, a backfill) is asked for while it draws.
+        invokePrivate(h, "scheduleVisualNotificationRefresh")
+        call(h, "openGate", "render")
+        w.join(5000)
+        assertFalse(w.isAlive)
+        val manager = get(h, "notificationManager")!!
+        assertNull("the overtaken render does not publish", getNested(manager, "last"))
+        assertTrue(drainOne(h))
+        assertEquals("the run that overtook it delivers the reading as one", false, renderField(h, "once"))
+        assertNotNull(getNested(manager, "last"))
+        assertEquals(0, call(h, "queuedCount"))
+    }
+
+    @Test fun aNewReadingWhosePublicationFailedIsRetriedAsOne() {
+        val h = harness()
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L, 120f))
+        set(h, "failPublication", true)
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertTrue(drainOne(h))
+        assertEquals(listOf(5000L), deadlineDelays(h))
+        set(h, "failPublication", false)
+        assertTrue(drainOne(h))
+        assertEquals("the retry delivers it as one", false, renderField(h, "once"))
+        assertNotNull(getNested(get(h, "notificationManager")!!, "last"))
+    }
+
+    @Test fun aRedrawThatReplacesTheRetryDeliversItsNewReadingAsOne() {
+        val h = harness()
+        set(h, "alertwatch", true)
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L, 120f))
+        set(h, "failPublication", true)
+        staticCall("onReadingPublished", get(h, "cannedReading"))
+        assertTrue(drainOne(h))
+        set(h, "failPublication", false)
+        // A quiet redraw before the retry runs takes its place.
+        invokePrivate(h, "scheduleVisualNotificationRefresh")
+        assertEquals(1, call(h, "queuedCount"))
+        assertTrue(drainOne(h))
+        assertEquals(false, renderField(h, "once"))
         assertEquals(0, call(h, "queuedCount"))
     }
 
@@ -678,21 +737,20 @@ class NotificationStartupRestoreTests {
     @Test fun startupPublicationFailureGetsQuietRetryWithoutNewInput() {
         val h = harness()
         val service = newService(h)
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 1000L))
+        set(h, "cannedReading", readingAt(System.currentTimeMillis() - 1000L))
         foregroundno(h, service)
         set(h, "failPublication", true)
         assertTrue(drainOne(h))
-        assertNull(get(h, "lastDisplayedGlucoseSnapshot"))
+        assertFalse(boolOf(lastServiceNotification(service), "rendered"))
         set(h, "failPublication", false)
         assertTrue(drainOne(h))
-        assertNotNull(get(h, "lastDisplayedGlucoseSnapshot"))
+        assertTrue(boolOf(lastServiceNotification(service), "rendered"))
         assertEquals(0, get(h, "broadcastSends"))
     }
 
     @Test fun noSensorWithoutServiceCancelsInsteadOfPublishingPlaceholder() {
         val h = harness()
-        set(h, "sensorSerial", null)
-        set(h, "cannedSnapshot", snapshotAt(System.currentTimeMillis() - 1000L))
+        set(h, "cannedReading", readingAt(0L, Float.NaN, "NO_SENSOR"))
         invokePrivate(h, "scheduleVisualNotificationRefresh")
         assertTrue(drainOne(h))
         val manager = get(h, "notificationManager")!!
@@ -727,9 +785,6 @@ class NotificationStartupRestoreTests {
             val fnClose = source.lastIndexOf("\n    }", fnEndAnchor)
             check(fnClose > fnStart) { "fornotify close brace missing" }
             val fornotifyBody = source.substring(fnStart + fnSig.length, fnClose)
-            val displayStart = source.indexOf("final CurrentDisplaySource.Snapshot resolvedDisplay =")
-            check(displayStart >= 0)
-            val displaySelection = source.substring(displayStart, source.indexOf(';', displayStart) + 1)
             val dir = java.nio.file.Files.createTempDirectory("notify-startup-restore-test").toFile()
             val file = File(dir, "NotifyStartupHarness.java")
             file.writeText("""
@@ -760,52 +815,37 @@ class NotificationStartupRestoreTests {
                     public int stackCalls = 0;
                     public List<String> events = Collections.synchronizedList(new ArrayList<>());
                     public String sensorSerial = "sensor-1";
-                    public int primaryCalls = 0;
                     public boolean resolverEntered = false;
                     public volatile boolean resolverGateOpen = true;
                     public int resolverCalls = 0;
-                    public boolean resolverThrow = false;
-                    public CurrentDisplaySource.Snapshot cannedSnapshot = null;
-                    public CurrentDisplaySource.Snapshot subsequentSnapshot = null;
-                    public long renderedSnapshotTime;
-                    public List<GlucosePoint> history = new ArrayList<>();
-                    public int historyCalls = 0;
-                    public boolean historyThrow = false;
+                    public DisplayedReading cannedReading = null;
+                    public DisplayedReading subsequentReading = null;
+                    public long renderedReadingTime;
                     public boolean renderEntered = false;
                     public volatile boolean renderGateOpen = true;
+                    public boolean renderThrow = false;
                     public int renderCalls = 0;
                     public RenderCall lastRender = null;
                     public boolean startupContentCalled = false;
-                    public CurrentDisplaySource.Snapshot lastDisplayedGlucoseSnapshot = null;
-                    public int deadlineFires = 0;
                     public static NotifyStartupHarness onenot;
                     public static boolean showalways = true, alertwatch = false;
                     public boolean hasvalue;
-                    public long lastForegroundGlucoseTimeMs, pendingDataRefreshAtUptimeMs, pendingStatusRefreshAtUptimeMs;
-                    public float lastForegroundGlucoseValue, lastForegroundGlucoseRate;
-                    public boolean visualRefreshPending;
+                    public long pendingDataRefreshAtUptimeMs, pendingStatusRefreshAtUptimeMs;
+                    public boolean visualRefreshPending, pendingVisualAlerting;
                     public long pendingVisualGeneration, publicationRetryGeneration;
-                    public Service pendingVisualService, publicationRetryService, freshnessDeadlineService;
-                    public long freshnessDeadlineGeneration;
-                    public boolean interactiveRefreshPending;
+                    public boolean publicationRetryAlerting;
+                    public Service pendingVisualService, publicationRetryService;
                     public static final long DATA_CHANGED_NOTIFICATION_REFRESH_DELAY_MS = 1000L;
                     public static final long FAILED_NOTIFICATION_RETRY_DELAY_MS = 5000L;
-                    public static final long INTERACTIVE_NOTIFICATION_REFRESH_DELAY_MS = 750L;
-                    public Runnable glucoseRefreshRunnable = () -> {};
                     public static Runnable storedGlucoseRefresh = () -> {};
-                    public boolean failPublication, modeFailure;
+                    public boolean failPublication;
                     public long uptime = 10_000L;
                     public static class android { public static class os { public static class SystemClock {
                         public static long uptimeMillis() { return onenot.uptime; }
                     } } }
                     public int queuedCount() { return glucoseRefreshHandler.queued(); }
-                    public void setMmol(boolean value) { Applic.unit = value ? 1 : 0; }
-                    private boolean isScreenInteractive() { return true; }
                     private String resolveNotificationSensorSerial() { return sensorSerial; }
                     private String resolveNotificationStatusText(String serial, String fallback) { return fallback; }
-                    private CurrentDisplaySource.Snapshot resolveNotificationCurrentSnapshot() {
-                        return resolveNotificationCurrentSnapshot(sensorSerial);
-                    }
                     $refreshPolicy
                     $lifecycle
                     private final Object resolverLock = new Object();
@@ -861,6 +901,7 @@ class NotificationStartupRestoreTests {
                     static class Notification {
                         static final String CATEGORY_SERVICE = "service";
                         public String title;
+                        public String text;
                         public boolean showWhen = true;
                         public boolean ongoing = false;
                         public boolean startup = false;
@@ -933,36 +974,26 @@ class NotificationStartupRestoreTests {
                         static Service theservice = null;
                         static boolean started = false;
                     }
-                    static class CurrentDisplaySource {
-                        static int resolveViewModeForSensor(String serial) {
-                            if (onenot.modeFailure) throw new IllegalStateException("mode unavailable");
-                            return 0;
-                        }
-                        static class Snapshot {
-                            public long time;
-                            public float value;
-                            public Snapshot(long t, float v) { time = t; value = v; }
-                            public long getTimeMillis() { return time; }
-                            public float getPrimaryValue() { return value; }
-                            public float getRate() { return 0f; }
-                            public boolean isMmol() { return false; }
-                            public String getSensorId() { return "sensor-1"; }
-                            public int getViewMode() { return 0; }
-                        }
-                    }
-                    static class GlucosePoint {
-                        public long timestamp;
-                        public GlucosePoint(long t) { timestamp = t; }
-                    }
-                    static class DisplayTrendSource { static final long TREND_WINDOW_MS = 1500000L; }
-                    static class NotificationHistorySource {
+                    /** The hub's current reading, as far as the notification reads it. */
+                    static class DisplayedReading {
                         public static NotifyStartupHarness owner;
-                        static String resolveSensorSerial(String s) { return owner.sensorSerial; }
-                        static List<GlucosePoint> getDisplayHistory(long start, boolean mmol, String serial) {
-                            owner.historyCalls++;
-                            if (owner.historyThrow) throw new RuntimeException("room down");
-                            return owner.history;
+                        enum Freshness { FRESH, STALE, NO_VALUE, AWAITING, NO_SENSOR }
+                        enum Reason { STARTUP, NEW_READING, BACKFILL, STALE_TICK, SETTINGS }
+                        public long time;
+                        public float value;
+                        public Freshness freshness;
+                        public Reason reason;
+                        DisplayedReading(long t, float v, Freshness f, Reason r) {
+                            time = t; value = v; freshness = f; reason = r;
                         }
+                        long getTimeMillis() { return time; }
+                        float getValue() { return value; }
+                        Freshness getFreshness() { return freshness; }
+                        Reason getReason() { return reason; }
+                        boolean getShowsValue() {
+                            return (freshness == Freshness.FRESH || freshness == Freshness.STALE) && value > 0f;
+                        }
+                        String getSensorId() { return owner.sensorSerial; }
                     }
                     static class notGlucose {
                         public long time;
@@ -970,19 +1001,19 @@ class NotificationStartupRestoreTests {
                         public notGlucose(long t) { time = t; }
                     }
                     static class RenderCall {
-                        public int kind; public float value; public String message;
-                        public long glucoseTime; public String type; public boolean once;
+                        public float value; public long glucoseTime; public boolean once;
                     }
                     public void resetStatics() {
                         onenot = this;
+                        // The hub before its first reading: never null in production.
+                        cannedReading = new DisplayedReading(0L, 0f, DisplayedReading.Freshness.AWAITING,
+                                DisplayedReading.Reason.STARTUP);
                         glucoseRefreshHandler = new FakeHandler();
                         showalways = true; alertwatch = false; isWearable = false; Applic.unit = 0;
                         startupPendingTicket = 0L;
                         startupPendingService = null;
                         startupTicketCounter = 0L;
                         foregroundVisualGeneration = 0L;
-                        lastDisplayedGlucoseSnapshot = null;
-                        deadlineFires = 0;
                         broadcastSends = 0;
                         stackCalls = 0;
                         keeprunning.theservice = null;
@@ -1012,68 +1043,43 @@ class NotificationStartupRestoreTests {
                             }
                         }
                     }
-                    String resolvePrimarySensorName() { primaryCalls++; return sensorSerial; }
-                    CurrentDisplaySource.Snapshot resolveNotificationCurrentSnapshot(String serial) {
+                    DisplayedReading currentReading() {
                         resolverCalls++;
                         resolverEntered = true;
                         events.add("resolve");
                         awaitGate("resolver");
-                        if (resolverThrow) throw new RuntimeException("resolver down");
-                        return resolverCalls > 1 && subsequentSnapshot != null ? subsequentSnapshot : cannedSnapshot;
+                        return resolverCalls > 1 && subsequentReading != null ? subsequentReading : cannedReading;
                     }
-                    long latestNotificationTimestamp(List<GlucosePoint> points) {
-                        long latest = 0L;
-                        for (GlucosePoint p : points) latest = Math.max(latest, p.timestamp);
-                        return latest;
-                    }
-                    notGlucose toLegacyGlucose(CurrentDisplaySource.Snapshot s) {
-                        return s == null ? null : new notGlucose(s.getTimeMillis());
-                    }
-                    Notification makearrownotification(int kind, float value, String message,
-                            notGlucose glucose, String type, boolean once) {
-                        return makearrownotification(kind, value, message, glucose, type, once, null);
-                    }
-                    Notification makearrownotification(int kind, float value, String message,
-                            notGlucose glucose, String type, boolean once,
-                            CurrentDisplaySource.Snapshot startupSnapshot) {
-                        return makearrownotification(kind, value, message, glucose, type, once,
-                                startupSnapshot, startupSnapshot != null);
-                    }
-                    Notification makearrownotification(int kind, float value, String message,
-                            notGlucose glucose, String type, boolean once,
-                            CurrentDisplaySource.Snapshot startupSnapshot, boolean snapshotAlreadyResolved) {
-                        final String activeSensorSerial = sensorSerial;
-                        $displaySelection
-                        renderedSnapshotTime = resolvedDisplay == null ? 0L : resolvedDisplay.getTimeMillis();
+                    DisplayedReading awaitCurrentReading() { return currentReading(); }
+                    Notification makeReadingNotification(DisplayedReading shown, boolean alerting) {
+                        renderedReadingTime = shown.getTimeMillis();
                         renderCalls++;
                         renderEntered = true;
                         events.add("render");
                         RenderCall rc = new RenderCall();
-                        rc.kind = kind; rc.value = value; rc.message = message;
-                        rc.glucoseTime = glucose == null ? 0L : glucose.time;
-                        rc.type = type; rc.once = once;
+                        rc.value = shown.getValue();
+                        rc.glucoseTime = shown.getTimeMillis();
+                        rc.once = !alerting;
                         lastRender = rc;
                         awaitGate("render");
+                        if (renderThrow) throw new IllegalStateException("render down");
+                        Notification n = new Notification();
+                        n.rendered = true;
+                        n.title = format(usedlocale, glucoseformat, shown.getValue());
+                        return n;
+                    }
+                    Notification makearrownotification(int kind, float value, String message,
+                            notGlucose glucose, String type, boolean once) {
                         Notification n = new Notification();
                         n.rendered = true;
                         n.title = message;
                         return n;
                     }
-                    static class GlucoseNotificationContent {
-                        Notification notification; CurrentDisplaySource.Snapshot snapshot;
-                        GlucoseNotificationContent(Notification n, CurrentDisplaySource.Snapshot s) { notification = n; snapshot = s; }
-                    }
-                    GlucoseNotificationContent renderGlucoseNotification(int kind, float value, String message,
-                            notGlucose glucose, String type, boolean once,
-                            CurrentDisplaySource.Snapshot snapshot, boolean alreadyResolved) {
-                        Notification n = makearrownotification(kind, value, message, glucose, type, once, snapshot, alreadyResolved);
-                        CurrentDisplaySource.Snapshot displayed = snapshot != null ? snapshot : new CurrentDisplaySource.Snapshot(glucose.time, value);
-                        return new GlucoseNotificationContent(n, displayed);
-                    }
-                    Notification makeStaleReadingNotification(CurrentDisplaySource.Snapshot snapshot) {
+                    Notification makeStaleReadingNotification(DisplayedReading stale) {
                         Notification n = new Notification();
-                        n.title = staleMessage(snapshot.getTimeMillis());
-                        n.when = snapshot.getTimeMillis();
+                        n.title = staleMessage(stale.getTimeMillis());
+                        n.text = format(usedlocale, glucoseformat, stale.getValue());
+                        n.when = stale.getTimeMillis();
                         n.showWhen = true;
                         n.ongoing = true;
                         return n;

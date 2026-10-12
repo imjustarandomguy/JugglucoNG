@@ -139,6 +139,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Download
 import kotlinx.coroutines.launch
 import tk.glucodata.CurrentDisplaySource
+import tk.glucodata.CurrentReadingHub
 import tk.glucodata.DataSmoothing
 import tk.glucodata.DisplayDataState
 import tk.glucodata.Libre3NfcSettings
@@ -983,6 +984,13 @@ fun DashboardScreen(
                     preferredSensorId = sensorName.ifBlank { activeSensorList.firstOrNull() }
                 )
             }
+            // The current reading as every surface shows it: the hero's value, arrow and
+            // freshness, going stale in the publish that takes the notification stale.
+            val publishedReading by CurrentReadingHub.readings.collectAsStateWithLifecycle()
+            val heroReading = remember(publishedReading, sensorName) {
+                DashboardCurrentReading.forSensor(publishedReading, sensorName)
+            }
+            // Ages the "no data … ago" label; freshness itself changes only with a publish.
             val freshnessTick by produceState(
                 initialValue = System.currentTimeMillis(),
                 key1 = hasSensorContext,
@@ -1002,14 +1010,16 @@ fun DashboardScreen(
                 hasSensorContext,
                 dashboardCurrentSnapshot?.timeMillis,
                 latestPoint?.timestamp,
-                freshnessTick
+                freshnessTick,
+                heroReading
             ) {
-                DisplayDataState.resolve(
-                    sensorPresent = hasSensorContext,
-                    currentTimestampMillis = dashboardCurrentSnapshot?.timeMillis ?: 0L,
-                    latestHistoryTimestampMillis = latestPoint?.timestamp ?: 0L,
-                    nowMillis = freshnessTick
-                )
+                heroReading?.let { DashboardCurrentReading.dataState(it, hasSensorContext, freshnessTick) }
+                    ?: DisplayDataState.resolve(
+                        sensorPresent = hasSensorContext,
+                        currentTimestampMillis = dashboardCurrentSnapshot?.timeMillis ?: 0L,
+                        latestHistoryTimestampMillis = latestPoint?.timestamp ?: 0L,
+                        nowMillis = freshnessTick
+                    )
             }
             val adaptiveMetrics = rememberAdaptiveWindowMetrics()
             val isLandscape = adaptiveMetrics.isLandscape
@@ -1470,6 +1480,7 @@ fun DashboardScreen(
                                 calibratedValue = calibratedValue,
                                 currentSnapshot = dashboardCurrentSnapshot,
                                 dataState = dashboardDataState,
+                                currentReading = heroReading,
                                 peerReadings = peerCurrentReadings,
                                 onPeerReadingClick = { viewModel.promoteSensorToPrimary(it) },
                                 isMmol = tk.glucodata.ui.util.GlucoseFormatter.isMmol(unit),
@@ -1783,6 +1794,7 @@ fun DashboardScreen(
                                 calibratedValue = calibratedValue,
                                 currentSnapshot = dashboardCurrentSnapshot,
                                 dataState = dashboardDataState,
+                                currentReading = heroReading,
                                 peerReadings = peerCurrentReadings,
                                 onPeerReadingClick = { viewModel.promoteSensorToPrimary(it) },
                                 isMmol = tk.glucodata.ui.util.GlucoseFormatter.isMmol(unit),

@@ -247,6 +247,9 @@ fun DashboardCombinedHeader(
     calibratedValue: Float? = null,
     currentSnapshot: CurrentDisplaySource.Snapshot? = null,
     dataState: DisplayDataState.Status? = null,
+    // The current reading every surface shows (DashboardCurrentReading), when it is this
+    // hero's sensor: its value, arrow and stale look win over the history's.
+    currentReading: tk.glucodata.DisplayedReading? = null,
     isMmol: Boolean,
     targetLow: Float = fallbackLowThreshold(isMmol),
     targetHigh: Float = fallbackHighThreshold(isMmol),
@@ -280,7 +283,7 @@ fun DashboardCombinedHeader(
     val sensorContentColor = if (isExpiring) MaterialTheme.colorScheme.onTertiaryContainer else MaterialTheme.colorScheme.onPrimaryContainer
 
     // Advanced Trend
-    val trendResult = remember(history, latestPoint, currentSnapshot) {
+    val historyTrend = remember(history, latestPoint, currentSnapshot) {
         if (history.isNotEmpty()) {
              // Map Kotlin UI points to Native Java points for shared TrendEngine
              val nativeList = history.map { tk.glucodata.GlucosePoint(it.timestamp, it.value, it.rawValue) }
@@ -296,6 +299,11 @@ fun DashboardCombinedHeader(
             tk.glucodata.logic.TrendEngine.TrendResult(tk.glucodata.logic.TrendEngine.TrendState.Unknown, 0f, 0f, 0f, 0f)
         }
     }
+    val trendResult = remember(historyTrend, currentReading) {
+        currentReading?.let { DashboardCurrentReading.trend(it, historyTrend) } ?: historyTrend
+    }
+    // No arrow once the next reading is overdue, as on every surface.
+    val showHeroArrow = currentReading?.showsArrow ?: true
     // "Δ" readout: the measured change over the last ~5 minutes — a raw
     // number to sanity-check the estimated arrow against. Same computation as
     // the per-row deltas in the readings list, anchored at the newest point.
@@ -398,11 +406,21 @@ fun DashboardCombinedHeader(
         sensorStatus = sensorStatus
     )
     val isFreshData = resolvedDataState.isFresh
-    val dvs = remember(resolvedCurrentSnapshot, latestPoint, viewMode, calibratedValue, isFreshData) {
+    // The current reading's own value and lanes, while it shows one.
+    val shownReading = currentReading?.takeIf { it.showsValue }
+    val dvs = remember(resolvedCurrentSnapshot, latestPoint, viewMode, calibratedValue, isFreshData, shownReading) {
         if (!isFreshData) {
             null
         } else {
-            resolvedCurrentSnapshot?.displayValues ?: latestPoint?.let {
+            shownReading?.let {
+                DisplayValues(
+                    primaryValue = it.value,
+                    primaryStr = it.valueText,
+                    secondaryStr = it.secondaryText,
+                    tertiaryStr = it.tertiaryText,
+                    fullFormatted = it.shownLanesText
+                )
+            } ?: resolvedCurrentSnapshot?.displayValues ?: latestPoint?.let {
                 getDisplayValues(it, viewMode, "", calibratedValue)
             }
         }
@@ -412,7 +430,8 @@ fun DashboardCombinedHeader(
     // grow unbounded ("143m") in a card that is ~90dp of content, and the row
     // below already names the state in bigger type by then.
     val primaryReadingMillis = if (isFreshData) {
-        resolvedCurrentSnapshot?.timeMillis?.takeIf { it > 0L }
+        shownReading?.timeMillis
+            ?: resolvedCurrentSnapshot?.timeMillis?.takeIf { it > 0L }
             ?: latestPoint?.timestamp?.takeIf { it > 0L }
     } else {
         null
@@ -514,6 +533,12 @@ fun DashboardCombinedHeader(
             TrendProjection.BORDERLINE -> Color(GlucoseRangeColors.valueBorderline(isDark))
             else -> heroValueColor
         }
+    } else {
+        heroValueColor
+    }
+    // The value as shown: dimmed once the next reading is overdue, as on every surface.
+    val heroShownValueColor = if (currentReading?.isDimmed == true) {
+        heroValueColor.copy(alpha = heroValueColor.alpha * 0.5f)
     } else {
         heroValueColor
     }
@@ -693,7 +718,7 @@ fun DashboardCombinedHeader(
                                 DashboardHeroPrimaryText(
                                     value = primaryText,
                                     style = primaryValueStyle,
-                                    color = heroValueColor
+                                    color = heroShownValueColor
                                 )
                                 // Only when the estimator actually reports a
                                 // range, and deliberately quiet: low contrast,
@@ -713,6 +738,7 @@ fun DashboardCombinedHeader(
 
                             HeroTrendWithDelta(
                                 trendResult = trendResult,
+                                showArrow = showHeroArrow,
                                 arrowColor = heroArrowColor,
                                 deltaText = heroDeltaText,
                                 contentColor = glucoseContentColor,
@@ -806,13 +832,14 @@ fun DashboardCombinedHeader(
                                 secondaryStackStyle = secondaryThreeValueStyle,
                                 tertiaryStackStyle = tertiaryThreeValueStyle,
                                 contentColor = glucoseContentColor,
-                                primaryColor = heroValueColor
+                                primaryColor = heroShownValueColor
                             )
 
                             Spacer(modifier = Modifier.width(resolvedClusterGap))
 
                             HeroTrendWithDelta(
                                 trendResult = trendResult,
+                                showArrow = showHeroArrow,
                                 arrowColor = heroArrowColor,
                                 deltaText = heroDeltaText,
                                 contentColor = glucoseContentColor,
@@ -1098,17 +1125,23 @@ fun DashboardCombinedHeader(
 @Composable
 private fun HeroTrendWithDelta(
     trendResult: tk.glucodata.logic.TrendEngine.TrendResult,
+    showArrow: Boolean,
     arrowColor: Color,
     deltaText: String?,
     contentColor: Color,
     iconSize: androidx.compose.ui.unit.Dp
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        tk.glucodata.ui.components.TrendIndicator(
-            trendResult = trendResult,
-            modifier = Modifier.size(iconSize),
-            color = arrowColor
-        )
+        if (showArrow) {
+            tk.glucodata.ui.components.TrendIndicator(
+                trendResult = trendResult,
+                modifier = Modifier.size(iconSize),
+                color = arrowColor
+            )
+        } else {
+            // Holds the arrow's place, so the value does not shift when it goes.
+            Spacer(modifier = Modifier.size(iconSize))
+        }
         if (!deltaText.isNullOrEmpty()) {
             val deltaReadout = buildAnnotatedString {
                 withStyle(
