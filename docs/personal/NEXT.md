@@ -3,7 +3,54 @@
 Hand-off notes for the next session. Read [BUILD.md](BUILD.md) first for the
 setup and branch model. Paths are relative to `Common/src/`.
 
-## Where things stand (2026-10-11 morning) — start here
+## Where things stand (2026-10-12 evening) — start here
+
+**Rebased on upstream** (owner's request; upstream #595 merged 2026-10-12, plus #617
+Material 3 Expressive, #612, #616/#621 Nightscout, #604, #603, #499, #600...): `main` =
+4f9a7e01e, every branch rebased (old tips in `backup/2026-10-12/*`), `personal` rebuilt
+(BUILD.md "Last full sync"). Not installed yet (owner: "dont install yet"); adb off.
+Nothing pushed yet.
+
+Fixed earlier on 2026-10-12 (before the rebase, carried over): app open keeps an earlier loss
+alarm; one hub publish per reading; the Nightscout token is no longer logged
+(`fix/nightscout-token-log`); the 15-min reading-triggered treatment read is a light read
+due with 30 s slack; the watch lists a G7 by its Bluetooth name; one `/sync2/own` status byte
+layout for both branches; the pill's screen-on log line removed (its watchdog was already
+gone: 0 `pill behind:` in 40 screen-ons); the pre-upstream cleanups (uk wording, comments
+that narrated history, the expiry/handover KDoc conflict).
+
+What the rebase changed in behaviour (all agents' choices, owner may revisit):
+- Journal/dashboard +: upstream's #617 FAB menu stays; a tap opens our entry sheet on the
+  last type, a hold shows upstream's type menu (each item opens our sheet on that tab), with
+  our 0.55 scrim (owner: keep it, or upstream's undimmed menu?). "Saved … Undo" sits above
+  the + on the journal screen.
+- A device reading a **Libre 2** itself no longer fills missed readings from the other
+  device (upstream #603's cursor protection); G7 unchanged.
+- The pill's details card ignores a device-wide force dark (#592); widget settings and the
+  alarm history use upstream's top bar; settings use `collectAsStateWithLifecycle`.
+- Hungarian strings added on every branch that adds strings (machine-translated, as are the
+  Wi-Fi subtitles reworded to #621's style).
+- Nightscout: the Wi-Fi switch sits in upstream's simplified options group; a received
+  treatment's time is greyed and its long-press "now" disabled.
+
+**Device test after the install** (both devices, right after a reading):
+1. One `CurrentReadingHub publish rev=N NEW_READING` per slot (none within 1 s of another);
+   `PhoneReadingClock deadline` once per reading.
+2. Open the app after a reading: trace `LossOfSensorAlarm: setalarmNoLater keeps <ms>`;
+   `dumpsys alarm` LossOfSensorAlarm stays at reading + 5:20.
+3. Watch sensor list: the G7 shows as "DXCM…".
+4. Nightscout: `received <n> Nightscout treatment journal items (light read, newest 20)` on
+   every third reading; `NightPost: token exchange code=200 len=<n>` with no `eyJ`.
+5. Journal: + tap opens the sheet, hold opens the menu; a Nightscout entry's time is greyed.
+6. G7 on main's #595 code: both devices read, sessions ~4 s, no pairing prompt, no alarm
+   clock; floating pill current at screen on; widgets; alarms.
+
+Open (not started): upstream's local web server (`watchserver.cpp`) logs request headers,
+`token=` and the local API secret with logging on (own `fix/` branch, native compile);
+opening the app still adds up to one full treatment read beyond main (upstream may ask);
+Clone-route Robolectric tests need a Linux run.
+
+## Where things stood (2026-10-11 morning)
 
 Overnight work of 2026-10-11 (owner asleep; **nothing installed on the devices**, adb
 disconnected). `personal` was rebuilt from the same `main` (b8f3e2e3b; no upstream sync

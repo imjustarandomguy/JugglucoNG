@@ -4,6 +4,11 @@
 Forecasts from `git merge-tree --write-tree`; nothing was moved. The remote ref
 `upstream/pr-595` (8ba5f2fd9) was added for the checks.
 
+**Done 2026-10-12:** synced to `main` 4f9a7e01e (#595 merged; #617 and #621 too). What
+happened and the new personal-only commits: BUILD.md "Last full sync"; behaviour changes and
+the device test: NEXT.md "Where things stand (2026-10-12 evening)". The forecasts below are
+from before that sync.
+
 ## Upstream news (main..upstream/main)
 
 - **Sensor/data fixes:** #599/#602 Ottai; #499 live bridge readings calibrated before
