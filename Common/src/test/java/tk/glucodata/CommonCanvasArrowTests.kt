@@ -18,8 +18,7 @@ class CommonCanvasArrowTests {
             assertEquals("rate $rate", TrendArrowAngle.rotationDegrees(rate), CommonCanvas.arrowRotationDegrees(rate), 0f)
             rate += 0.05f
         }
-        // A slow drift is flat; it used to tilt 25 degrees per mg/dL/min, or 18 times
-        // that in mmol/L, where 0.3 mg/dL/min already drew a vertical arrow.
+        // A slow drift is flat: 0.3 mg/dL/min is under the 0.5 line, in either unit.
         assertEquals(0f, CommonCanvas.arrowRotationDegrees(0.3f), 0f)
         assertEquals(-45f, CommonCanvas.arrowRotationDegrees(1f), 0.001f)
         assertEquals(90f, CommonCanvas.arrowRotationDegrees(-2.5f), 0.001f)
