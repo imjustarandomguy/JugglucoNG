@@ -86,7 +86,8 @@ class WearStartupSyncTests {
         val alarms = source("Common/src/main/java/tk/glucodata/SuperGlucoseAlarms.java")
         val setLoss = after(alarms, "public  void setLossAlarm() {").substringBefore("public void setagealarm(")
         val otherwise = after(setLoss, "else if(SensorOwnershipRuntime.anySetToReadAlongside()) {")
-        assertTrue(otherwise, otherwise.contains("LossOfSensorAlarm.setalarm(Applic.app, System.currentTimeMillis() + Notify.glucosetimeout);"))
+        // Unless one is set to go off sooner (LossAlarmAheadTests).
+        assertTrue(otherwise, otherwise.contains("LossOfSensorAlarm.setalarmNoLater(Applic.app, System.currentTimeMillis() + Notify.glucosetimeout);"))
         // It is the one the start of Bluetooth already arms.
         val bluetooth = source("Common/src/main/java/tk/glucodata/SensorBluetooth.java")
         assertTrue(after(bluetooth, "static void start(boolean usebluetooth) {").contains("SuperGattCallback.glucosealarms.setLossAlarm();"))

@@ -26,4 +26,18 @@ object LossAlarmAhead {
     @JvmStatic
     fun showtime(showtimeMs: Long, bothRead: Boolean): Long =
         if (bothRead) minOf(showtimeMs, BOTH_READ_SHOWTIME_MS) else showtimeMs
+
+    /**
+     * Whether re-arming the loss alarm to go off at [wantedAtMillis] leaves it as
+     * it is, set to go off at [armedAtMillis] (0 for none), at [nowMillis]: while
+     * it is still to come and goes off no later.
+     *
+     * For a re-arm from now rather than from a reading, as at every start of
+     * Bluetooth, which every opening of the app brings: moving the alarm the last
+     * reading armed would put off asking the other device for the next reading
+     * when that one is missed.
+     */
+    @JvmStatic
+    fun keepsArmed(armedAtMillis: Long, wantedAtMillis: Long, nowMillis: Long): Boolean =
+        armedAtMillis > nowMillis && armedAtMillis <= wantedAtMillis
 }
