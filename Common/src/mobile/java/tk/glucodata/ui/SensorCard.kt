@@ -2024,7 +2024,7 @@ fun SensorCard(
                     // the watch's line in the error colour when it should and
                     // has not for a while.
                     if (sensor.directReadingDetails.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         sensor.directReadingDetails.forEach { detail ->
                             Text(
                                 text = detail.text,
