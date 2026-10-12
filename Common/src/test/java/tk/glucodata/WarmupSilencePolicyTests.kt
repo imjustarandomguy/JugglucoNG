@@ -7,12 +7,13 @@ import org.junit.Test
 
 /**
  * A new Dexcom stays silent for most of its 30-minute warmup. Every reading of another sensor
- * runs SensorBluetooth.othersworking, which reconnected it once its warmup frame was 12 minutes
- * old and recorded each of those reconnects as "Loss of signal": the status line and the error
- * history of a sensor that was doing exactly what it should.
+ * runs SensorBluetooth.othersworking, which reconnects a sensor whose last frame is two showtimes
+ * (12 minutes for a Dexcom) old, so a warming sensor is reconnected long before its warmup ends.
+ * That reconnect must not be recorded as "Loss of signal": the sensor is doing what it should, and
+ * the status line and the error history would say otherwise.
  */
 class WarmupSilencePolicyTests {
-    private val start = 1_791_662_047_000L
+    private val start = 1_700_000_000_000L
     private val minute = 60_000L
     private val warmup = 30 * minute
 
