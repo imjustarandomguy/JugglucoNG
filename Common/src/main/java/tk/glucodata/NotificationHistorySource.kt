@@ -84,9 +84,9 @@ object NotificationHistorySource {
     /**
      * Native `[time_sec, auto_mgdl*10, raw_mgdl*10, ...]` triples as display points.
      *
-     * Converted exactly like the phone's Room rows ([GlucoseFormatter.displayFromMgDl]).
-     * Dividing by 18.0182 here instead made a companion watch show 5.5 where the
-     * phone showed 5.6 for the same 100 mg/dL reading.
+     * Converted exactly like the phone's Room rows ([GlucoseFormatter.displayFromMgDl]),
+     * so a companion device shows the phone's number: 100 mg/dL is 5.6, where
+     * dividing by 18.0182 would give 5.5.
      */
     internal fun pointsFromNativeHistory(history: LongArray, isMmol: Boolean): List<GlucosePoint> {
         if (history.size < 3) {

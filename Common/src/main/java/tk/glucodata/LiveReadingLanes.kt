@@ -33,9 +33,9 @@ class LiveReadingLanes private constructor(
 
         /**
          * [stock] from the sensor's mg/dL lanes, converted exactly like the stored
-         * rows the reading becomes. The live value used to divide by 18 while the
-         * rows multiplied by [GlucoseFormatter.MGDL_TO_MMOL], so 127 mg/dL read 7.1
-         * until its row arrived and 7.0 after.
+         * rows the reading becomes ([GlucoseFormatter.MGDL_TO_MMOL]), so a live
+         * value and its row show the same number: 127 mg/dL is 7.0, where
+         * mg/dL / 18 would give 7.1.
          */
         @JvmStatic
         fun stockFromMgdl(autoMgdl: Float, rawMgdl: Float, isMmol: Boolean): LiveReadingLanes =
