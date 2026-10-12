@@ -3044,4 +3044,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_secret_label">Секрет API або токен доступу</string>
     <string name="nightscout_api_help">Для v1 выкарыстоўвайце сакрэт API, для v3 — токен доступу Nightscout.</string>
     <string name="nightscout_iob_help">eIOB і COB перадаюцца ў полі jugglucong у devicestatus асобна ад стандартнага IOB.</string>
+    <string name="floating_tap_details">Падрабязнасці па націску</string>
+    <string name="floating_tap_details_desc">Націск паказвае графік і падрабязнасці</string>
+    <string name="floating_details_opacity_percent">Непразрыстасць фону падрабязнасцей: %1$d%%</string>
+    <string name="floating_next_reading">Час да наступнага значэння</string>
+    <string name="floating_next_reading_desc">Кальцо вакол стрэлкі трэнду запаўняецца да наступнага значэння</string>
+    <string name="floating_above_status_bar">Над радком стану</string>
+    <string name="floating_above_status_bar_desc">Можна націскаць і над радком стану</string>
+    <string name="floating_accessibility_service_off">Уключыце «%1$s» у наладах спецыяльных магчымасцей</string>
+    <string name="floating_accessibility_service_label">JugglucoNG плаваючая глюкоза</string>
+    <string name="floating_accessibility_service_desc">Дазваляе націскаць плаваючую глюкозу над радком стану. Не чытае экран.</string>
+    <string name="floating_mirrored">Люстраны макет</string>
+    <string name="floating_mirrored_desc">Спачатку стрэлка, потым значэнне</string>
+    <string name="floating_restricted_settings_hint">Калі Android паведамляе «Абмежаваная налада»: у звестках пра праграму націсніце ⋮ → Дазволіць абмежаваныя налады, потым уключыце службу.</string>
+    <string name="floating_open_app_info">Пра праграму</string>
 </resources>

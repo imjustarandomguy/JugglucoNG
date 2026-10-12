@@ -2969,4 +2969,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="nightscout_secret_label">API-hemlighet eller åtkomsttoken</string>
     <string name="nightscout_api_help">Använd API-hemligheten med v1 eller en Nightscout-åtkomsttoken med v3.</string>
     <string name="nightscout_iob_help">eIOB och COB skickas i fältet jugglucong i devicestatus, separat från vanlig IOB.</string>
+    <string name="floating_tap_details">Detaljer vid tryck</string>
+    <string name="floating_tap_details_desc">Tryck visar diagram och detaljer</string>
+    <string name="floating_details_opacity_percent">Bakgrundsopacitet för detaljer: %1$d%%</string>
+    <string name="floating_next_reading">Tid till nästa avläsning</string>
+    <string name="floating_next_reading_desc">En ring runt trendpilen fylls fram till nästa avläsning</string>
+    <string name="floating_above_status_bar">Över statusfältet</string>
+    <string name="floating_above_status_bar_desc">Förblir tryckbar över statusfältet</string>
+    <string name="floating_accessibility_service_off">Slå på ”%1$s” i tillgänglighetsinställningarna</string>
+    <string name="floating_accessibility_service_label">JugglucoNG flytande glukosvärde</string>
+    <string name="floating_accessibility_service_desc">Gör det flytande glukosvärdet tryckbart över statusfältet. Läser inte skärmen.</string>
+    <string name="floating_mirrored">Spegla layouten</string>
+    <string name="floating_mirrored_desc">Pilen först, sedan värdet</string>
+    <string name="floating_restricted_settings_hint">Säger Android ”Begränsad inställning”: tryck på ⋮ → Tillåt begränsade inställningar i Appinfo och slå sedan på tjänsten.</string>
+    <string name="floating_open_app_info">Appinfo</string>
 </resources>

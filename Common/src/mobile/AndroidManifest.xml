@@ -146,6 +146,34 @@
                 android:name="android.service.quicksettings.ACTIVE_TILE"
                 android:value="false" />
         </service>
+
+        <!-- Lets the floating glucose be drawn above the status bar. -->
+        <service
+            android:name=".service.FloatingAccessibilityService"
+            android:enabled="false"
+            android:exported="true"
+            android:label="@string/floating_accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/floating_accessibility_config" />
+        </service>
+
+        <!-- The floating glucose's "open app" while the keyguard is up: asks for the keyguard
+             to be dismissed, then opens the app. Nothing of its own on screen, never shown
+             over the keyguard; its own task, kept out of Recents. -->
+        <activity
+            android:name=".ui.overlay.FloatingOpenAppActivity"
+            android:autoRemoveFromRecents="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         
         <!-- Takes an insulin-pen tap while the app is not in front and imports the
              doses without bringing the UI up. Disabled until the "import in the

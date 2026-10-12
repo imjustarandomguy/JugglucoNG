@@ -14,6 +14,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.SettingsAccessibility
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +52,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -77,6 +84,7 @@ import tk.glucodata.ui.components.SectionLabel
 import tk.glucodata.ui.components.SettingsSwitchItem
 import tk.glucodata.ui.components.SettingsItem
 import tk.glucodata.ui.viewmodel.DashboardViewModel
+import kotlin.math.roundToInt
 
 private val legacySettingsHorizontalPadding = 16.dp
 private val aodPositionOptions = listOf(
@@ -490,12 +498,18 @@ fun FloatingGlucoseSettingsScreen(
     val fontSize by repository.fontSize.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_FONT_SIZE)
     val fontWeight by repository.fontWeight.collectAsStateWithLifecycle(initialValue = "REGULAR")
     val showArrow by repository.showArrow.collectAsStateWithLifecycle(initialValue = true)
+    val tapShowsDetails by repository.tapShowsDetails.collectAsStateWithLifecycle(initialValue = true)
+    val detailsOpacity by repository.detailsOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
     val cornerRadius by repository.cornerRadius.collectAsStateWithLifecycle(initialValue = 28f)
     val opacity by repository.backgroundOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_BACKGROUND_OPACITY)
     val isDynamicIsland by repository.isDynamicIslandEnabled.collectAsStateWithLifecycle(initialValue = false)
     val verticalOffset by repository.islandVerticalOffset.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_ISLAND_VERTICAL_OFFSET)
     val manualGap by repository.islandGap.collectAsStateWithLifecycle(initialValue = 0f)
+    val aboveStatusBar by repository.isAboveStatusBar.collectAsStateWithLifecycle(initialValue = false)
+    val accessibilityServiceOn = tk.glucodata.service.FloatingAccessibilityService.windowManager.collectAsStateWithLifecycle().value != null
     val useSubtleOutline by repository.useSubtleOutline.collectAsStateWithLifecycle(initialValue = false)
+    val isMirrored by repository.isMirrored.collectAsStateWithLifecycle(initialValue = false)
+    val showNextReading by repository.showNextReading.collectAsStateWithLifecycle(initialValue = true)
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -638,6 +652,108 @@ fun FloatingGlucoseSettingsScreen(
             )
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+        // The two go as a pair, with the details card's opacity between them while the card is on.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_tap_details),
+            subtitle = stringResource(R.string.floating_tap_details_desc),
+            checked = tapShowsDetails,
+            onCheckedChange = {
+                repository.setTapShowsDetails(it)
+                tk.glucodata.service.FloatingAccessibilityService.syncAvailability(context)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.TOP,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+        if (tapShowsDetails) {
+            Spacer(modifier = Modifier.height(8.dp))
+            LegacySliderControl(
+                label = stringResource(R.string.floating_details_opacity_percent, (detailsOpacity * 100).roundToInt()),
+                value = detailsOpacity,
+                onValueChange = { repository.setDetailsOpacity(it) },
+                range = 0.1f..1.0f,
+                steps = 18
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+        } else {
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+        // Drawn over the status bar so the details can be opened from there.
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_above_status_bar),
+            subtitle = stringResource(R.string.floating_above_status_bar_desc),
+            checked = aboveStatusBar && tapShowsDetails,
+            enabled = tapShowsDetails,
+            onCheckedChange = {
+                repository.setAboveStatusBar(it)
+                tk.glucodata.service.FloatingAccessibilityService.syncAvailability(context)
+            },
+            position = if (tapShowsDetails) CardPosition.SINGLE else CardPosition.BOTTOM,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+        // The service is offered only while floating glucose is on.
+        if (isEnabled && tapShowsDetails && aboveStatusBar && !accessibilityServiceOn) {
+            Spacer(modifier = Modifier.height(8.dp))
+            WarningPanel(
+                text = stringResource(
+                    R.string.floating_accessibility_service_off,
+                    stringResource(R.string.floating_accessibility_service_label),
+                ),
+                modifier = Modifier
+                    .padding(horizontal = legacySettingsHorizontalPadding)
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        context.startActivity(
+                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
+            )
+            val mayBeRestricted = remember {
+                tk.glucodata.service.FloatingAccessibilityService.mayBeRestricted(context)
+            }
+            if (mayBeRestricted) {
+                // Android 13+ greys a sideloaded app's accessibility service out until this is allowed.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = legacySettingsHorizontalPadding)
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        stringResource(R.string.floating_restricted_settings_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:${context.packageName}")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        },
+                        shapes = ButtonDefaults.shapes()
+                    ) {
+                        Text(stringResource(R.string.floating_open_app_info))
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        SettingsSwitchItem(
+            title = stringResource(R.string.floating_mirrored),
+            subtitle = stringResource(R.string.floating_mirrored_desc),
+            checked = isMirrored,
+            onCheckedChange = { repository.setMirrored(it) },
+            position = CardPosition.SINGLE,
+            modifier = Modifier.padding(horizontal = legacySettingsHorizontalPadding)
+        )
+
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel(
             stringResource(R.string.metrics),
@@ -661,6 +777,13 @@ fun FloatingGlucoseSettingsScreen(
                 title = stringResource(R.string.show_trend_arrow),
                 checked = showArrow,
                 onCheckedChange = { repository.setShowArrow(it) },
+                position = CardPosition.MIDDLE
+            )
+            SettingsSwitchItem(
+                title = stringResource(R.string.floating_next_reading),
+                subtitle = stringResource(R.string.floating_next_reading_desc),
+                checked = showNextReading,
+                onCheckedChange = { repository.setShowNextReading(it) },
                 position = CardPosition.BOTTOM
             )
         }

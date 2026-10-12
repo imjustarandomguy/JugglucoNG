@@ -2997,4 +2997,18 @@ Tamam\'a basmak bağlantı için QR kod görüntüleyecektir. QR kodu diğer tel
     <string name="nightscout_secret_label">API sırrı veya erişim belirteci</string>
     <string name="nightscout_api_help">v1 için API sırrını, v3 için Nightscout erişim tokenini kullanın.</string>
     <string name="nightscout_iob_help">eIOB ve COB, standart IOB’den ayrı olarak devicestatus içindeki jugglucong alanında gönderilir.</string>
+    <string name="floating_tap_details">Dokununca ayrıntılar</string>
+    <string name="floating_tap_details_desc">Dokunma grafiği ve ayrıntıları gösterir</string>
+    <string name="floating_details_opacity_percent">Ayrıntılar arka plan opaklığı: %1$d%%</string>
+    <string name="floating_next_reading">Sonraki ölçüme kalan süre</string>
+    <string name="floating_next_reading_desc">Trend okunun etrafındaki halka sonraki ölçüme kadar dolar</string>
+    <string name="floating_above_status_bar">Durum çubuğunun üstünde</string>
+    <string name="floating_above_status_bar_desc">Durum çubuğunun üstünde de dokunulabilir</string>
+    <string name="floating_accessibility_service_off">Erişilebilirlik ayarlarında “%1$s” hizmetini açın</string>
+    <string name="floating_accessibility_service_label">JugglucoNG yüzen glikoz</string>
+    <string name="floating_accessibility_service_desc">Yüzen glikozun durum çubuğunun üstünde dokunulabilmesini sağlar. Ekranı okumaz.</string>
+    <string name="floating_mirrored">Düzeni aynala</string>
+    <string name="floating_mirrored_desc">Önce ok, sonra değer</string>
+    <string name="floating_restricted_settings_hint">Android “Kısıtlanmış ayar” diyorsa: Uygulama bilgilerinde ⋮ → Kısıtlanmış ayarlara izin ver seçeneğine dokunun, ardından hizmeti açın.</string>
+    <string name="floating_open_app_info">Uygulama bilgileri</string>
 </resources>
