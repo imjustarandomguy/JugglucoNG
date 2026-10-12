@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
@@ -209,7 +210,8 @@ internal fun JournalRecentAmountChips(
             FilterChip(
                 selected = current != null && kotlin.math.abs(current - amount) < 0.001f,
                 onClick = { onAmountPicked(amount) },
-                label = { Text(text = stringResource(valueFormatRes, formatFloatForEditor(amount))) }
+                label = { Text(text = stringResource(valueFormatRes, formatFloatForEditor(amount))) },
+                shapes = FilterChipDefaults.shapes()
             )
         }
     }
@@ -223,7 +225,7 @@ internal fun JournalContextLine(text: String) {
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Icon(
             imageVector = Icons.Default.History,

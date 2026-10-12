@@ -361,7 +361,7 @@ fun NotificationSettingsScreen(
 
         // Log insulin and Log food on the notification, + Insulin and + Food on the floating
         // glucose's details (tk.glucodata.quickLogButtonsEnabled); only with the journal on.
-        val journalEnabled by viewModel.journalEnabled.collectAsState()
+        val journalEnabled by viewModel.journalEnabled.collectAsStateWithLifecycle()
         var quickLogButtons by rememberSaveable { mutableStateOf(tk.glucodata.quickLogButtonsSetting(context)) }
         SectionLabel(
             stringResource(R.string.journal_title),
