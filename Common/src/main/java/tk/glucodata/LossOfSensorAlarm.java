@@ -48,6 +48,10 @@ public void onReceive(Context context, Intent intent) {
         }
 
 static private PendingIntent onalarm=null ;
+
+/** When the alarm is due (wall clock), 0 while none is set. */
+static private volatile long scheduledAtMillis = 0L;
+
 static void mkintents(Context context) {
     if(onalarm==null) {
         final int alarmrequest = 4;
@@ -65,6 +69,7 @@ static    void setalarm(Context context, long alarmtime) {
     try {
         alarmtime+=20*1000;
         mkintents(context);
+        scheduledAtMillis = alarmtime;
         {if(doLog) {Log.i(LOG_ID,"setalarm "+alarmtime);};};
         final int type=RTC_WAKEUP;
 
@@ -84,9 +89,25 @@ static    void setalarm(Context context, long alarmtime) {
         }
     }
 
+/**
+ * As setalarm(), but an alarm still to come that goes off no later stays as it is.
+ * For a re-arm from now that is not about a reading: each one would otherwise put
+ * off the alarm the last reading armed, and with it what that alarm does for a
+ * reading that does not come.
+ */
+static void setalarmNoLater(Context context, long alarmtime) {
+    final long armed = scheduledAtMillis;
+    if(LossAlarmAhead.keepsArmed(armed, alarmtime + 20*1000, System.currentTimeMillis())) {
+        {if(doLog) {Log.i(LOG_ID,"setalarmNoLater keeps "+armed);};};
+        return;
+        }
+    setalarm(context, alarmtime);
+    }
+
 static void cancelalarm() {
     if(onalarm!=null) {
         {if(doLog) {Log.i(LOG_ID,"cancelalarm");};};
+        scheduledAtMillis = 0L;
         Notify.shownovalue();
         AlarmManager manager= (AlarmManager) Applic.app.getSystemService(ALARM_SERVICE);
         manager.cancel(onalarm);
