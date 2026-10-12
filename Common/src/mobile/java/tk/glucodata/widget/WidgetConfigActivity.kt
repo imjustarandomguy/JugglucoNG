@@ -6,8 +6,8 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -76,8 +76,8 @@ class WidgetConfigActivity : ComponentActivity() {
         val themeMode = savedThemeMode()
         setContent {
             JugglucoTheme(themeMode = themeMode) {
-                val current by options.collectAsState()
-                val shown by previews.collectAsState()
+                val current by options.collectAsStateWithLifecycle()
+                val shown by previews.collectAsStateWithLifecycle()
                 current?.let { shownOptions ->
                     WidgetConfigScreen(
                         kind = kind,
