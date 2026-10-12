@@ -93,11 +93,11 @@ class TrendConsumerPointListTests {
     private fun watchSnapshotRows(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
         base.filter { it.timestamp >= snap.timeMillis - 2 * DisplayTrendSource.TREND_WINDOW_MS }
 
-    /** Watch complications, the watch face and the alarm screen (GlucoseComplicationData.displayRate). */
+    /** Every watch surface: the rows of the reading's sensor (CurrentReadingHub's display rate). */
     private fun complicationVelocity(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
         DisplayTrendSource.resolveDisplayArrowRate(watchSnapshotRows(base, snap), snap, serial, 0, false)
 
-    /** Watch main screen's hero and newest row: the store's whole horizon (WearGlucoseStore.trendRate). */
+    /** The same over a longer history, as a list screen holds it: the trend window cuts it alike. */
     private fun watchMainVelocity(base: List<GlucosePoint>, snap: CurrentDisplaySource.Snapshot) =
         DisplayTrendSource.resolveDisplayArrowRate(base, snap, serial, 0, false)
 

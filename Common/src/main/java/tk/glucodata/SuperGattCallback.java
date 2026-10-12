@@ -1045,10 +1045,6 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                 }
             }
         }
-        if (isWearable) {
-            var refresh = GlucoseValueRefreshAccess.get();
-            if (refresh != null) refresh.updateAll();
-        }
 
         emitExchangeOutputs(SerialNumber, gl, rate, alarm, timmsec, sensorstartmsec, tim, sensorgen,
                 sglucose.value, !fromPeer);
