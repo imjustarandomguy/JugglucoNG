@@ -62,6 +62,15 @@ public  void setLossAlarm() {
 //         Libre2GattCallback.oldtime = nu + Notify.glucosetimeout;
          LossOfSensorAlarm.setalarm(Applic.app, nu + waitmmsec());
        }
+    else if(SensorOwnershipRuntime.anySetToReadAlongside()) {
+        // Without the loss-of-signal alert nothing armed this alarm before the
+        // first reading, and for a sensor both devices read it is also what asks
+        // the other one for a reading this one missed. The same alarm every
+        // reading re-arms, at the interval handlealarm() keeps it to. This runs
+        // at every opening of the app too, so one a reading set to go off
+        // sooner stays: a missed reading is asked for when it is due.
+        LossOfSensorAlarm.setalarmNoLater(Applic.app, System.currentTimeMillis() + Notify.glucosetimeout);
+        }
 }
 
     @Override

@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import tk.glucodata.Applic
 import tk.glucodata.BleErrorEvent
 import tk.glucodata.BleErrorHistory
+import tk.glucodata.DirectReadingText
 import tk.glucodata.MultiSensorSelection
 import tk.glucodata.NativeSensorTermination
 import tk.glucodata.SensorBluetooth
@@ -107,10 +108,15 @@ data class SensorInfo(
     val handoffUiState: SensorHandoffUiState = SensorHandoffUiState.NONE,
     val sensorIndex: Int = -1,
     val isCloneSource: Boolean = false,
+    /** For a sensor phone and watch both read: which of them reads it itself; empty otherwise. */
+    val directReadingDetails: List<DirectReadingDetail> = emptyList(),
 ) {
     /** Get the assigned color for this sensor */
     val color: Color get() = Color(assignedColorArgb)
 }
+
+/** One "Phone: …" / "Watch: …" line under a sensor's status; [isAlert] shows it as an error. */
+data class DirectReadingDetail(val text: String, val isAlert: Boolean = false)
 
 /** UI-friendly calibration record/event from a managed sensor. */
 data class VendorCalibrationInfo(
@@ -609,12 +615,25 @@ class SensorViewModel : ViewModel() {
                             SensorOwnershipRuntime.handoffUiState(gatt.SerialNumber)
                         }.getOrDefault(SensorHandoffUiState.NONE)
 
+                        // A sensor phone and watch both read (a G7 with "Direct
+                        // sensor on watch"): "Connected" said nothing about which
+                        // of them was actually reading it, and a device that is
+                        // not gets the other's readings, so its chart looks fine.
+                        val readers = runCatching {
+                            SensorOwnershipRuntime.directReadingView(gatt.SerialNumber)
+                        }.getOrNull()?.takeIf { it.readByBoth }
+                        val readersStatus = readers?.let {
+                            DirectReadingText.summary(Applic.app, it.summary)
+                        }
+
                         val finalStatus = when {
                             handoffUiState == SensorHandoffUiState.HANDING_TO_WATCH ->
                                 Applic.app.getString(tk.glucodata.R.string.wear_claim_state_requesting)
                             handoffUiState == SensorHandoffUiState.STREAMING_FROM_WATCH ->
                                 Applic.app.getString(tk.glucodata.R.string.status_watch_reading)
                             warmupStatus != null -> warmupStatus
+                            // Neither reading it keeps the status it always had.
+                            readersStatus != null -> readersStatus
                             nativeStatus.isNotEmpty() -> nativeStatus
                             // Pass through custom status strings from GATT callbacks (e.g., "Connected, waiting for data...", "Connected, raw values received")
                             bleStatus.isNotEmpty() && !bleStatus.startsWith("Status=") && !bleStatusOutdated -> mapBleStatus(bleStatus)
@@ -686,6 +705,15 @@ class SensorViewModel : ViewModel() {
                             isActive = isActiveSensor,
                             handoffUiState = handoffUiState,
                             sensorIndex = sensorIndex,
+                            directReadingDetails = readers?.let { view ->
+                                listOf(
+                                    DirectReadingDetail(DirectReadingText.phone(Applic.app, view)),
+                                    DirectReadingDetail(
+                                        DirectReadingText.watch(Applic.app, view),
+                                        isAlert = view.watchAlert,
+                                    ),
+                                )
+                            }.orEmpty(),
                         )
                     }
                 } catch (e: Exception) {

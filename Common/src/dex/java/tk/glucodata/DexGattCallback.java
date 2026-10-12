@@ -78,6 +78,10 @@ private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
 private PowerManager.WakeLock reconnectlock;
 private long shortReconnectSeq;
 private boolean shortReconnectPending;
+// When the wakeup alarm is due. Well past that it has fired, and a connect it
+// was refused then is not queued any more.
+private long alarmDueMs;
+private static final long DEXCOM_ALARM_GRACE_MS = 60_000L;
 // Asked a moment before its next measurement, a G7 answers with the reading
 // before (age about 300 s). It keeps the link for a few seconds: ask again.
 private static final long DEXCOM_PREVIOUS_READING_AGE_MS = 240_000L;
@@ -279,7 +283,7 @@ private boolean connected=false;
     @Override
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+                || SensorOwnershipRuntime.blocksLocalConnection(this)) return false;
         if (delayMillis > 0L && delayMillis <= DEXCOM_SHORT_RECONNECT_MAX_MS) {
             waitShortReconnect(delayMillis);
             return true;
@@ -289,7 +293,10 @@ private boolean connected=false;
             // An executor timer cannot wake a suspended CPU, and its pending latch
             // would prevent an alarm/scan from requesting an immediate connection.
             onalarm = setalarm(System.currentTimeMillis() + delayMillis, onalarm, SerialNumber);
-            if (onalarm != null) return true;
+            if (onalarm != null) {
+                alarmDueMs = System.currentTimeMillis() + delayMillis;
+                return true;
+            }
             // Keep recovery queued if the OS refuses the wakeup alarm.
             return connectNow();
         }
@@ -310,6 +317,13 @@ private boolean connected=false;
         if (!bondedHere() && (foundtime == 0L || mActiveBluetoothDevice != scannedDevice))
             mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
+    }
+
+    /** A connect waiting on the wakeup alarm or the short wait is one scheduled (WatchSensorRadio). */
+    @Override
+    protected boolean connectQueued() {
+        return shortReconnectPending
+                || (onalarm != null && System.currentTimeMillis() < alarmDueMs + DEXCOM_ALARM_GRACE_MS);
     }
 
     /**
@@ -411,6 +425,8 @@ private boolean connected=false;
     public synchronized void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
         if (bluetoothGatt != mBluetoothGatt) return;
+        // Tracks the local GATT that ownership and the watch claim rely on.
+        super.onConnectionStateChange(bluetoothGatt, status, newState);
         if (stop) {
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
             // Nothing reconnects a stopped callback: close its GATT (close() also
@@ -697,12 +713,23 @@ private void sendcertthread() {
     }
 
 
+    /*
+     * A G7 keeps a separate pairing for each display channel, named by the auth
+     * request's last byte: phone app (2), receiver or pump (1) and smartwatch
+     * (3). A watch pairs on the smartwatch channel and reads alongside the phone.
+     * Neither asks for the receiver's: that would take it from a receiver or pump.
+     */
+    private static final byte SLOT_PHONE = 0x02;
+    private static final byte SLOT_WATCH = 0x03;
+    private static final byte AUTH_SLOT = isWearable ? SLOT_WATCH : SLOT_PHONE;
+
     private void requestAuth() {
-        {if(doLog) {Log.i(LOG_ID,"requestAuth()");};};
+        {if(doLog) {Log.i(LOG_ID,"requestAuth() slot=" + AUTH_SLOT);};};
         Random.fillbytes(random8);
         var uit = new byte[10];
         System.arraycopy(random8, 0, uit, 1, random8.length);
-        uit[0] = uit[9] = (byte) 0x02;
+        uit[0] = (byte) 0x02;
+        uit[9] = AUTH_SLOT;
         charact[1].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
         tryer(()->write(1, uit));
       }
@@ -834,18 +861,16 @@ private boolean removedBond=false;
                   resetCerts();
                   return;
                   }
-                boolean isbonded = bond == 1;
-
-                if(!newcertificates&&auth != 1) {
+                final var next = DexcomAuthPolicy.afterChallengeReply(auth, bond, bonded, newcertificates, AUTH_SLOT == SLOT_WATCH);
+                if(next == DexcomAuthPolicy.Next.STOP) {
+                    // A pairing the sensor refused ends here, shown as the handshake state.
                     handshake = "auth != 1";
                     wrotepass[1] = System.currentTimeMillis();
                     resetCerts();
+                } else if(next == DexcomAuthPolicy.Next.GET_DATA) {
+                    getdatacmd();
                 } else {
-                    if(auth==1&&isbonded||(bonded&&bond==2)) {
-                        getdatacmd();
-                    } else {
-                        askcertificate(SendCertificate1);
-                    }
+                    askcertificate(SendCertificate1);
                 }
 
             }
@@ -1164,6 +1189,15 @@ private    void getdata(byte[] value) {
         super.free();
     }
 
+    /** Bluetooth use stopping is not the sensor going: keep the pairing, so starting again needs no new one. */
+    @Override
+    public void stopTransport() {
+        releaselock();
+        cancelalarm();
+        cancelShortReconnect();
+        super.free();
+    }
+
     /** The address this callback dials: its device's, else the stored one. */
     private String dialledAddress() {
         final var device = mActiveBluetoothDevice;
@@ -1185,6 +1219,30 @@ private    void getdata(byte[] value) {
                 return true;
         }
         return false;
+    }
+
+    /** Two missed readings: a G7 is connected only a few seconds every 5 minutes. */
+    private static final long HOLD_BETWEEN_SESSIONS_MSEC = 11L * 60L * 1000L;
+
+    @Override
+    public boolean holdsSensor(long nowMs) {
+        if (hasLocallyConnectedGatt())
+            return true;
+        if (stop)
+            return false;
+        final long last = lastLocalSessionReadingMs();
+        return last > 0L && nowMs - last < HOLD_BETWEEN_SESSIONS_MSEC;
+    }
+
+    @Override
+    public boolean supportsWatchClaim() {
+        return true;
+    }
+
+    /** A G7 has its own channel for the phone app, a smartwatch and a receiver. */
+    @Override
+    public boolean readsAlongside() {
+        return true;
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");

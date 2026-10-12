@@ -2,7 +2,8 @@
 """Execute production WearSync2 chunk ingestion with deterministic storage fakes.
 
 JNI, Room scheduling and device transport are outside this test. The fake native
-writer models the minute-derived cursor that caused issue #593.
+writer models the minute-derived cursor that caused issue #593. A device reading
+the sensor itself takes only the slots it lacks, except for a Libre 2.
 Requires kotlinc and java on PATH.
 """
 from pathlib import Path
@@ -26,6 +27,11 @@ def method(signature):
     return source[start:end]
 
 
+def expression(signature):
+    start = source.index(signature)
+    return source[start:source.index('\n\n', start)]
+
+
 kotlin = r'''
 package tk.glucodata
 import java.nio.ByteBuffer
@@ -34,11 +40,17 @@ object Applic { var isWearable = false }
 object SensorIdentity {
     var managed = false
     fun usesNativeDirectStreamShell(serial: String) = managed
+    fun invalidateCaches() {}
 }
 object SensorOwnershipRuntime {
     var local = false
+    var alongside = false
+    var syncedNewestMs = 0L
     fun readsLocally(serial: String) = local
+    fun readsAlongside(serial: String) = alongside
+    fun noteSyncedReading(serial: String, newestMs: Long) { syncedNewestMs = newestMs }
 }
+object Notify { const val glucosetimeout = Long.MAX_VALUE }
 object Natives {
     val start = 1_780_000_000L
     var snapshot: LongArray? = longArrayOf(2, 0, start * 1000, 0, 0, 0)
@@ -51,6 +63,12 @@ object Natives {
     var nativeValues = floatArrayOf()
     var nativeRaws = floatArrayOf()
     var nativeSerial = ""
+    var filledSlots = 0
+    var lastglucose = 0L
+    fun streamSlotsFilled(times: LongArray, serial: String): BooleanArray? =
+        BooleanArray(times.size) { it < filledSlots }
+    fun lastglucosetime() = lastglucose
+    fun getSensorIndex(serial: String) = 0
     fun getSensorUiSnapshot(serial: String): LongArray? {
         snapshotReads++
         check(serial == "3038HVEAD0D")
@@ -127,11 +145,13 @@ object WearSync2 {
     private fun existingSensorNameFor(serial: String) =
         if (serial == "full-alias") "3038HVEAD0D" else serial
     private fun shouldIgnoreRemovedSensor(serial: String) = removed
-    private fun emitExchangeOutputsForSyncedReading(serial: String, time: Long, value: Float) {
+    // processPeerReading publishes the reading, exchange outputs included.
+    private fun handlePeerReading(serial: String, time: Long, value: Float, raw: Float) {
         exchangedAt = time
     }
 '''
 kotlin += method('private fun isLibre2NativeSensor(') + '\n'
+kotlin += expression('internal fun isCurrentPeerReading(') + '\n'
 kotlin += method('fun onChunk(') + '\n}\n'
 kotlin += r'''
 fun chunk(serial: String = "3038HVEAD0D"): ByteArray {
@@ -189,9 +209,41 @@ fun main(args: Array<String>) {
                 check(Natives.snapshotReads == 0 && HistorySyncAccess.historyTimes.isEmpty())
             } else assertPhoneImport()
         }
-        "local-owner", "removed", "companion-disabled" -> {
+        "local-owner", "watch-local-libre2" -> {
+            // A Libre 2 read here ignores the other device's readings, on the
+            // watch too: they would move its live BLE cursor.
+            SensorOwnershipRuntime.local = true
+            Applic.isWearable = scenario == "watch-local-libre2"
+            WearSync2.onChunk(chunk())
+            check(Natives.shellWrites == 0 && Natives.batches == 0)
+            check(Natives.pollcount == 19 && Natives.lastId == 2903)
+            check(HistorySyncAccess.historyTimes.isEmpty() && UiRefreshBus.refreshes == 0)
+        }
+        "phone-local-g7", "watch-alongside-g7" -> {
+            // A device reading a G7 itself, or set to read it alongside the
+            // other, takes only the slots it lacks and keeps its own readings.
+            Natives.snapshot!![0] = 0x40
+            Natives.filledSlots = 5
+            Natives.lastglucose = (Natives.start + 2922 * 60L) * 1000
+            if (scenario == "phone-local-g7") {
+                SensorOwnershipRuntime.local = true
+            } else {
+                Applic.isWearable = true
+                SensorOwnershipRuntime.alongside = true
+            }
+            WearSync2.onChunk(chunk())
+            check(Natives.batches == 1 && Natives.nativeTimes.size == 3)
+            check(Natives.nativeTimes.first() == Natives.start + 2923 * 60L)
+            val newest = (Natives.start + 2925 * 60L) * 1000
+            check(WearSync2.exchangedAt == newest && SensorOwnershipRuntime.syncedNewestMs == newest)
+            if (Applic.isWearable) {
+                check(HistorySyncAccess.historyTimes.isEmpty())
+            } else {
+                check(HistorySyncAccess.historyTimes.size == 3 && HistorySyncAccess.currentTime == newest)
+            }
+        }
+        "removed", "companion-disabled" -> {
             when (scenario) {
-                "local-owner" -> SensorOwnershipRuntime.local = true
                 "removed" -> WearSync2.removed = true
                 "companion-disabled" -> WearSync2.enabled = false
             }
@@ -208,7 +260,8 @@ fun main(args: Array<String>) {
 scenarios = [
     'phone-libre2', 'phone-alias', 'watch-libre2', 'phone-libre3',
     'phone-sibionics', 'phone-managed', 'phone-managed-family', 'phone-unknown',
-    'phone-short-snapshot', 'local-owner', 'removed', 'companion-disabled',
+    'phone-short-snapshot', 'local-owner', 'watch-local-libre2', 'phone-local-g7',
+    'watch-alongside-g7', 'removed', 'companion-disabled',
 ]
 with tempfile.TemporaryDirectory(prefix='wear-sync2-test-') as directory:
     temp = Path(directory)

@@ -98,6 +98,9 @@ class MessageReceiver: WearableListenerService() {
                     WearToggleSync.pushIfChanged(messageEvent.sourceNodeId)
                     // Answer the handshake with this build's protocol version.
                     MessageSender.sendProtocol(messageEvent.sourceNodeId)
+                } else {
+                    // The phone asks for a reading it missed of a sensor both read.
+                    WearSync2.onRequest(data)
                 }
             }
             WearMessagePath.SYNC2_CHUNK -> {
@@ -204,6 +207,10 @@ class MessageReceiver: WearableListenerService() {
                         MessageSender.sendSensorClaimStatus()
                     }
                 }
+                // The phone's netinfo still says "the phone has the sensor", and
+                // native answers that by clearing the watch's Bluetooth flag. A
+                // watch told to read a sensor puts it back at once.
+                if (isWearable) WatchSensorRadio.bluetoothWanted()
             }
             WearMessagePath.START ->  {
                // Same gate as Applic.initproc(): request Wi-Fi only when the Wi-Fi setting is on.

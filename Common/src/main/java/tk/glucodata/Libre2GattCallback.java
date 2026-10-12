@@ -139,7 +139,7 @@ public class Libre2GattCallback extends SuperGattCallback {
 	@Override
 	public synchronized boolean connectDevice(long delayMillis) {
 		if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
-				|| SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+				|| SensorOwnershipRuntime.blocksLocalConnection(this)) return false;
 		if (mBluetoothGatt != null) {
 			requestDisconnect(mBluetoothGatt, delayMillis);
 			return true;

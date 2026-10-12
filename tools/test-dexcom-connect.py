@@ -54,6 +54,11 @@ phase_end = source.index(';', source.index('private static final int GetData', p
 fields += source[phase_start:phase_end]
 bond_start = source.index('private static final byte[][] bondBytes')
 fields += source[bond_start:source.index(';', bond_start) + 1]
+# The display-channel constants authenticate() reads, and its reply policy.
+for slot in re.finditer(r'private static final byte (?:SLOT_\w+|AUTH_SLOT) = [^;]+;', source):
+    fields += '\n' + slot.group()
+policy_file = root / 'Common/src/dex/java/tk/glucodata/DexcomAuthPolicy.java'
+policy = re.sub(r'^package [^;]+;', '', policy_file.read_text(), flags=re.M) if policy_file.exists() else ''
 roster_field = re.search(r'public static final \w+<SuperGattCallback> gattcallbacks = new \w+<>\(\);', roster_source).group()
 roster_methods = method('public static ArrayList<SuperGattCallback> mygatts()', roster_source)
 body = r'''
@@ -139,7 +144,7 @@ class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;Blueto
 class Build {static class VERSION {static int SDK_INT=36;}static class VERSION_CODES {static int M=23,P=28,TIRAMISU=33;}}
 class android {static class os {static class Build extends tk.glucodata.Build {}}}
 class CloneSensorRegistry {static boolean clone;static boolean isCloneSensor(String s){return clone;}}
-class SensorOwnershipRuntime {static boolean blocked;static boolean blocksLocalConnection(String s){return blocked;}}
+class SensorOwnershipRuntime {static boolean blocked;static boolean blocksLocalConnection(SuperGattCallback cb){return blocked;}}
 class Natives {
     static String stored="F0:00:00:00:00:01";
     static long lastGlucose=-1;static boolean aesSuccess=true;static int resets;
@@ -695,6 +700,6 @@ public class DexGattCallback extends SuperGattCallback {
 with tempfile.TemporaryDirectory(prefix='dexcom-connect-') as directory:
     directory = Path(directory)
     java = directory / 'DexGattCallback.java'
-    java.write_text(body)
+    java.write_text(body + policy)
     subprocess.run(['javac', '-d', str(directory), str(java)], check=True)
     subprocess.run(['java', '-cp', str(directory), 'tk.glucodata.DexGattCallback'], check=True)
