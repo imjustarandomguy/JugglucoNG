@@ -44,9 +44,8 @@ public class CommonCanvas {
 		/**
 		 * The arrow's rotation for a rate in mg/dL per minute, in whatever unit glucose is
 		 * shown: [TrendArrowAngle], flat below 0.5 and vertical from 2, like the dashboard,
-		 * notification and widget arrows. This one used to turn 25 degrees per unit and
-		 * scaled the rate by 18 in mmol/L, so in mmol/L the floating glucose drew anything
-		 * over 0.2 mg/dL per minute as a vertical double arrow.
+		 * notification and widget arrows. The rate is mg/dL per minute in either unit, so
+		 * it is never scaled for mmol/L.
 		 */
 		internal fun arrowRotationDegrees(rateMgdlPerMin: Float): Float =
 			TrendArrowAngle.rotationDegrees(rateMgdlPerMin)
