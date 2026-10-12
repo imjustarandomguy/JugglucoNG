@@ -192,4 +192,26 @@ class SensorOwnershipReportWireTests {
         )
         assertEquals(true, statusOnlyCharging(payload))
     }
+
+    // The watch's charger state rides in the same trailing status byte.
+
+    @Test
+    fun chargerStateAndAnAnswerRequestShareTheStatusByte() {
+        val both = SensorOwnershipRuntime.encode(
+            serial, owns = false, lastReadingMs = 42L, directAgeMs = 7L, charging = true, answerRequested = true,
+        )
+        assertEquals(true, SensorOwnershipRuntime.decodeCharging(both))
+        assertEquals(true, SensorOwnershipRuntime.decodeReport(both)?.answerRequested)
+
+        val askOnly = SensorOwnershipRuntime.encode(
+            serial, owns = false, lastReadingMs = 42L, directAgeMs = 7L, answerRequested = true,
+        )
+        assertNull(SensorOwnershipRuntime.decodeCharging(askOnly))
+
+        val chargerOnly = SensorOwnershipRuntime.encode(
+            serial, owns = false, lastReadingMs = 42L, directAgeMs = 7L, charging = false,
+        )
+        assertEquals(false, SensorOwnershipRuntime.decodeCharging(chargerOnly))
+        assertEquals(false, SensorOwnershipRuntime.decodeReport(chargerOnly)?.answerRequested)
+    }
 }

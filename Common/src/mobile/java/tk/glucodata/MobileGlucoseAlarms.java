@@ -77,8 +77,8 @@ public    void handlealarm() {
                         saidloss = true;
                         }
                     else {
-                        // Held for the watch: not said, asked again at the next check.
-                        Notify.onenot.oldnotification(wastime);
+                        // Held for the watch: not said, asked again at the next check. The
+                        // notification already went stale with the current reading, above.
                         }
                     }
                  else {
