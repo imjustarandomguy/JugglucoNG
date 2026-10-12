@@ -68,10 +68,36 @@ private static final long DEXCOM_WARMUP_MSEC = 30L * 60L * 1000L;
 private static final long DEXCOM_WARMUP_RETRY_SLACK_MSEC = 15_000L;
 private static final long DEXCOM_CONNECT_ATTEMPT_TIMEOUT_MS = 45_000L;
 private static final long DEXCOM_RECONNECT_QUIET_MS = 5_000L;
+// A session takes seconds; this only bounds a link that is never closed.
+private static final long DEXCOM_WAKELOCK_TIMEOUT_MS = 2L * 60L * 1000L;
+// A reconnect at most this far off (the quiet period after a session) waits on
+// the executor under a timed wake lock. An alarm clock for it would take the
+// device out of Doze after every session, and can show as the next alarm.
+private static final long DEXCOM_SHORT_RECONNECT_MAX_MS = 7_000L;
+private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
+private PowerManager.WakeLock reconnectlock;
+private long shortReconnectSeq;
+private boolean shortReconnectPending;
+// Asked a moment before its next measurement, a G7 answers with the reading
+// before (age about 300 s). It keeps the link for a few seconds: ask again.
+private static final long DEXCOM_PREVIOUS_READING_AGE_MS = 240_000L;
+private static final long DEXCOM_GLUCOSE_ASK_AGAIN_MS = 1_000L;
+private static final int DEXCOM_GLUCOSE_ASK_AGAIN_MAX = 2;
+// Within half a slot of the last sample published here: the same reading.
+private static final long DEXCOM_SAME_READING_MS = 150_000L;
+private int glucoseAskedAgain;
+private long publishedSampleMs;
 private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
 private BluetoothGatt connectedAttempt;
+// When connectedAttempt came up. A session takes seconds, a first pairing about
+// half a minute; this is the minute the base class gives a connect just issued.
+private long connectedAtMs;
+private static final long DEXCOM_SESSION_GRACE_MS = 60_000L;
+// The device a scan delivered. It carries the G7's address type, which the
+// stack forgets with the bond; one made from the stored address does not.
+private volatile BluetoothDevice scannedDevice;
 private boolean known=false;
     public DexGattCallback(String SerialNumber, long dataptr) {
         super(SerialNumber, dataptr, 0x40);
@@ -171,24 +197,33 @@ private void docmd0(BluetoothGatt bluetoothGatt) {
 //private long connectedtime=0L;
 //private ArrayList<String> triedsensors=new ArrayList<>();
 
+// Not reference counted: a second CONNECTED before the release extends the
+// one lock instead of stacking another, and a lock its timeout already let go
+// is not released again.
 private static PowerManager.WakeLock getwakelock() {
-      return ((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      final var lock=((PowerManager) Applic.app.getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::Dexcom");
+      lock.setReferenceCounted(false);
+      return lock;
       }
 private PowerManager.WakeLock wakelock=null;
 
 private void getlock() {
-    wakelock=getwakelock();
-    wakelock.acquire();
+    if(wakelock==null)
+        wakelock=getwakelock();
+    // Timed, so a link that never reports DISCONNECTED nor gets closed cannot
+    // keep the CPU awake.
+    wakelock.acquire(DEXCOM_WAKELOCK_TIMEOUT_MS);
     {if(doLog) {Log.i(LOG_ID,"getlock");};};
     }
 private synchronized void releaselock() {
     var lock=wakelock;
     if(lock!=null) {
         wakelock=null;
-        lock.release();
+        if(lock.isHeld())
+            lock.release();
         {if(doLog) {Log.i(LOG_ID,"releaselock");};};
         }
-   } 
+   }
 private int triedinvain=0;
 
 private boolean connected=false;
@@ -200,9 +235,33 @@ private boolean connected=false;
         if (doLog) Log.i(LOG_ID, SerialNumber + " prefer background connect: " + why);
     }
 
+    /**
+     * The background preference holds only for a G7 bonded here. Without the
+     * bond (removed, or never made on this device) a background connect never
+     * completes, and the sensor has to be reached as on its first pairing.
+     */
     @Override
     protected boolean useAutoConnect() {
-        return super.useAutoConnect() || directConnectUnreachable;
+        return super.useAutoConnect() || (directConnectUnreachable && bondedHere());
+    }
+
+    @SuppressLint("MissingPermission")
+    private boolean bondedHere() {
+        final var device = mActiveBluetoothDevice;
+        try {
+            return !removedBond && device != null && device.getBondState() == BOND_BONDED;
+        } catch (Throwable th) {
+            return false;
+        }
+    }
+
+    /**
+     * A known G7 bonded here that reconnects in the background: the controller
+     * waits for its next advertisement, so the CPU need not wake at the next
+     * slot to issue the connect. Its reconnect is armed after the quiet period.
+     */
+    private boolean reconnectsInBackground() {
+        return directConnectUnreachable && known && bondedHere();
     }
 
     @Override
@@ -221,16 +280,92 @@ private boolean connected=false;
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
                 || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+        if (delayMillis > 0L && delayMillis <= DEXCOM_SHORT_RECONNECT_MAX_MS) {
+            waitShortReconnect(delayMillis);
+            return true;
+        }
+        cancelShortReconnect();
         if (delayMillis > 0L) {
             // An executor timer cannot wake a suspended CPU, and its pending latch
             // would prevent an alarm/scan from requesting an immediate connection.
             onalarm = setalarm(System.currentTimeMillis() + delayMillis, onalarm, SerialNumber);
             if (onalarm != null) return true;
             // Keep recovery queued if the OS refuses the wakeup alarm.
-            return super.connectDevice(0L);
+            return connectNow();
         }
         cancelalarm();
+        return connectNow();
+    }
+
+    /**
+     * A G7 not bonded here is dialled only once a scan has found it, as on its
+     * first pairing. Once the bond is gone, the stack no longer knows the
+     * stored address is a random one until it sees the sensor advertise, so a
+     * connect to that address alone, direct or in the background, never
+     * completes. That holds for the device made from the stored address at
+     * start or on a roster update, however long ago a scan found the sensor.
+     * Without a device the base class scans.
+     */
+    private boolean connectNow() {
+        if (!bondedHere() && (foundtime == 0L || mActiveBluetoothDevice != scannedDevice))
+            mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
+    }
+
+    /**
+     * Waits a few seconds with the CPU held awake, which an executor timer alone
+     * cannot do. No pending latch: a later request replaces the wait, and an
+     * immediate one cancels it.
+     */
+    private void waitShortReconnect(long delayMillis) {
+        cancelalarm();
+        if (reconnectlock == null) {
+            reconnectlock = ((PowerManager) Applic.app.getSystemService(POWER_SERVICE))
+                    .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Juggluco::DexcomReconnect");
+            reconnectlock.setReferenceCounted(false);
+        }
+        // An upper bound: released once the connect it waits for has been issued.
+        reconnectlock.acquire(delayMillis + DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS);
+        final long seq = ++shortReconnectSeq;
+        shortReconnectPending = true;
+        Applic.scheduler.schedule(() -> runShortReconnect(seq), delayMillis, TimeUnit.MILLISECONDS);
+    }
+
+    private void runShortReconnect(long seq) {
+        synchronized (this) {
+            if (!shortReconnectPending || seq != shortReconnectSeq) return;
+            shortReconnectPending = false;
+        }
+        try {
+            // As the caller would have with no delay, outside this callback's monitor.
+            final var sensorbluetooth = SensorBluetooth.blueone;
+            if (sensorbluetooth != null && !stop)
+                sensorbluetooth.connectToActiveDevice(this, 0L);
+        } finally {
+            synchronized (this) {
+                // A connect still scheduled releases it when it ends: pendingConnectEnded().
+                if (!shortReconnectPending && !connectScheduled())
+                    releaseReconnectLock();
+            }
+        }
+    }
+
+    @Override
+    protected void pendingConnectEnded() {
+        if (!shortReconnectPending)
+            releaseReconnectLock();
+    }
+
+    private synchronized void cancelShortReconnect() {
+        if (!shortReconnectPending) return;
+        shortReconnectPending = false;
+        releaseReconnectLock();
+    }
+
+    private synchronized void releaseReconnectLock() {
+        final var lock = reconnectlock;
+        if (lock != null && lock.isHeld())
+            lock.release();
     }
 
     @Override
@@ -238,8 +373,37 @@ private boolean connected=false;
         super.setPause(pause);
         if (pause) {
             cancelalarm();
+            cancelShortReconnect();
             releaselock();
         }
+    }
+
+    @Override
+    public void setDevice(BluetoothDevice device) {
+        scannedDevice = device;
+        super.setDevice(device);
+    }
+
+    /**
+     * The loss-of-signal alarm can come while a session runs. The base class
+     * spares a link for a minute after connectGatt, but a G7 reconnecting in
+     * the background answers at its own slot, minutes after that, and asking
+     * again for a reply that was the reading before keeps the link a few
+     * seconds longer. Closing it then loses the reading it was about to give.
+     */
+    @Override
+    public boolean reconnect(long now) {
+        if (sessionUnderWay()) {
+            {if(doLog) {Log.i(LOG_ID, SerialNumber + " reconnect: session under way");};};
+            return true;
+        }
+        return super.reconnect(now);
+    }
+
+    // shouldreconnect() passes a time one showtime back, so this asks the clock.
+    private synchronized boolean sessionUnderWay() {
+        return connectedAttempt != null && connectedAttempt == mBluetoothGatt
+                && System.currentTimeMillis() - connectedAtMs < DEXCOM_SESSION_GRACE_MS;
     }
 
     @SuppressLint("MissingPermission")
@@ -248,8 +412,11 @@ private boolean connected=false;
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
         if (bluetoothGatt != mBluetoothGatt) return;
         if (stop) {
-            releaselock();
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
+            // Nothing reconnects a stopped callback: close its GATT (close() also
+            // releases the wake lock), or the client stays registered with the
+            // stack beside the next one, and a resumed callback never dials again.
+            close();
             return;
         }
         if (!acceptConnectionAttemptCallback(bluetoothGatt, newState)) return;
@@ -262,6 +429,12 @@ private boolean connected=false;
         }
         if(newState == BluetoothProfile.STATE_CONNECTED) {
           connectedAttempt = bluetoothGatt;
+          connectedAtMs = tim;
+          glucoseAskedAgain = 0;
+          // A bond this callback removed is back: paired again, or the removal
+          // never took. Background connects (bondedHere) may use it again.
+          if(bondstate == BOND_BONDED)
+              removedBond = false;
           if(bondstate == BluetoothDevice.BOND_BONDING) {
               {if(doLog) {Log.i(LOG_ID, "wait BOND_BONDING");};};
               }
@@ -366,7 +539,7 @@ private boolean connected=false;
                                 stillwait = 0L;
                             sensorbluetooth.connectToActiveDevice(this, stillwait);
                         }
-                        else if(getalarmclock()) {
+                        else if(getalarmclock() && !reconnectsInBackground()) {
                             // Slot timing follows the sample; the quiet period follows reception.
                             final long sinceSample = sampletime > 0L ? tim - sampletime : alreadywaited;
                             final long mmsectimebetween = 5 * 60 * 1000;
@@ -823,6 +996,15 @@ private boolean isWarmupReading(long readingTimeMsec, long res) {
         }
         return sensorstartmsec > 0L && readingTimeMsec > 0L && (readingTimeMsec - sensorstartmsec) < DEXCOM_WARMUP_MSEC;
     }
+    /** Asks again for the current reading on the same link, as onDescriptorWrite first did. */
+    private void askGlucoseAgain(BluetoothGatt gatt) {
+        synchronized (this) {
+            if (stop || !connected || gatt == null || gatt != mBluetoothGatt) return;
+            final byte[] com = {0x4E};
+            charact[0].setWriteType(BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+            tryer(() -> write(0, com));
+        }
+    }
 private    void getdata(byte[] value) {
         final long timmsec = System.currentTimeMillis();
         switch (value[0]) {
@@ -843,11 +1025,27 @@ private    void getdata(byte[] value) {
                         Log.i(LOG_ID, "Dexcom reading is still in warmup window; next retry at=" + lastWarmupRetryAt);
                     }
                 }
-                handleGlucoseResult(res, newtime);
-                Applic.scheduler.schedule(()->{
-                  if(connected) askbackfill();}, 10, TimeUnit.MILLISECONDS);
                 datatime=timmsec;
                 sampletime=newtime;
+                final boolean validReading = !lastDataInvalidDuringWarmup && (res & 0xFFFFFFFFL) != 0L;
+                final boolean previousReading = validReading && timmsec - newtime >= DEXCOM_PREVIOUS_READING_AGE_MS;
+                if(previousReading && publishedSampleMs > 0L && newtime - publishedSampleMs < DEXCOM_SAME_READING_MS) {
+                    // Not a new reading: nothing to publish, and no proof of a fresh one.
+                    {if(doLog) {Log.i(LOG_ID, "glucose reply is the reading already published, age=" + (timmsec - newtime) / 1000 + " s");};};
+                } else {
+                    handleGlucoseResult(res, newtime);
+                    if(validReading)
+                        publishedSampleMs = newtime;
+                }
+                if(previousReading && glucoseAskedAgain < DEXCOM_GLUCOSE_ASK_AGAIN_MAX) {
+                    ++glucoseAskedAgain;
+                    {if(doLog) {Log.i(LOG_ID, "glucose reply is the reading before, ask again " + glucoseAskedAgain);};};
+                    final var gatt = mBluetoothGatt;
+                    Applic.scheduler.schedule(() -> askGlucoseAgain(gatt), DEXCOM_GLUCOSE_ASK_AGAIN_MS, TimeUnit.MILLISECONDS);
+                } else {
+                    Applic.scheduler.schedule(()->{
+                      if(connected) askbackfill();}, 10, TimeUnit.MILLISECONDS);
+                }
                 if(savename) saveDeviceName();
             };break;
            case 0x59:{
@@ -960,8 +1158,33 @@ private    void getdata(byte[] value) {
     public void free() {
         releaselock();
         cancelalarm();
-        unbond();
+        cancelShortReconnect();
+        if (!dialledByAnotherCallback())
+            unbond();
         super.free();
+    }
+
+    /** The address this callback dials: its device's, else the stored one. */
+    private String dialledAddress() {
+        final var device = mActiveBluetoothDevice;
+        return device != null ? device.getAddress() : mActiveDeviceAddress;
+    }
+
+    /**
+     * Whether another callback still dials this G7. A roster rebuild that finds
+     * two callbacks for one sensor frees one of them: the sensor is not going,
+     * and its bond is what the other one reaches it with.
+     */
+    private boolean dialledByAnotherCallback() {
+        final String address = dialledAddress();
+        if (address == null)
+            return false;
+        for (SuperGattCallback other : SensorBluetooth.mygatts()) {
+            if (other != this && other instanceof DexGattCallback && !other.stop
+                    && address.equalsIgnoreCase(((DexGattCallback) other).dialledAddress()))
+                return true;
+        }
+        return false;
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");
@@ -1014,6 +1237,9 @@ private    void getdata(byte[] value) {
                 };break;
             case  BOND_BONDED:  {
                 {if(doLog) {Log.i(LOG_ID,"bonded");};};
+                // Paired again after this callback removed the bond: background
+                // connects need the bond, and it is back.
+                removedBond = false;
                 getdatacmd();
                 if(!has_service) {
                     Applic.RunOnUiThread(() -> {

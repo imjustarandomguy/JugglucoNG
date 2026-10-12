@@ -749,7 +749,7 @@ object SensorOwnershipRuntime {
         yieldStartedAt.clear()
         assignedSensors.forEach { serial ->
             releaseState.resume(serial)
-            findGatt(serial)?.let { gatt ->
+            releasedGatts(serial).forEach { gatt ->
                 gatt.setPause(false)
             }
         }
@@ -766,17 +766,29 @@ object SensorOwnershipRuntime {
         // must still be unable to connect.
         releaseState.release(serial)
         Log.i(LOG_ID, "standing down from $serial: the other device is reading it")
-        val gatt = findGatt(serial) ?: return
-        runCatching {
-            gatt.setPause(true)
-            gatt.disconnect()
-        }.onFailure { Log.stack(LOG_ID, "release($serial)", it) }
+        // Every callback under any of the sensor's names, its GATT closed and not only
+        // disconnected: a paused callback never reconnects or closes it itself.
+        releasedGatts(serial).forEach { gatt ->
+            runCatching {
+                gatt.setPause(true)
+                gatt.closeGattTransport()
+            }.onFailure { Log.stack(LOG_ID, "release($serial)", it) }
+        }
     }
+
+    private fun releasedGatts(serial: String): List<SuperGattCallback> = runCatching {
+        val id = key(serial)
+        SensorBluetooth.mygatts()?.filter { gatt ->
+            val name: String? = gatt.SerialNumber
+            name != null && (key(name) == id || SensorIdentity.matches(name, serial))
+        }
+    }.getOrNull().orEmpty()
 
     private fun resume(serial: String, reason: String = "the other device is no longer reading it") {
         releaseState.resume(serial)
-        val gatt = findGatt(serial)
-        if (gatt == null) {
+        // Every callback release() paused: one left paused never dials again.
+        val gatts = releasedGatts(serial)
+        if (gatts.isEmpty()) {
             // Nothing to reconnect: this device has no driver for the sensor, so
             // arbitration handing it over here achieves nothing. On a watch that
             // means Bluetooth was never brought up, or the sensor's record never
@@ -785,10 +797,12 @@ object SensorOwnershipRuntime {
             return
         }
         Log.i(LOG_ID, "taking $serial back: $reason")
-        runCatching {
-            gatt.setPause(false)
-            gatt.connectDevice(RESUME_DELAY_MS)
-        }.onFailure { Log.stack(LOG_ID, "resume($serial)", it) }
+        gatts.forEach { gatt ->
+            runCatching {
+                gatt.setPause(false)
+                gatt.connectDevice(RESUME_DELAY_MS)
+            }.onFailure { Log.stack(LOG_ID, "resume($serial)", it) }
+        }
     }
 
     /**

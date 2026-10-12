@@ -34,6 +34,7 @@ base_methods = '\n'.join(method(base, signature) for signature in [
     'protected final synchronized boolean acceptConnectionAttemptCallback(',
     'private Runnable getConnectDevice(', 'public synchronized boolean connectDevice(',
     'private synchronized void markConnectRunnableStarted(', 'private synchronized void clearPendingConnect(',
+    'protected void pendingConnectEnded(',
     'public final synchronized void closeGattTransport(', 'public synchronized void disconnect(',
     'public synchronized void setPause(', 'public void onConnectionStateChange(',
     'public void close()', 'protected boolean useAutoConnect(',
