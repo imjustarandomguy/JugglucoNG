@@ -3435,4 +3435,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="food_reorder">Ételek átrendezése</string>
     <string name="food_move_up">Mozgatás fel</string>
     <string name="food_move_down">Mozgatás le</string>
+    <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
+    <string name="status_bar_icon_colored_desc">Az állapotsorban lévő érték megjelenítése a tartományának színében</string>
 </resources>
