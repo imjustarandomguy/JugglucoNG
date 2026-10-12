@@ -3,6 +3,7 @@ package tk.glucodata
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import tk.glucodata.ui.util.GlucoseFormatter
@@ -84,6 +85,22 @@ class GlucoseDisplayConversionTests {
     fun nativeLatestReadingKeepsItsTextWithoutAStoredRow() {
         assertEquals(7.1f, CurrentGlucoseSource.nativeDisplayValue(7.1f, Float.NaN, true), 0f)
         assertEquals(127f, CurrentGlucoseSource.nativeDisplayValue(127f, 128f, false), 0f)
+    }
+
+    @Test
+    fun nativeStoredValueIsTheAutoLaneOfTheReadingsOwnRow() {
+        val timeSec = timeMillis / 1000L
+        val history = longArrayOf(
+            timeSec - 60L, 1180L, 1190L,
+            timeSec, 1270L, 1300L,
+            timeSec + 60L, 1350L, 0L
+        )
+
+        assertEquals(127f, CurrentGlucoseSource.storedMgdlAt(history, timeSec), 0f)
+        // A raw-only row (no auto value) and a missing row both leave the text in charge.
+        assertTrue(CurrentGlucoseSource.storedMgdlAt(longArrayOf(timeSec, 0L, 1300L), timeSec).isNaN())
+        assertTrue(CurrentGlucoseSource.storedMgdlAt(history, timeSec + 1L).isNaN())
+        assertTrue(CurrentGlucoseSource.storedMgdlAt(null, timeSec).isNaN())
     }
 
     @Test
