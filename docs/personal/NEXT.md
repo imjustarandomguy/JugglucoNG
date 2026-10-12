@@ -8,8 +8,9 @@ setup and branch model. Paths are relative to `Common/src/`.
 **Rebased on upstream** (owner's request; upstream #595 merged 2026-10-12, plus #617
 Material 3 Expressive, #612, #616/#621 Nightscout, #604, #603, #499, #600...): `main` =
 4f9a7e01e, every branch rebased (old tips in `backup/2026-10-12/*`), `personal` rebuilt
-(BUILD.md "Last full sync"). Not installed yet (owner: "dont install yet"); adb off.
-Nothing pushed yet.
+(BUILD.md "Last full sync"). **Pushed** to origin (all 31 branches, `main`, `personal`
+9945f71bd; force-with-lease) and **installed** 15:33:21 phone / 15:34:45 watch (APKs built
+in the worktree /c/source/ng-wt-rb). Owner: keep the 0.55 scrim behind the + menu.
 
 Fixed earlier on 2026-10-12 (before the rebase, carried over): app open keeps an earlier loss
 alarm; one hub publish per reading; the Nightscout token is no longer logged
@@ -22,7 +23,7 @@ that narrated history, the expiry/handover KDoc conflict).
 What the rebase changed in behaviour (all agents' choices, owner may revisit):
 - Journal/dashboard +: upstream's #617 FAB menu stays; a tap opens our entry sheet on the
   last type, a hold shows upstream's type menu (each item opens our sheet on that tab), with
-  our 0.55 scrim (owner: keep it, or upstream's undimmed menu?). "Saved … Undo" sits above
+  our 0.55 scrim (owner: keep it). "Saved … Undo" sits above
   the + on the journal screen.
 - A device reading a **Libre 2** itself no longer fills missed readings from the other
   device (upstream #603's cursor protection); G7 unchanged.
