@@ -7,7 +7,6 @@ import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.os.IBinder
 import android.os.Looper
-import android.os.SystemClock
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.Surface
@@ -134,8 +133,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         presence.onComposeTimedOut()
         updatePillWindow()
     }
-    // When the screen came on (uptime) until the pill's window is back, for its log line.
-    private var screenOnAt = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -593,7 +590,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
         if (presence.shown) {
             attachPill()
-            if (screenOnAt != 0L && hostWindowManager != null) logScreenOnWindow()
         } else {
             detachPill()
         }
@@ -608,33 +604,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
             mainHandler.removeCallbacks(updatePillWindowLater)
             mainHandler.post(updatePillWindowLater)
         }
-    }
-
-    /**
-     * The one line per screen on, as the pill's window goes back in: the reading handed
-     * to the pill, and whether its composition held that one before the window's first
-     * frame ("composed"), or the window had to go in without it ("NOT composed").
-     */
-    private fun logScreenOnWindow() {
-        val handed = reading.value
-        val composed = presence.composedRevision
-        val after = SystemClock.uptimeMillis() - screenOnAt
-        screenOnAt = 0L
-        val time = if (handed.timeMillis > 0L) {
-            android.text.format.DateFormat.format("HH:mm:ss", handed.timeMillis)
-        } else {
-            "none"
-        }
-        val state = when {
-            composed == null -> "first composition"
-            composed >= handed.revision -> "composed before its first frame"
-            else -> "NOT composed before its first frame (composed rev $composed)"
-        }
-        tk.glucodata.Log.i(
-            LOG_ID,
-            "screen on: pill window added after $after ms with reading $time ${handed.shownText} " +
-                "${handed.freshness} rev ${handed.revision}, $state",
-        )
     }
 
     /** Adds the pill through [pillHost], or as an app overlay if that host refuses it. */
@@ -715,7 +684,6 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         // Set from the state, not only on its changes, so the frames can never stay
         // paused under a pill on screen.
         if (presence.screenOn) pillFrameClock.resume() else pillFrameClock.pause()
-        if (turnedOn) screenOnAt = SystemClock.uptimeMillis() else if (!presence.screenOn) screenOnAt = 0L
         if (turnedOn) {
             followHub()
         } else if (!presence.screenOn) {
