@@ -31,28 +31,38 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.health.connect.client.records.BloodGlucoseRecord;
 import androidx.health.connect.client.records.metadata.Device;
-import androidx.health.connect.client.records.metadata.Metadata;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 
 public class GlucoseList implements List<BloodGlucoseRecord>   {
-    Metadata metadata;
+    // Each record gets its own Metadata: its clientRecordId names the sensor and the reading.
+    final Device device;
+    final String serial;
 
 
     private static final String LOG_ID="GlucoseList";
    long sensorptr;
    int start;
     int len;
-public    GlucoseList(Metadata meta,long sensorptr,int start,int len) {
-        this.metadata=meta;
+public    GlucoseList(Device device,String serial,long sensorptr,int start,int len) {
+        this.device=device;
+        this.serial=serial;
     this.sensorptr=sensorptr;
         this.start=start;
         this.len=len;
 
+    }
+    /** The batch's exportable readings, read once: what goes to insertRecords, and whether anything does. */
+    public ArrayList<BloodGlucoseRecord> records() {
+        final ArrayList<BloodGlucoseRecord> out = new ArrayList<>();
+        for (final Iterator<BloodGlucoseRecord> it = iterator(); it.hasNext(); )
+            out.add(it.next());
+        return out;
     }
   public void setsizes(int start,int len) {
   	this.start=start;

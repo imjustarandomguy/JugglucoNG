@@ -32,13 +32,8 @@ class LaunchShit(val activity: ActivityResultCaller) {
 
     val permissionsLauncher =
         activity.registerForActivityResult(requestPermissionActivityContract) { granted ->
-            if (granted.containsAll(HealthConnection.PERMISSIONS)) {
-                HealthConnection.hasPermission = true
-                Log.i(LOG_ID, "requestPermissions granted")
-            } else {
-                HealthConnection.hasPermission = false
-                Log.i(LOG_ID, "requestPermissions not granted")
-            }
+            Log.i(LOG_ID, "requestPermissions granted=$granted")
+            HealthConnection.onPermissionResult(granted)
         }
 
 companion object {
