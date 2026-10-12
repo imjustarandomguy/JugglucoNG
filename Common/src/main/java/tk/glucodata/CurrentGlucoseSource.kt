@@ -236,11 +236,12 @@ object CurrentGlucoseSource {
 
     /**
      * Native formats mmol/L as mg/dL / 18 with one decimal, while the stored rows
-     * multiply by [GlucoseFormatter.MGDL_TO_MMOL]: the parsed text read 7.1 for a
-     * 127 mg/dL reading that every row-backed surface showed as 7.0. So once the
-     * native reading is the one shown, its value is taken from the mg/dL native
-     * stored for it, converted like the rows; the text stays the fallback.
-     * Looked up only then, as it reads the sensor's native history.
+     * multiply by [GlucoseFormatter.MGDL_TO_MMOL], so the two disagree on some
+     * readings (127 mg/dL is 7.1 as parsed text, 7.0 in every row-backed
+     * surface). Once the native reading is the one shown, its value is taken from
+     * the mg/dL native stored for it, converted like the rows, so a reading shows
+     * the same wherever it appears; the text stays the fallback. Looked up only
+     * then, as it reads the sensor's native history.
      */
     private fun withStoredNativeValue(snapshot: Snapshot?): Snapshot? {
         snapshot ?: return null

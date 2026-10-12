@@ -10,8 +10,8 @@ import java.math.RoundingMode
  * whole number in mg/dL ("%.1f" and "%.0f"). Compared unrounded, a reading
  * can be past a threshold while it shows exactly that threshold: 72 mg/dL is
  * 3.996 mmol/L, shown as 4.0, yet below a Low threshold of 4.0, so the alarm
- * rang over a screen that read 4.0. Here both sides are rounded the way the
- * display rounds them: a reading shown at the line is not past it, and one
+ * would ring over a screen that reads 4.0. Here both sides are rounded the way
+ * the display rounds them: a reading shown at the line is not past it, and one
  * shown past it is.
  */
 internal object ShownGlucose {

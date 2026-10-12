@@ -1155,8 +1155,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
                 syncLegacyRoomHistoryAfterLive(SerialNumber, timmsec);
             }
 
-            // The displays resolve the lanes, not gl (mg/dL / 18), so the lanes are
-            // converted from mg/dL the way the stored rows are.
+            // The displays resolve the lanes, not gl (mg/dL / 18), so the lanes
+            // carry the same mg/dL conversion as the stored rows.
             final LiveReadingLanes reading = LiveReadingLanes.stockFromMgdl(autoMgdl, rawMgdl, Applic.unit == 1);
             if (shouldApplyGenericLiveCalibration) {
                 glucoseToUse = CalibrationAccess.getCalibratedValue(glucoseToUse, timmsec, isRawMode, false, SerialNumber);
