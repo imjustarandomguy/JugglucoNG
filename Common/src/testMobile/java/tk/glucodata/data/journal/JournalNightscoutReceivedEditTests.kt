@@ -24,8 +24,8 @@ import tk.glucodata.data.journal.JournalTreatmentUploader.receivedEditWriteUrl
  * A treatment received from Nightscout and edited in the journal: the edit goes back to the
  * document it came from, and the next receive does not undo it before it has.
  *
- * The field case: 5 U entered in another app reached Nightscout, was received, and edited to 6 U
- * here. Nothing was sent, and the next receive set it back to 5 U.
+ * The field case: 5 U entered in another app reaches Nightscout, is received, and is edited to
+ * 6 U here. Unless the edit is sent, the next receive sets it back to 5 U.
  */
 class JournalNightscoutReceivedEditTests {
     private val base = "https://ns.example.com"
@@ -233,7 +233,7 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun aServerClockAheadOfThePhoneDoesNotUndoTheEdit() {
         // The server wrote the document before the receive, by its clock an hour ahead: later
-        // than the edit by the phone's. Compared with the edit time, the server won every time.
+        // than the edit by the phone's. Compared with the edit time, the server would win every time.
         val aheadWrote = editedAt + hour
         val row = edited(v3Dose().put("srvModified", aheadWrote)) { it.copy(amount = 6f) }
 
@@ -244,7 +244,7 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun aServerClockBehindThePhoneStillShowsAChangeMadeThere() {
         // Changed on the server after the edit, by a clock an hour behind: earlier than the edit by
-        // the phone's, which kept the edit over the newer document.
+        // the phone's, which would keep the edit over the newer document.
         val behindWrote = receivedAt - hour
         val behindChanged = behindWrote + 5 * 60_000L
         val row = edited(v3Dose().put("srvModified", behindWrote)) { it.copy(amount = 6f) }
@@ -265,7 +265,7 @@ class JournalNightscoutReceivedEditTests {
         assertEquals(serverWrote, receivedRevisionAfterWrite(nightscout, nightscout, serverWrote, manual, null))
         // Another system's copy written over the row says nothing of it.
         assertNull(receivedRevisionAfterWrite(nightscout, nightscout, serverWrote, JournalEntrySource.CLONE, null))
-        // Rows of every other source are written without one, as before.
+        // Rows of every other source are written without one.
         assertNull(receivedRevisionAfterWrite(manual.storageValue, manual.storageValue, null, manual, null))
         assertNull(receivedRevisionOf(manual.storageValue, serverWrote))
         assertEquals(serverWrote, receivedRevisionOf(nightscout, serverWrote))
@@ -629,7 +629,7 @@ class JournalNightscoutReceivedEditTests {
     @Test
     fun aRefusedWriteKeepsTheEditHereWithoutAskingAgain() {
         // A token that may create treatments but not change them answers 403 to every attempt;
-        // retried, it held every later upload back.
+        // retried, it would hold every later upload back.
         for (code in listOf(400, 403, 422)) {
             assertEquals(ReceivedEditAction.KEEP_LOCAL, receivedEditWriteAction(code, answeredByNightscout = true))
         }
