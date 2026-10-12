@@ -25,6 +25,7 @@ class SettingsCopyLocalizationTests {
         "nightscout_send_long_insulin", "nightscout_send_long_insulin_desc",
         "nightscout_receive_amounts", "nightscout_receive_amounts_desc", "nightscout_upload_iob", "nightscout_upload_iob_desc",
         "nightscout_use_v3_api", "nightscout_use_v3_api_desc", "nightscout_follow_use_v3_api", "nightscout_follow_use_v3_api_desc",
+        "nightscout_wifi_only", "nightscout_wifi_only_desc", "nightscout_status_wifi_waiting",
         "nightscout_follow_interval_title", "nightscout_follow_interval_desc", "nightscout_follow_interval_doze",
         "nightscout_mode_upload", "nightscout_mode_follow", "nightscout_permissions_title", "nightscout_permissions_summary",
         "nightscout_permissions_upload", "nightscout_permissions_follow", "nightscout_resend_data",
@@ -82,6 +83,7 @@ class SettingsCopyLocalizationTests {
         val subtitles = listOf(
             "nightscout_send_amounts_desc", "nightscout_send_long_insulin_desc", "nightscout_receive_amounts_desc",
             "nightscout_upload_iob_desc", "nightscout_use_v3_api_desc", "nightscout_follow_use_v3_api_desc",
+            "nightscout_wifi_only_desc",
             "data_smoothing_scope_all_desc", "data_smoothing_graph_only_desc", "data_smoothing_exchange_only_desc",
             "data_smoothing_collapse_desc_match", "data_smoothing_collapse_desc_capped"
         )

@@ -48,6 +48,13 @@ interface ManagedSensorIdentityAdapter {
 
     fun usesNativeDirectStreamShell(sensorId: String?): Boolean = false
 
+    /**
+     * True when [sensorId], a native record's name in full or as native's short alias, is the
+     * record a cloud source mirrors its readings into. Nothing transmits under that name, so
+     * shared code must never build a Bluetooth callback for it.
+     */
+    fun isCloudNativeMirror(sensorId: String?): Boolean = false
+
     fun hasNativeSensorBacking(sensorId: String?): Boolean? = null
 
     fun shouldUseNativeHistorySync(sensorId: String?): Boolean? = null

@@ -1588,6 +1588,9 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="nightscout_url_placeholder">https://nightscout.example.com</string>
     <string name="nightscout_use_v3_api">Adeegso API v3</string>
     <string name="nightscout_use_v3_api_desc">Dami haddii adeeguhu aanu taageerin v3</string>
+    <string name="nightscout_wifi_only">Ku soo rar oo keliya Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Jooji soo rarista inta xogta mobilka la isticmaalayo</string>
+    <string name="nightscout_status_wifi_waiting">Sugaya Wi-Fi</string>
     <string name="nightscout_follow_desc">Ka samee dareemaha akhriska-kaliya ee URL-kan Nightscout.</string>
     <string name="nightscout_follow_url_required">Geli URL Nightscout marka hore</string>
     <string name="nightscout_mode_upload">Dir</string>
@@ -2036,6 +2039,7 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="journal_source_api">Lagu helay API</string>
     <string name="journal_source_health_connect">Ka yimid Health Connect</string>
     <string name="journal_source_meter">Ka yimid qalabka cabbirka</string>
+    <string name="journal_time_locked_nightscout">Waqtiga daawaynta Nightscout lama beddeli karo</string>
     <string name="journal_note_label">Ogow</string>
     <string name="journal_onset_label">Bilawga</string>
     <string name="journal_add_preset">Ku dar nooca insulin</string>
