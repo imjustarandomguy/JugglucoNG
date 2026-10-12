@@ -1202,6 +1202,8 @@ class SensorViewModel : ViewModel() {
             if (gatt.dataptr != 0L) {
                 Natives.setViewMode(gatt.dataptr, normalizedMode)
             }
+            // The mode chooses the lanes every surface shows: resolved again now, every copy set.
+            tk.glucodata.CurrentReadingHub.onDisplayInputsChanged(tk.glucodata.DisplayedReading.Reason.SETTINGS)
             UiRefreshBus.requestStatusRefresh()
             refreshSensors()
         }
