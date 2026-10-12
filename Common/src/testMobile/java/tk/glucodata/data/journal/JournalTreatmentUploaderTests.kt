@@ -240,9 +240,9 @@ class JournalTreatmentUploaderTests {
 
     @Test
     fun aDoseEnteredJustAfterABookedReadArrivesWithinHalfAMinuteOfOpeningTheApp() {
-        // The field case: the booked full read ran 09:23:21, seconds before a dose reached the
-        // server; the app was opened from 09:23:30 to 09:25:23, every time held by the
-        // five-minute floor, and the dose arrived about 09:28.
+        // A dose reaches the server seconds after a full read, and the app is opened 9 s after
+        // that read. The full read's floor would hold the dose back for five minutes however
+        // often the app is opened; the light read's holds it for the rest of half a minute.
         val schedule = schedule()
         val readAt = 1_000_000L
         schedule.recordRead(ReceiveRead.FULL, key, readAt)
@@ -444,7 +444,7 @@ class JournalTreatmentUploaderTests {
 
     @Test
     fun aServerErrorOnOneDeleteIsCountedForThatDeleteAlone() {
-        // A document the server fails on every time no longer holds the queue for good; it is
+        // A document the server fails on every time does not hold the queue for good; it is
         // retried on its own, and past the cap kept here, never dropped.
         assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
         assertEquals(TombstoneAction.KEEP_LOCAL, tombstoneAction(code = 500, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
@@ -715,7 +715,7 @@ class JournalTreatmentUploaderTests {
     @Test
     fun aDeleteThatNeverGotAnAnswerWaitsWithoutCountingAgainstTheTombstone() {
         // A server reachable only at home answers nothing for days while away; counting that
-        // dropped the tombstone, and the next read at home brought the treatment back.
+        // would drop the tombstone, and the next read at home would bring the treatment back.
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = 0))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = MAX_DELETE_ATTEMPTS))
         assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 502, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))

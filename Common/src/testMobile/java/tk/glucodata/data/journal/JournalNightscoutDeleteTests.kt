@@ -48,7 +48,7 @@ class JournalNightscoutDeleteTests {
     @Test
     fun aClientIdentifierIsDeletedByQueryOnV1() {
         // AAPS and other v3 uploaders name treatments by a UUID. v1's document route reads its
-        // argument as an ObjectId, so it deleted nothing and the next read brought it back.
+        // argument as an ObjectId, so it would delete nothing and the next read bring it back.
         // Without the date, a v1 query only reaches the last four days.
         assertEquals(
             "$base/api/v1/treatments?find%5Bidentifier%5D=$uuid&find%5Bcreated_at%5D%5B%24gte%5D=2000-01-01",
@@ -147,8 +147,8 @@ class JournalNightscoutDeleteTests {
     @Test
     fun aLocalOnlyTombstoneOutOfTheNewestTreatmentsTakesAReadOfItsDocument() {
         // The read holds only the newest treatments: an older one deleted here is left out of it
-        // while still on the server, and dropping its tombstone let a follower's history bring it
-        // back.
+        // while still on the server, and dropping its tombstone would let a follower's history
+        // bring it back.
         assertEquals(Settlement.LOOK_UP, settlement(deleteConfirmed = false, readsBack = true, served = false))
     }
 
@@ -260,7 +260,7 @@ class JournalNightscoutDeleteTests {
 
     @Test
     fun anUndatedIdentifierIsLookedUpOverAllTimeWithItsIds() {
-        // Not the newest treatments: those leave an older document out, and it was taken as gone.
+        // Not the newest treatments: those leave an older document out, which would read as gone.
         assertEquals(
             "$base/api/v1/treatments.json?find%5Bidentifier%5D=jng-j-1a7&find%5Bcreated_at%5D%5B%24gte%5D=2000-01-01&count=10",
             identifierLookupUrl(base, "jng-j-1a7", 10)
@@ -311,8 +311,8 @@ class JournalNightscoutDeleteTests {
 
     @Test
     fun aV3ReadStillServesAnOwnV1UploadWaitingForItsDelete() {
-        // The tombstone holds the _id, which v3 leaves out. Read as gone, the tombstone went, and
-        // a delete that had failed let the document be received back.
+        // The tombstone holds the _id, which v3 leaves out. Read as gone, the tombstone would go,
+        // and a delete that had failed would let the document be received back.
         val names = JournalTreatmentUploader.v3NamesOfV1Documents(listOf(ownV1Upload))
         val body = JSONArray().put(servedByV3("jng-j-1a7")).toString()
 
