@@ -11,8 +11,10 @@ import tk.glucodata.ui.util.inDisplayUnit
 /**
  * One reading must read the same wherever it is shown: as the live value before
  * it reaches history, as the watch's native row and as the phone's Room row.
- * Each used its own mg/dL to mmol/L factor, so 127 mg/dL read 7.1 live and 7.0
- * stored, and 100 mg/dL read 5.6 on the phone and 5.5 on the watch.
+ * That holds only if all of them convert mg/dL to mmol/L the same way: dividing
+ * by 18 or 18.0182 disagrees with the stored rows' factor on some readings
+ * (127 mg/dL is 7.1 by / 18 but 7.0 stored, 100 mg/dL is 5.5 by / 18.0182 but
+ * 5.6 stored).
  */
 class GlucoseDisplayConversionTests {
     private val timeMillis = 1_700_000_040_000L
@@ -85,8 +87,8 @@ class GlucoseDisplayConversionTests {
     }
 
     @Test
-    fun readingsThatUsedToDisagreeReadAsOnThePhone() {
-        // 127 mg/dL: 7.1 live (/ 18), 7.0 stored. 100 mg/dL: 5.6 phone, 5.5 watch (/ 18.0182).
+    fun readingsWhereTheDivisorsDisagreeReadAsOnThePhone() {
+        // 127 mg/dL: 7.1 by / 18, 7.0 stored. 100 mg/dL: 5.5 by / 18.0182, 5.6 stored.
         assertEquals("7.0", shown(LiveReadingLanes.stockFromMgdl(127f, Float.NaN, true).stockAuto, emptyList(), AUTO, true))
         assertEquals("7.0", shown(Float.NaN, watchRow(127, 0, true), AUTO, true))
         assertEquals("5.6", shown(Float.NaN, watchRow(100, 0, true), AUTO, true))
