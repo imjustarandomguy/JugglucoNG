@@ -7,8 +7,9 @@ import tk.glucodata.drivers.ManagedBluetoothSensorDriver
 
 /**
  * Pick the expiry-relevant sensor end among per-sensor candidates
- * (serial -> official end, ms). The sensor currently on the display wins;
- * otherwise the farthest end, since the running sensor outlives finished ones.
+ * (serial -> end the alarm counts down to, ms; see [sensorExpiryAlarmEndMs]).
+ * The sensor currently on the display wins; otherwise the farthest end, since
+ * the running sensor outlives finished ones.
  *
  * Ends not in the future are rejected: 0 means unknown, a past end means the
  * sensor is already expired. This also keeps a clamped source out of the latch —
@@ -31,9 +32,39 @@ internal fun selectSensorExpiryEndMs(
 }
 
 /**
- * Resolve the official end (start + wear duration) of the relevant sensor from
- * the live gatt registry. Kotlin-managed drivers without native backing fall
- * back to their UI snapshot.
+ * The end one sensor's expiry warnings count down to.
+ *
+ * Native sensors that outlast their official end (Libre 2 and Dexcom
+ * G7/ONE+/Stelo by 12 hours) keep delivering until the expected end, which is
+ * what the sensor card and the dashboard countdown show. The warnings count
+ * down to that same end: from the official end they would come up to 12 hours
+ * before the sensor stops, and none would be left once the official end has
+ * passed.
+ *
+ * The official end is kept for:
+ *  - Kotlin-managed drivers: their expected end is only an advisory horizon
+ *    (iCan reports 28 days even for its 7- and 8-day units), and the native
+ *    expected end of the shell a driver writes into follows the Libre 2 rules.
+ *  - Sibionics, whose expected end is a different kind of figure: its maximum
+ *    run time, nearly 10 days past the official end.
+ *
+ * An expected end that does not extend the official one is ignored, so an unset
+ * value can never pull the alarm earlier.
+ */
+internal fun sensorExpiryAlarmEndMs(
+    isManagedDriver: Boolean,
+    isSibionics: Boolean,
+    officialEndMs: Long,
+    expectedEndMs: Long
+): Long {
+    if (isManagedDriver || isSibionics) return officialEndMs
+    return if (expectedEndMs > officialEndMs) expectedEndMs else officialEndMs
+}
+
+/**
+ * Resolve the end the expiry alarm counts down to for the relevant sensor from
+ * the live gatt registry (see [sensorExpiryAlarmEndMs]). Kotlin-managed drivers
+ * without native backing fall back to the official end of their UI snapshot.
  */
 internal fun resolveSensorExpiryEndMs(preferredSensorId: String?, nowMs: Long): Long {
     val gatts = try {
@@ -42,9 +73,14 @@ internal fun resolveSensorExpiryEndMs(preferredSensorId: String?, nowMs: Long): 
         null
     } ?: return 0L
     val candidates = gatts.map { gatt ->
-        val nativeEnd = runCatching { Natives.getSensorEndTime(gatt.dataptr, true) }.getOrDefault(0L)
-        val end = if (nativeEnd > 0L) {
-            nativeEnd
+        val nativeOfficialEnd = runCatching { Natives.getSensorEndTime(gatt.dataptr, true) }.getOrDefault(0L)
+        val end = if (nativeOfficialEnd > 0L) {
+            sensorExpiryAlarmEndMs(
+                isManagedDriver = gatt is ManagedBluetoothSensorDriver,
+                isSibionics = runCatching { Natives.isSibionics(gatt.dataptr) }.getOrDefault(false),
+                officialEndMs = nativeOfficialEnd,
+                expectedEndMs = runCatching { Natives.getSensorEndTime(gatt.dataptr, false) }.getOrDefault(0L)
+            )
         } else {
             runCatching {
                 (gatt as? ManagedBluetoothSensorDriver)?.getManagedUiSnapshot()?.officialEndMs ?: 0L
