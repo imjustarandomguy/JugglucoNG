@@ -415,6 +415,11 @@
     <string name="preview_window_expanded_only">Apenas na vista expandida (padrão)</string>
     <string name="preview_window_always">Sempre</string>
     <string name="preview_window_never">Nunca</string>
+    <string name="chart_readings_style_title">Mostrar leituras como</string>
+    <string name="chart_readings_style_desc">Como as leituras são desenhadas nos gráficos: na app, na notificação, no widget e no relógio</string>
+    <string name="chart_readings_style_line">Linha</string>
+    <string name="chart_readings_style_dots">Pontos</string>
+    <string name="chart_readings_style_line_and_dots">Linha e pontos</string>
     <string name="debug_logs_desc">Ver trace.log e logcat</string>
     <string name="data_management">Gerenciamento de Dados</string>
     <string name="export_data">Exportar Histórico</string>

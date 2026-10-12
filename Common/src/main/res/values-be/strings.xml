@@ -457,6 +457,11 @@
     <string name="preview_window_expanded_only">Толькі ў разгорнутым выглядзе (па змаўчанні)</string>
     <string name="preview_window_always">Заўсёды</string>
     <string name="preview_window_never">Ніколі</string>
+    <string name="chart_readings_style_title">Паказанні як</string>
+    <string name="chart_readings_style_desc">Як паказанні малююцца на графіках: у праграме, у апавяшчэнні, у віджэце і на гадзінніку</string>
+    <string name="chart_readings_style_line">Лінія</string>
+    <string name="chart_readings_style_dots">Кропкі</string>
+    <string name="chart_readings_style_line_and_dots">Лінія і кропкі</string>
     <string name="debug_logs_desc">Прагляд trace.log і logcat</string>
     <string name="data_management">Кіраванне Дадзенымі</string>
     <string name="export_data">Экспарт Гісторыі</string>
