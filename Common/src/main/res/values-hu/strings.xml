@@ -3029,4 +3029,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="nightscout_secret_label">API-titok vagy hozzáférési token</string>
     <string name="nightscout_api_help">A v1-hez API-titkot, a v3-hoz Nightscout-hozzáférési tokent használj.</string>
     <string name="nightscout_iob_help">Az eIOB és COB a devicestatus jugglucong mezőjében kerül elküldésre, a hagyományos IOB-tól külön.</string>
+    <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
+    <string name="status_bar_icon_colored_desc">Az állapotsorban lévő érték megjelenítése a tartományának színében</string>
 </resources>
