@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -298,7 +299,13 @@ private fun QuickEntryUndoBar(
     ) {
         Snackbar(
             action = {
-                TextButton(onClick = onUndo) { Text(stringResource(R.string.undo)) }
+                TextButton(
+                    onClick = onUndo,
+                    shapes = ButtonDefaults.shapes(),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding
+                ) {
+                    Text(stringResource(R.string.undo))
+                }
             }
         ) {
             Text(saved.message)

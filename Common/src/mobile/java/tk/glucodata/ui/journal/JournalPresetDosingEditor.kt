@@ -14,8 +14,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
@@ -23,6 +25,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -80,7 +82,8 @@ internal fun JournalPresetDosingSection(
                     selected = abs(doseStep - step) < 0.001f,
                     onClick = { onDoseStepChange(step) },
                     enabled = enabled,
-                    label = { Text(stringResource(R.string.unit_insulin_value, formatFloatForEditor(step))) }
+                    label = { Text(stringResource(R.string.unit_insulin_value, formatFloatForEditor(step))) },
+                    shapes = FilterChipDefaults.shapes()
                 )
             }
         }
@@ -127,7 +130,7 @@ internal fun JournalPresetDosingSection(
                         selected = false,
                         onClick = { onReminderTimesChange(reminderTimes - minutes) },
                         enabled = enabled,
-                        label = { Text(text = label, fontWeight = FontWeight.SemiBold) },
+                        label = { Text(text = label, style = MaterialTheme.typography.labelLargeEmphasized) },
                         trailingIcon = {
                             Icon(
                                 imageVector = Icons.Default.Close,
@@ -165,23 +168,31 @@ internal fun JournalPresetDosingSection(
             title = { Text(text = stringResource(R.string.journal_reminder_add)) },
             text = {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    TimePicker(state = timePickerState)
+                    TimePicker(state = timePickerState, shapes = TimePickerDefaults.shapes(), colors = TimePickerDefaults.colors())
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
-                    onReminderTimesChange(
-                        JournalInsulinDosing.normalizeReminderTimes(
-                            reminderTimes + (timePickerState.hour * 60 + timePickerState.minute)
+                TextButton(
+                    onClick = {
+                        onReminderTimesChange(
+                            JournalInsulinDosing.normalizeReminderTimes(
+                                reminderTimes + (timePickerState.hour * 60 + timePickerState.minute)
+                            )
                         )
-                    )
-                    showTimePicker = false
-                }) {
+                        showTimePicker = false
+                    },
+                    shapes = ButtonDefaults.shapes(),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding
+                ) {
                     Text(text = stringResource(R.string.ok))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) {
+                TextButton(
+                    onClick = { showTimePicker = false },
+                    shapes = ButtonDefaults.shapes(),
+                    contentPadding = ButtonDefaults.TextButtonContentPadding
+                ) {
                     Text(text = stringResource(R.string.cancel))
                 }
             }
