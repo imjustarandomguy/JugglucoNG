@@ -52,31 +52,25 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlin.math.roundToInt
 import tk.glucodata.data.settings.FloatingSettingsRepository
 import tk.glucodata.ui.theme.MainFontFile
-import tk.glucodata.ui.GlucosePoint
 import tk.glucodata.ui.GlucosePaletteState
 import tk.glucodata.ui.components.TrendIndicator
-import tk.glucodata.logic.TrendEngine
-import tk.glucodata.data.calibration.CalibrationManager
-import tk.glucodata.ui.getDisplayValues
-import tk.glucodata.CurrentDisplaySource
-import tk.glucodata.DisplayDataState
+import tk.glucodata.DisplayedReading
 import tk.glucodata.GlucoseValueTone
 import tk.glucodata.Natives
-import tk.glucodata.Notify
 import tk.glucodata.UiRefreshBus
 
 /**
- * A stale reading on the pill: its last value stays, dimmed, beside the next-reading
- * ring's amber; "---" is only for no value at all. Pure, see the tests.
+ * A stale reading on the pill: its last value stays, dimmed and without its arrow, beside
+ * the next-reading ring's amber; "---" is for no value at all. Pure, see the tests.
  */
 internal object FloatingStaleValue {
     /** Opacity of a stale value against a current one: clearly old, still readable. */
     const val DIMMED_ALPHA = 0.5f
 
     /**
-     * The opacity factor for the value, its trend arrow and its secondary value:
-     * [DIMMED_ALPHA] while there is a value and it is [stale], the same flag the
-     * next-reading ring is late by; 1 otherwise.
+     * The opacity factor for the value and its secondary value: [DIMMED_ALPHA] while
+     * there is a value and it is [stale], the same flag the next-reading ring is late by;
+     * 1 otherwise.
      */
     fun alpha(hasValue: Boolean, stale: Boolean): Float = if (hasValue && stale) DIMMED_ALPHA else 1f
 }
@@ -84,54 +78,17 @@ internal object FloatingStaleValue {
 /** Width of the details card; the service places its window by it. */
 internal val FloatingDetailsCardWidth = 260.dp
 
-/**
- * The reading the pill shows, resolved by FloatingGlucoseService: the newest of the
- * readings it follows, and the current value as the notification resolves it.
- *
- * The pill used to resolve the current value itself, in a remember keyed on the
- * readings and the refresh revision. The resolution reads the live reading, which
- * Compose does not observe, so a change that moved none of the keys (the live reading
- * expiring, a value revised under the same time) left the pill on the old one.
- *
- * [revision] changes with every new reading, so the pill can say which one it drew.
- * [intervalMillis] is the sensor's reading interval, 0 when not known; see
- * FloatingNextReading.intervalMillis.
- */
-data class FloatingPillReading(
-    val point: GlucosePoint?,
-    val snapshot: CurrentDisplaySource.Snapshot?,
-    val sensorId: String?,
-    val revision: Long = 0L,
-    val intervalMillis: Long = 0L,
-) {
-    /**
-     * Time of the reading shown: the value's own (the live reading may be newer than the
-     * stored one), else the stored one's. The time to the next reading counts from it.
-     */
-    val readingTime: Long
-        get() = maxOf(snapshot?.timeMillis ?: 0L, point?.timestamp ?: 0L)
-
-    companion object {
-        val NONE = FloatingPillReading(point = null, snapshot = null, sensorId = null)
-    }
-}
-
 @OptIn(androidx.compose.ui.text.ExperimentalTextApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun FloatingGlucoseOverlay(
     repository: FloatingSettingsRepository,
-    /** The readings; a StateFlow, so a new composition starts from the loaded ones. */
-    historyFlow: StateFlow<List<GlucosePoint>>,
-    /** The reading to show, resolved by the service. */
-    readingFlow: StateFlow<FloatingPillReading>,
-    /** The service's freshness clock, shared with the details card; see nextOverlayFreshnessCheckDelay. */
-    freshnessNowFlow: StateFlow<Long>,
-    /** Each item asks for a frame of the pill's recomposer, as a tap does; see FloatingPillWatchdog. */
-    frameRequests: Flow<Unit> = emptyFlow(),
-    /** Called with the [FloatingPillReading.revision] the pill draws, each time it draws. */
-    onReadingDrawn: (Long) -> Unit = {},
     /**
-     * Called with the [FloatingPillReading.revision] the pill composed, after each of its
+     * The device's current reading, CurrentReadingHub's, as the service hands it: value,
+     * arrow, freshness and the time the next one is due all come from it.
+     */
+    readingFlow: StateFlow<DisplayedReading>,
+    /**
+     * Called with the [DisplayedReading.revision] the pill composed, after each of its
      * recompositions is applied; the service puts its window back at screen on only once
      * the handed one is, see FloatingPillPresence.
      */
@@ -171,63 +128,22 @@ fun FloatingGlucoseOverlay(
     val cutoutEdge = cutoutData.edge
     val cutoutSize = cutoutData.size
 
-    // Data State: History List
-    val history by historyFlow.collectAsState()
     val reading by readingFlow.collectAsState()
     val refreshRevision by UiRefreshBus.revision.collectAsState(initial = 0L)
 
-    // Derived Data
-    val glucosePoint = reading.point
-    val currentSensorId = reading.sensorId
-    val currentSnapshot = reading.snapshot
+    // Every layout (pill, side and top island) draws this: the hub's value, arrow and
+    // freshness. A stale value is dimmed and loses its arrow and range colour, and the
+    // time to the next reading turns late, all in the publish that made it stale.
+    val look = FloatingPillLook.of(reading)
 
-    // A frame on request, as a tap's ripple asks for one: the recomposer applies any
-    // pending state changes and recomposes in it. The service asks when the pill drew
-    // another reading than it was handed.
-    LaunchedEffect(frameRequests) {
-        frameRequests.collect { withFrameNanos { } }
-    }
-    // Reports what was drawn, not just composed: the frame on screen is the last link.
-    val drawnRevision = reading.revision
-    val reportDrawn = Modifier.drawBehind { onReadingDrawn(drawnRevision) }
-    // And what was composed, once applied: with no window (the screen just came on) it
+    // Reports what was composed, once applied: with no window (the screen just came on) it
     // is what the next window's first frame will draw.
-    SideEffect { onReadingComposed(drawnRevision) }
+    val composedRevision = look.revision
+    SideEffect { onReadingComposed(composedRevision) }
 
-    // The overlay only recomposes on new data, so once readings stop nothing would
-    // ever notice the last one aging out. The service's clock re-reads the wall clock
-    // until it crosses the same timeout the widget and dashboard use; the reading then
-    // stays, dimmed. The details card reads the same clock.
-    val freshnessNow by freshnessNowFlow.collectAsState()
-    // Every layout (pill, side and top island) dims value and arrow by this; the range
-    // colours and the time to the next reading follow it too.
-    val isStale = !overlayReadingIsFresh(glucosePoint, currentSnapshot?.timeMillis ?: 0L, freshnessNow)
+    // The display arrow rate every surface draws, the dashboard's.
+    val trendResult = remember(look.arrowRate) { FloatingPillLook.trend(look.arrowRate) }
 
-    // View Mode & Calibration
-    val viewData = remember(currentSnapshot, glucosePoint, currentSensorId) {
-        Pair(floatingViewMode(currentSnapshot, currentSensorId), Natives.getunit())
-    }
-    val viewMode = viewData.first
-    val unitInt = viewData.second
-    
-    // Same estimator, window and raw/smoothed choice as every other arrow; the
-    // overlay used to omit useRaw, so in raw view modes it regressed over the
-    // smoothed series and tilted differently from the hero it floats next to.
-    // Over the same points too: the stored history plus the live reading Room
-    // may not hold yet, newest-anchored, as the dashboard and notification use.
-    val trendResult = remember(history, viewMode, unitInt, currentSnapshot, currentSensorId) {
-        if (history.isNotEmpty()) {
-            val stored = history.map { tk.glucodata.GlucosePoint(it.timestamp, it.value, it.rawValue) }
-            TrendEngine.calculateTrend(
-                tk.glucodata.DisplayTrendSource.resolveTrendPoints(stored, currentSnapshot, currentSensorId),
-                useRaw = (viewMode == 1 || viewMode == 3),
-                isMmol = (unitInt == 1)
-            )
-        } else {
-            TrendEngine.TrendResult(TrendEngine.TrendState.Unknown, 0f, 0f, 0f, 0f)
-        }
-    }
-    
     // Gap Calculation
     // Use manual gap if > 0, otherwise detected width. Default 70dp if all else fails.
     val isVerticalIsland = cutoutEdge == CutoutEdge.LEFT || cutoutEdge == CutoutEdge.RIGHT
@@ -363,7 +279,7 @@ fun FloatingGlucoseOverlay(
 
     val onPillTap: () -> Unit = {
         val toggle = onToggleDetails?.takeIf { tapShowsDetails }
-        if (toggle != null && glucosePoint != null) {
+        if (toggle != null && reading.timeMillis > 0L) {
             toggle()
         } else {
             if (toggle != null) onTapNotOpened("no reading, opening the app")
@@ -375,33 +291,15 @@ fun FloatingGlucoseOverlay(
         onOpenApp()
     }
 
-    // A stale reading keeps its value (dimmed below); "---" is only for no reading at all.
-    val displayValues = glucosePoint?.let { point ->
-        val unit = if (unitInt == 1) "mmol/L" else "mg/dL"
-        currentSnapshot?.displayValues ?: run {
-            val isRawModeForCal = viewMode == 1 || viewMode == 3
-            val hasCalibration = !CalibrationManager.shouldOverwriteSensorValues() &&
-                CalibrationManager.hasActiveCalibration(isRawModeForCal)
-            val calibratedValue = if (hasCalibration) {
-                val baseValue = if (isRawModeForCal) point.rawValue else point.value
-                if (baseValue.isFinite() && baseValue > 0.1f) {
-                    CalibrationManager.getCalibratedValue(baseValue, point.timestamp, isRawModeForCal)
-                } else {
-                    null
-                }
-            } else null
-            getDisplayValues(point, viewMode, unit, calibratedValue)
-        }
-    }
-
     // Range colours (the app-wide setting) only while the reading is current.
     // A filled pill is dark in either theme, so it takes the dark-theme shades.
     val paletteRevision = GlucosePaletteState.revision
-    val primaryValue = displayValues?.primaryValue
+    val primaryValue = look.value
+    val isMmol = reading.isMmol
     // The value's range colour, whether or not the value is drawn in it: the time to the
     // next reading's ring fills in it too.
     val rangeColor = remember(
-        primaryValue, isTransparent, isDarkTheme, unitInt, finalTextColor, refreshRevision, paletteRevision,
+        primaryValue, isTransparent, isDarkTheme, isMmol, finalTextColor, refreshRevision, paletteRevision,
     ) {
         if (primaryValue == null) {
             finalTextColor
@@ -410,7 +308,7 @@ fun FloatingGlucoseOverlay(
                 GlucoseValueTone.valueColorArgb(
                     value = primaryValue,
                     isDark = !isTransparent || isDarkTheme,
-                    isMmol = unitInt == 1,
+                    isMmol = isMmol,
                     targetLow = Natives.targetlow(),
                     targetHigh = Natives.targethigh(),
                     veryLowThreshold = Natives.alarmverylow(),
@@ -421,41 +319,43 @@ fun FloatingGlucoseOverlay(
             )
         }
     }
-    val valueColor = if (isStale || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
+    val valueColor = if (look.stale || primaryValue == null || !valueRangeColors) finalTextColor else rangeColor
 
-    // Time to the next reading: a ring around the trend arrow, in every layout (the free
-    // pill and the island, upright or not), so only while the arrow is shown. Late in the
-    // range colours' amber, and late too while the pill is stale.
+    // Time to the next reading: a ring around the trend arrow's place, in every layout
+    // (the free pill and the island, upright or not), with the arrow on and a value
+    // shown. Late in the range colours' amber, from the publish that makes the reading
+    // stale; the arrow is gone then and the ring stays, alone in its place.
     val nextReadingLateColor = remember(isTransparent, isDarkTheme, paletteRevision) {
         Color(tk.glucodata.GlucoseRangeColors.valueBorderline(!isTransparent || isDarkTheme))
     }
-    val hasArrow = showArrow && glucosePoint != null
+    val hasArrow = showArrow && look.hasArrow
     val nextReading = nextReadingIndicator(
-        enabled = showNextReading,
-        readingTime = reading.readingTime,
-        intervalMillis = reading.intervalMillis,
-        stale = isStale,
+        enabled = showNextReading && showArrow && look.hasValue,
+        readingTime = reading.timeMillis,
+        nextExpectedAt = reading.nextExpectedAtMillis,
+        late = look.stale,
         color = finalTextColor,
         rangeColor = rangeColor,
         lateColor = nextReadingLateColor,
-        arrowSize = if (hasArrow) shownArrowSize else null,
+        arrowSize = shownArrowSize,
     )
+    val hasArrowSlot = hasArrow || nextReading.arrowSlot != null
 
-    // A stale value is drawn dimmed: the value, its arrow and its secondary value in
-    // their own colours at reduced opacity, by the same stale flag as the ring's late
-    // state. Their outline or shadow stays as it is, for legibility on any background.
-    val valueAlpha = FloatingStaleValue.alpha(hasValue = glucosePoint != null, stale = isStale)
+    // A stale value is drawn dimmed: the value and its secondary value in their own
+    // colours at reduced opacity, by the same stale flag as the ring's late state. Their
+    // outline or shadow stays as it is, for legibility on any background.
+    val valueAlpha = look.valueAlpha
     val shownValueColor = valueColor.copy(alpha = valueColor.alpha * valueAlpha)
     val secondaryValueColor = finalTextColor.copy(alpha = 0.7f * valueAlpha)
 
     val valueContent: @Composable () -> Unit = {
-        if (displayValues != null) {
-            val dvs = displayValues
+        if (look.hasValue) {
+            val secondary = look.secondaryText?.takeIf { showSecondary }
 
             if (isDynamicIsland && isVerticalIsland) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FloatingStyledText(
-                        text = dvs.primaryStr,
+                        text = look.text,
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
@@ -465,10 +365,10 @@ fun FloatingGlucoseOverlay(
                         useOutline = useSubtleOutline,
                         textAlign = TextAlign.Center
                     )
-                    if (showSecondary && !dvs.secondaryStr.isNullOrEmpty()) {
+                    if (secondary != null) {
                         Spacer(Modifier.height(sideSecondarySpacing))
                         FloatingStyledText(
-                            text = dvs.secondaryStr!!,
+                            text = secondary,
                             fontSize = sideSecondaryFontSize,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
@@ -483,7 +383,7 @@ fun FloatingGlucoseOverlay(
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FloatingStyledText(
-                        text = dvs.primaryStr,
+                        text = look.text,
                         fontSize = fontSize,
                         fontFamily = fontFamily,
                         fontWeight = fontWeight,
@@ -493,10 +393,10 @@ fun FloatingGlucoseOverlay(
                         useOutline = useSubtleOutline,
                         textAlign = TextAlign.End
                     )
-                    if (showSecondary && !dvs.secondaryStr.isNullOrEmpty()) {
+                    if (secondary != null) {
                         Spacer(Modifier.width(inlineSpacing))
                         FloatingStyledText(
-                            text = dvs.secondaryStr!!,
+                            text = secondary,
                             fontSize = fontSize * 0.7f,
                             fontFamily = fontFamily,
                             fontWeight = fontWeight,
@@ -510,7 +410,7 @@ fun FloatingGlucoseOverlay(
             }
         } else {
             FloatingStyledText(
-                text = "---",
+                text = look.text,
                 fontSize = fontSize,
                 fontFamily = fontFamily,
                 fontWeight = fontWeight,
@@ -523,15 +423,17 @@ fun FloatingGlucoseOverlay(
     }
 
     val arrowContent: @Composable () -> Unit = {
-        if (hasArrow) {
+        if (hasArrowSlot) {
             val arrow: @Composable () -> Unit = {
-                TrendIndicator(
-                    trendResult = trendResult,
-                    modifier = Modifier.size(shownArrowSize),
-                    color = shownValueColor,
-                    outlineColor = arrowOutlineColor,
-                    shadowColor = arrowShadowColor
-                )
+                if (hasArrow) {
+                    TrendIndicator(
+                        trendResult = trendResult,
+                        modifier = Modifier.size(shownArrowSize),
+                        color = shownValueColor,
+                        outlineColor = arrowOutlineColor,
+                        shadowColor = arrowShadowColor
+                    )
+                }
             }
             val ringSlot = nextReading.arrowSlot
             if (ringSlot != null) {
@@ -574,7 +476,7 @@ fun FloatingGlucoseOverlay(
             edge = cutoutEdge,
             centre = cutoutData.centre,
             nudge = islandNudge.dp,
-            modifier = reportDrawn
+            modifier = Modifier
                 .wrapContentSize()
                 .then(dragModifier)
         ) {
@@ -657,7 +559,7 @@ fun FloatingGlucoseOverlay(
         Surface(
             color = finalBgColor,
             shape = finalShape,
-            modifier = reportDrawn
+            modifier = Modifier
                 .wrapContentSize()
                 .then(dragModifier)
                 .clip(finalShape)
@@ -674,9 +576,9 @@ fun FloatingGlucoseOverlay(
                 horizontalArrangement = Arrangement.spacedBy(inlineSpacing)
             ) {
                 // No placeholder for a hidden arrow here: spacedBy would add a gap for it.
-                if (isMirrored && hasArrow) arrowContent()
+                if (isMirrored && hasArrowSlot) arrowContent()
                 valueContent()
-                if (!isMirrored && hasArrow) arrowContent()
+                if (!isMirrored && hasArrowSlot) arrowContent()
             }
         }
     }
@@ -686,23 +588,24 @@ fun FloatingGlucoseOverlay(
  * What the glucose notification shows, for the reading on the pill: its time
  * and age, the Δ, the chart and the IOB/COB line (when the notification shows
  * one). Tapping it opens the app. Its background is [backgroundOpacity] opaque.
- * While open it follows the pill's reading, its age on the pill's freshness clock,
- * and a stale reading is dimmed as on the pill; see FloatingDetailsCardState.
+ * While open it follows the pill's reading, its age on the clock of [nowFlow], and a
+ * stale reading is dimmed as on the pill; see FloatingDetailsCardState.
  */
 @Composable
 fun FloatingDetailsCard(
-    readingFlow: StateFlow<FloatingPillReading>,
-    freshnessNowFlow: StateFlow<Long>,
+    readingFlow: StateFlow<DisplayedReading>,
+    nowFlow: StateFlow<Long>,
     isDark: Boolean,
     onOpenApp: () -> Unit,
     backgroundOpacity: Float = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY,
 ) {
     val reading by readingFlow.collectAsState()
-    val freshnessNow by freshnessNowFlow.collectAsState()
-    val viewData = remember(reading.snapshot, reading.point, reading.sensorId) {
-        Pair(floatingViewMode(reading.snapshot, reading.sensorId), Natives.getunit())
+    val now by nowFlow.collectAsState()
+    // The value's own view mode while it is shown; the sensor's for the chart of one gone.
+    val viewMode = remember(reading.showsValue, reading.viewMode, reading.sensorId) {
+        if (reading.showsValue) reading.viewMode else floatingViewMode(reading.sensorId)
     }
-    val state = FloatingDetailsCardState.of(reading, viewData.second == 1, viewData.first, freshnessNow) ?: return
+    val state = FloatingDetailsCardState.of(reading, Natives.getunit() == 1, viewMode, now) ?: return
     val request = state.request
     val context = LocalContext.current
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -967,56 +870,11 @@ private fun AsymmetricCenteringColumn(
     }
 }
 
-private const val OVERLAY_FRESHNESS_POLL_MS = 15_000L
-
-/**
- * How long to wait before re-checking whether the reading at [latestReadingMillis]
- * has gone stale, or null once it has (or there is none) and nothing is left to
- * watch. Capped at [OVERLAY_FRESHNESS_POLL_MS] because coroutine delays run on
- * uptime, which stops during deep sleep: one long wait would wake far too late.
- * While [ageShown] (the details card is open) a stale reading is still watched, at
- * that cap, so the age the card shows goes on.
- */
-internal fun nextOverlayFreshnessCheckDelay(
-    latestReadingMillis: Long,
-    nowMillis: Long,
-    freshnessWindowMillis: Long = Notify.glucosetimeout,
-    ageShown: Boolean = false,
-): Long? {
-    if (latestReadingMillis <= 0L) return null
-    val untilStale = latestReadingMillis + freshnessWindowMillis - nowMillis
-    if (untilStale < 0L) return if (ageShown) OVERLAY_FRESHNESS_POLL_MS else null
-    return (untilStale + 1L).coerceAtMost(OVERLAY_FRESHNESS_POLL_MS)
-}
-
-/** The view mode of [snapshot]'s reading, else [sensorId]'s, else 0. */
-internal fun floatingViewMode(snapshot: CurrentDisplaySource.Snapshot?, sensorId: String?): Int {
-    snapshot?.viewMode?.let { return it }
+/** The view mode of [sensorId], else 0. */
+internal fun floatingViewMode(sensorId: String?): Int {
     if (sensorId.isNullOrEmpty()) return 0
     return runCatching {
         val sensor = Natives.getSensorUiSnapshot(sensorId)
         if (sensor != null && sensor.size >= 2) sensor[1].toInt() else 0
     }.getOrDefault(0)
-}
-
-/**
- * Whether the overlay's reading is current at [nowMillis]: within the widget/dashboard
- * freshness window, counted from the newer of [latestPoint] and the current value's
- * [snapshotMillis]. False without a reading. A reading that is not current stays on
- * the pill, dimmed (FloatingStaleValue), with a late next-reading indicator.
- */
-internal fun overlayReadingIsFresh(
-    latestPoint: GlucosePoint?,
-    snapshotMillis: Long,
-    nowMillis: Long,
-    freshnessWindowMillis: Long = Notify.glucosetimeout
-): Boolean {
-    if (latestPoint == null) return false
-    return DisplayDataState.resolve(
-        sensorPresent = true,
-        currentTimestampMillis = snapshotMillis,
-        latestHistoryTimestampMillis = latestPoint.timestamp,
-        freshnessWindowMillis = freshnessWindowMillis,
-        nowMillis = nowMillis
-    ).isFresh
 }
