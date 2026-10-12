@@ -3063,4 +3063,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Спершу стрілка, потім значення</string>
     <string name="floating_restricted_settings_hint">Якщо Android пише «Обмежене налаштування»: у відомостях про додаток натисніть ⋮ → Дозволити обмежені налаштування, потім увімкніть службу.</string>
     <string name="floating_open_app_info">Про додаток</string>
+    <string name="status_bar_icon_colored_title">Кольоровий значок у рядку стану</string>
+    <string name="status_bar_icon_colored_desc">Малює значення в рядку стану кольором діапазону</string>
 </resources>

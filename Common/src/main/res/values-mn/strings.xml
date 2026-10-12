@@ -3084,4 +3084,6 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="floating_mirrored_desc">Эхлээд сум, дараа нь утга</string>
     <string name="floating_restricted_settings_hint">Android «Хязгаарлагдсан тохиргоо» гэж мэдэгдвэл: Аппын мэдээлэл дотор ⋮ → Хязгаарлагдсан тохиргоог зөвшөөрөх-ийг дарж, дараа нь үйлчилгээг асаана уу.</string>
     <string name="floating_open_app_info">Аппын мэдээлэл</string>
+    <string name="status_bar_icon_colored_title">Өнгөт төлөвийн мөрийн дүрс</string>
+    <string name="status_bar_icon_colored_desc">Төлөвийн мөр дэх утгыг хязгаарын өнгөөр зурна</string>
 </resources>

@@ -21,13 +21,30 @@ public class StatusIcon {
         mContext = context;
     }
 
+    /**
+     * Colours the value. Most status bars draw small icons as a one-colour mask;
+     * where a bitmap's colours are kept, the dark edge keeps a coloured value
+     * legible on a light bar.
+     */
+    private static void applyColor(Paint paint, int color) {
+        paint.setColor(color);
+        if (color != Color.WHITE)
+            paint.setShadowLayer(size * 0.03f, 0f, 0f, Color.BLACK);
+        else
+            paint.clearShadowLayer();
+    }
+
     Icon getIcon(String value) {
+        return getIcon(value, Color.WHITE);
+    }
+
+    Icon getIcon(String value, int color) {
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
         Canvas canvas = new Canvas(bitmap);
 
         Paint paint = new Paint();
         paint.setAntiAlias(true);
-        paint.setColor(Color.WHITE);
+        applyColor(paint, color);
         paint.setTextAlign(Paint.Align.LEFT);
 
         // Read Preferences
@@ -128,8 +145,13 @@ public class StatusIcon {
     }
 
     Icon getIcon(String primaryValue, List<String> peerValues) {
+        return getIcon(primaryValue, peerValues, Color.WHITE);
+    }
+
+    /** [primaryColor] colours the primary value only; peer sensors stay white. */
+    Icon getIcon(String primaryValue, List<String> peerValues, int primaryColor) {
         if (peerValues == null || peerValues.isEmpty()) {
-            return getIcon(primaryValue);
+            return getIcon(primaryValue, primaryColor);
         }
 
         Bitmap bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
@@ -144,7 +166,9 @@ public class StatusIcon {
         float primaryLineHeight = availableHeight / totalWeight;
         float top = 0f;
 
+        applyColor(paint, primaryColor);
         top = drawCenteredLine(canvas, paint, primaryValue, top, primaryLineHeight);
+        applyColor(paint, Color.WHITE);
         for (String peerValue : peerValues) {
             top += lineGap;
             top = drawCenteredLine(canvas, paint, peerValue, top, primaryLineHeight * peerScale);

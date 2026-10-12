@@ -266,6 +266,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         // sensors the slot stayed 0 and both checks read every session as if no reading
         // had ever arrived.
         charcha[0] = sampleTimeMs;
+        // scanStarter sets this whenever no GATT is open; an accepted reading means the sensor was found.
+        if (SEARCHING_STATUS.equals(constatstatusstr))
+            constatstatusstr = "";
         // A reading imported over Clone is published through this same callback,
         // so accepting one is not proof this device read the sensor. Only a GATT
         // this process actually connected is, and without that check a mirrored
@@ -372,6 +375,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     }
 
     long[] constatchange = { 0L, 0L };
+    static final String SEARCHING_STATUS = "Searching for sensors";
     public String constatstatusstr = "";
     public String handshake = "";
     long[] wrotepass = { 0L, 0L };

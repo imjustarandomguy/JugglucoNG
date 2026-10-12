@@ -3058,4 +3058,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="floating_mirrored_desc">Előbb a nyíl, aztán az érték</string>
     <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
     <string name="floating_open_app_info">Alkalmazásinformáció</string>
+    <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
+    <string name="status_bar_icon_colored_desc">Az állapotsorban lévő érték megjelenítése a tartományának színében</string>
 </resources>

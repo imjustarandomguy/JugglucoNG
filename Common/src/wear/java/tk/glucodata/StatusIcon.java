@@ -15,4 +15,8 @@ public class StatusIcon {
                 return null;
         }
 
+        Icon getIcon(String primaryValue, List<String> peerValues, int primaryColor) {
+                return null;
+        }
+
 }

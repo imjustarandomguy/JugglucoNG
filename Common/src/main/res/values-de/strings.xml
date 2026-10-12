@@ -3099,4 +3099,6 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="floating_mirrored_desc">Erst der Pfeil, dann der Wert</string>
     <string name="floating_restricted_settings_hint">Meldet Android „Eingeschränkte Einstellung“: in der App-Info auf ⋮ → Eingeschränkte Einstellungen zulassen tippen, dann den Dienst aktivieren.</string>
     <string name="floating_open_app_info">App-Info</string>
+    <string name="status_bar_icon_colored_title">Farbiges Statusleisten-Symbol</string>
+    <string name="status_bar_icon_colored_desc">Zeichnet den Wert in der Statusleiste in der Bereichsfarbe</string>
 </resources>
