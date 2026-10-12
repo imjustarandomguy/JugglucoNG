@@ -204,6 +204,8 @@ object WidgetPresenter {
         timeText: (Long) -> String,
     ): WidgetRenderModel {
         val palette = WidgetPalette.resolve(context, options.background, options.opacityPercent, night)
+        // The hub's reading and its freshness: stale once the next reading was due and did
+        // not come (struck through, without arrow), "---" from 30 minutes after it.
         val reading = data.reading
         val fresh = data.isFresh
         val valueText = reading?.valueText ?: context.getString(R.string.novalue)
@@ -270,6 +272,7 @@ object WidgetPresenter {
         val unit = context.getString(if (data.isMmol) R.string.mmolL else R.string.mgdL)
         val description = when {
             reading == null -> valueText
+            !reading.hasValue -> (listOf(valueText) + geometry.metaLines).joinToString(", ")
             else -> (listOf("$valueText $unit") + geometry.metaLines.ifEmpty { listOfNotNull(time) })
                 .joinToString(", ")
         }
@@ -278,7 +281,7 @@ object WidgetPresenter {
             palette = palette,
             valueText = valueText,
             valueColor = valueColor,
-            stale = reading != null && !fresh,
+            stale = reading?.isStale == true,
             fontKey = fonts.key,
             arrowRate = if (showArrow) reading!!.rate else Float.NaN,
             largeArrow = largeArrow,
