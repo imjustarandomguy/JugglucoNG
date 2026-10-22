@@ -288,6 +288,16 @@ class JournalRepository {
         return dao.getEntryBySourceRecordId(id) != null
     }
 
+    /** The rows an importer wrote under these names, by name, so it can tell what changed. */
+    suspend fun entriesBySourceRecordIds(sourceRecordIds: Collection<String>): Map<String, JournalEntry> {
+        val ids = sourceRecordIds.map(String::trim).filter(String::isNotBlank).distinct()
+        // In chunks, within the bound variables older SQLite takes in one statement.
+        return ids.chunked(500)
+            .flatMap { dao.getEntriesBySourceRecordIds(it) }
+            .mapNotNull { row -> row.sourceRecordId?.let { it to row.toModel() } }
+            .toMap()
+    }
+
     /** What one importer has already written in a stretch of time, so it can reconcile. */
     suspend fun entriesFromSourceBetween(
         source: JournalEntrySource,
@@ -296,6 +306,60 @@ class JournalRepository {
     ): List<JournalEntry> {
         return dao.getEntriesBySourceBetween(source.storageValue, startMillis, endMillis)
             .map(JournalEntryEntity::toModel)
+    }
+
+    /**
+     * Writes the importer's [inputs] that [writes] accepts, each decided on its row (found by
+     * sourceRecordId; null when there is none) as this transaction reads it: an edit or a deletion
+     * made since the importer last read the row is seen here, not written over. One transaction
+     * for the batch; each write is [upsertEntry]'s. For rows of this device's own sources.
+     *
+     * @return how many were written
+     */
+    suspend fun upsertEntriesWhere(
+        inputs: List<JournalEntryInput>,
+        writes: (input: JournalEntryInput, row: JournalEntry?) -> Boolean,
+    ): Int {
+        if (inputs.isEmpty()) return 0
+        val written = database.withTransaction {
+            inputs.filter { input ->
+                // The row upsertEntry would land on by name.
+                val row = input.sourceRecordId?.takeIf { it.isNotBlank() }?.let { dao.getEntryBySourceRecordId(it) }
+                writes(input, row?.toModel()).also { if (it) upsertEntry(input) }
+            }
+        }
+        val own = written.filterNot { isMirroredSource(it.source) }
+        if (own.isNotEmpty()) {
+            // upsertEntry woke the uploads as its own, nested, transaction ended, before another
+            // connection could read the rows: once more now that they are committed.
+            if (own.any { affectsIob(it.type.storageValue) }) tk.glucodata.OutboundApiJournalSnapshot.journalChanged()
+            tk.glucodata.NightscoutUploadWake.afterJournalChange()
+            tk.glucodata.Natives.wakebackup()
+        }
+        return written.size
+    }
+
+    /**
+     * Deletes the rows with these ids that are still there and that [deletes] accepts, each decided
+     * on its row as this transaction reads it: a row changed since the caller read it is seen here,
+     * not deleted unseen. One transaction; each delete is [deleteEntry]'s. For rows of this
+     * device's own sources.
+     *
+     * @return how many were deleted
+     */
+    suspend fun deleteEntriesWhere(ids: List<Long>, deletes: (row: JournalEntry) -> Boolean): Int {
+        if (ids.isEmpty()) return 0
+        val deleted = database.withTransaction {
+            ids.mapNotNull { id ->
+                dao.getEntryById(id)?.takeIf { deletes(it.toModel()) }?.also { deleteEntry(id) }
+            }
+        }
+        if (deleted.any { !isMirroredSource(JournalEntrySource.fromStorage(it.source)) }) {
+            // As above: deleteEntry's wakes came before the deletions were committed.
+            tk.glucodata.OutboundApiJournalSnapshot.journalChanged()
+            tk.glucodata.NightscoutUploadWake.afterJournalChange()
+        }
+        return deleted.size
     }
 
     /**
@@ -863,7 +927,9 @@ internal fun preserveMirroredJournalIdentity(
     return if (storedSource != null && isExternalJournalMirrorSource(storedSource)) {
         JournalWriteIdentity(storedSource, existingSourceRecordId)
     } else {
-        JournalWriteIdentity(incomingSource, incomingSourceRecordId)
+        // The user's edit comes without a name and keeps the row's: an importer finds the row it
+        // wrote by that name, and must not write the record again beside the edit.
+        JournalWriteIdentity(incomingSource, incomingSourceRecordId ?: existingSourceRecordId)
     }
 }
 
