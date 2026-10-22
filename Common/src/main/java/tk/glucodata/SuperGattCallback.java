@@ -1756,10 +1756,21 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
             return false;
         }
         if (connectPending) {
-            if (doLog) {
-                Log.i(LOG_ID, "connectDevice skipped, connect already pending for " + SerialNumber);
+            // A request due sooner replaces the queued connect; one due at the same time
+            // or later is covered by it. Otherwise a long delay (a Dexcom warmup retry is
+            // half an hour out) would hold off the loss-of-signal reconnect, the start-up
+            // connect and the loss alarm's reconnectall until it ran.
+            if (!PendingConnectPolicy.cancelForSoonerRequest(pendingConnectFuture, delayMillis)) {
+                if (doLog) {
+                    Log.i(LOG_ID, "connectDevice skipped, connect already pending for " + SerialNumber);
+                }
+                return true;
             }
-            return true;
+            if (doLog) {
+                Log.i(LOG_ID, "connectDevice(" + delayMillis + ") replaces a later pending connect for "
+                        + SerialNumber);
+            }
+            clearPendingConnect();
         }
         Runnable connect = getConnectDevice();
         if (connect == null)
