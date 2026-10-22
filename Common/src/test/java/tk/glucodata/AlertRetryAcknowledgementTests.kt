@@ -308,6 +308,7 @@ class AlertRetryAcknowledgementTests {
                             static class AlarmTestSync { static boolean startTest(int kind) { return true; } }
                             static class AlarmRouting { static boolean ringsHere(AlertType type) { return true; } }
                             static class AlarmSilenceSync { static void onLossOver() {} }
+                            static class AlarmHistory { static void onFired(int kind, float value) {} }
                         }
                     } }
                     static boolean isWearable;
