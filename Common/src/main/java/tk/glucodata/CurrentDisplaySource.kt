@@ -769,15 +769,14 @@ object CurrentDisplaySource {
             return false
         }
         tk.glucodata.drivers.ManagedSensorViewModeStore.write(Applic.app, sensorName, normalized)
-        tk.glucodata.drivers.ManagedSensorRuntime.resolveDriver(sensorName)?.let { driver ->
+        val driver = tk.glucodata.drivers.ManagedSensorRuntime.resolveDriver(sensorName)
+        if (driver != null) {
             driver.viewMode = normalized
             val ptr = driver.getManagedUiSnapshot()?.dataptr ?: 0L
             if (ptr != 0L) {
                 runCatching { Natives.setViewMode(ptr, normalized) }
             }
-            return true
-        }
-        if (SensorIdentity.hasNativeSensorBacking(sensorName)) {
+        } else if (SensorIdentity.hasNativeSensorBacking(sensorName)) {
             runCatching {
                 val dataptr = Natives.getdataptr(sensorName)
                 if (dataptr != 0L) {
@@ -785,6 +784,8 @@ object CurrentDisplaySource {
                 }
             }
         }
+        // The mode chooses the lanes every surface shows: resolved again now, every copy set.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS)
         return true
     }
 
