@@ -320,6 +320,7 @@ class AlertRetryAcknowledgementTests {
                         static boolean shouldwakesender() { return false; }
                         static void wakestreamsender() {}
                     }
+                    static class PhoneReadingClock { static void reconcileAwake() {} }
                     static boolean hasalarmloss() { return true; }
                     static long waitmmsec() { return 0; }
                     static class LossOfSensorAlarm { static void setalarm(Object app, long at) {} }
