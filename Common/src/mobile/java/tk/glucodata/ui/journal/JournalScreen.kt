@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -136,7 +138,9 @@ fun JournalScreen(
     glucoseAnchors: Map<Long, JournalGlucoseAnchor>? = null,
     /** The whole store's ends; see HistoryBrowseScreen. */
     timelineExtents: TimelineExtents? = null,
-    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null
+    onVisibleRangeChanged: ((startMs: Long, endMs: Long) -> Unit)? = null,
+    /** Where a save's "Saved 6 U Fiasp" and Undo show, just above the +. */
+    snackbarHostState: SnackbarHostState? = null
 ) {
     val view = LocalView.current
     val sortedHistory = remember(glucoseHistory) { glucoseHistory.ascendingByTimestamp() }
@@ -392,13 +396,27 @@ fun JournalScreen(
             }
         }
 
+        // "Saved 6 U Fiasp" and Undo, just above the +: this screen has no Scaffold to place them.
+        snackbarHostState?.let {
+            SnackbarHost(
+                hostState = it,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = JournalFabClearance)
+            )
+        }
         JournalExpandableFab(
             expanded = fabExpanded,
             onExpandedChange = {
                 fabExpanded = it
                 if (it) clearChartAction()
             },
+            // A tap goes straight to the entry sheet, as from the dashboard: on the one type the
+            // list is filtered to, else on the type last added; its tabs switch type. Holding the
+            // + still opens the type menu.
+            tapType = { selectedTypes.singleOrNull() ?: JournalQuickEntryPrefs.lastType(view.context) },
             onTypeSelected = { type ->
+                clearChartAction()
                 onAddJournalEntry(
                     journalQuickAddTimestamp(selectedPointTimestamp, System.currentTimeMillis(), quickAddAlwaysNow),
                     type,
@@ -857,3 +875,6 @@ private class JournalDateSectionBuilder(
     val items: MutableList<JournalLedgerItem> = mutableListOf(),
     val keys: MutableList<String> = mutableListOf()
 )
+
+// Clears the +: the FAB menu's 16dp margin, the 56dp button, and 16dp above it.
+private val JournalFabClearance = 88.dp
