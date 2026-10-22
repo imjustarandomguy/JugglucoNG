@@ -107,9 +107,12 @@ private int authSlot;
     public DexGattCallback(String SerialNumber, long dataptr) {
         super(SerialNumber, dataptr, 0x40);
         known=dexKnownSensor(dataptr);
-        // A sensor paired before slots were selectable is paired on the mobile-app slot.
+        // A sensor paired before slots were selectable is paired on the mobile-app slot;
+        // on this build's watch, which has paired on the smartwatch slot since before
+        // they were, on that one.
         if (dataptr != 0L && !DexcomBluetoothSlot.isPinned(SerialNumber) && Natives.isAuthenticated(dataptr))
-            DexcomBluetoothSlot.pin(SerialNumber, DexcomBluetoothSlot.DEFAULT);
+            DexcomBluetoothSlot.pin(SerialNumber,
+                    isWearable ? DexcomBluetoothSlot.SMART_WATCH : DexcomBluetoothSlot.DEFAULT);
         authSlot = DexcomBluetoothSlot.isPinned(SerialNumber)
                 ? DexcomBluetoothSlot.forSensor(SerialNumber)
                 : DexcomBluetoothSlot.forNewPairings();
