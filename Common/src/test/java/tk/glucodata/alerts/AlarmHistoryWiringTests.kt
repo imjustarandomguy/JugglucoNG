@@ -25,10 +25,10 @@ class AlarmHistoryWiringTests {
         val notify = source("src/main/java/tk/glucodata/Notify.java")
         // AlertStateTracker.onAlertTriggered returns false for a manual test (the
         // AlertTestValuePolicy alarms), so recording inside this block skips them.
-        val block = notify.substringAfter("if (productionTrigger) {").substringBefore("}")
+        val block = notify.substringAfter("if (AlertStateTracker.INSTANCE.onAlertTriggered(type, config)) {").substringBefore("}")
         assertTrue(
-            "the firing must be recorded inside the productionTrigger block, never for a test alarm",
-            block.contains("AlarmHistory.onFired(kind, glvalue)")
+            "the firing must be recorded where onAlertTriggered accepts it, never for a test alarm",
+            block.contains("AlarmHistory.onFired(kind, value)")
         )
         assertTrue(
             "onFired must appear exactly once in the glucose alarm path",
@@ -39,14 +39,14 @@ class AlarmHistoryWiringTests {
         val test = notify.substringAfter("public static void testTrigger(int kind)")
             .substringBefore("public static void triggerCustomAlert(")
         assertTrue("testTrigger must not record", !test.contains("AlarmHistory"))
-        val loss = notify.substringAfter("public void lossalarm(long time)")
+        val loss = notify.substringAfter("public boolean lossalarm(long time)")
         assertTrue(loss.substringBefore("lossofsignalalarm(").contains("AlarmHistory.onFired(4, Float.NaN)"))
     }
 
     @Test
     fun aDismissalIsRecordedOnlyAfterTheTestCheck() {
         val tracker = source("src/main/java/tk/glucodata/alerts/AlertStateTracker.kt")
-        val dismissed = tracker.substringAfter("fun onAlertDismissed(type: AlertType): Boolean {")
+        val dismissed = tracker.substringAfter("fun onAlertDismissed(type: AlertType, cooldownUntilMs: Long")
             .substringBefore("return true")
         val testCheck = dismissed.indexOf("manualTests.consumeAction(type)")
         val record = dismissed.indexOf("AlarmHistory.onDismissed(type.id)")
@@ -57,9 +57,9 @@ class AlarmHistoryWiringTests {
     @Test
     fun snoozesAndClearsAreRecorded() {
         val snooze = source("src/main/java/tk/glucodata/alerts/SnoozeManager.kt")
-            .substringAfter("fun snooze(alertType: AlertType")
+            .substringAfter("fun snoozeUntil(alertType: AlertType")
             .substringBefore("fun isSnoozed(")
-        assertTrue(snooze.contains("AlarmHistory.onSnoozed(alertType.id, durationMinutes)"))
+        assertTrue(snooze.contains("AlarmHistory.onSnoozed(alertType.id, "))
 
         val runtime = source("src/main/java/tk/glucodata/alerts/AlertRuntimeManager.kt")
             .substringAfter("private fun clearRuntimeAlert(type: AlertType, reason: String) {")

@@ -301,7 +301,12 @@ class AlertRetryAcknowledgementTests {
                         static boolean snoozed;
                         boolean isSnoozed(AlertType type) { return snoozed; }
                     }
-                    static class tk { static class glucodata { static class Applic { static int unit; } } }
+                    static class tk { static class glucodata {
+                        static class Applic { static int unit; }
+                        static class alerts {
+                            static class AlarmHistory { static void onFired(int kind, float value) {} }
+                        }
+                    } }
                     static class Notify {
                         static RetryHarness onenot;
                         static long glucosetimeout = 60_000;
