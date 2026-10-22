@@ -368,6 +368,7 @@ fun DashboardScreen(
         exchangeOutputsOnly = dataSmoothingExchangeOnly
     )
     val previewWindowMode by viewModel.previewWindowMode.collectAsStateWithLifecycle()
+    val chartReadingsStyle by viewModel.chartReadingsStyle.collectAsStateWithLifecycle()
     val journalEnabled by viewModel.journalEnabled.collectAsStateWithLifecycle()
     val journalEiobDisplayEnabled by viewModel.journalEiobDisplayEnabled.collectAsStateWithLifecycle()
     val journalQuickAddAlwaysNow by viewModel.journalQuickAddAlwaysNow.collectAsStateWithLifecycle()
@@ -1669,6 +1670,7 @@ fun DashboardScreen(
                                         graphSmoothingMinutes = visualSmoothingMinutes,
                                         collapseSmoothedData = dataSmoothingCollapseChunks,
                                         previewWindowMode = previewWindowMode,
+                                        readingsStyle = chartReadingsStyle,
                                         graphLow = graphLow,
                                         graphHigh = graphHigh,
                                         targetLow = targetLow,
@@ -1912,6 +1914,7 @@ fun DashboardScreen(
                                         graphSmoothingMinutes = visualSmoothingMinutes,
                                         collapseSmoothedData = dataSmoothingCollapseChunks,
                                         previewWindowMode = previewWindowMode,
+                                        readingsStyle = chartReadingsStyle,
                                         graphLow = graphLow,
                                         graphHigh = graphHigh,
                                         targetLow = targetLow,

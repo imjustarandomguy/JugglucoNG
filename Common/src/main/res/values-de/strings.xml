@@ -619,6 +619,11 @@ Durch Drücken von „OK“ wird eine Verbindung auf diesem Telefon hergestellt 
     <string name="preview_window_expanded_only">Nur in erweiterter Ansicht (Standard)</string>
     <string name="preview_window_always">Immer</string>
     <string name="preview_window_never">Nie</string>
+    <string name="chart_readings_style_title">Messwerte anzeigen als</string>
+    <string name="chart_readings_style_desc">Wie Messwerte in den Diagrammen gezeichnet werden: in der App, in der Benachrichtigung, im Widget und auf der Uhr</string>
+    <string name="chart_readings_style_line">Linie</string>
+    <string name="chart_readings_style_dots">Punkte</string>
+    <string name="chart_readings_style_line_and_dots">Linie und Punkte</string>
     <string name="debug_logs_desc">Trace.log und Logcat anzeigen</string>
     <string name="data_management">Datenverwaltung</string>
     <string name="export_data">Verlauf exportieren</string>
