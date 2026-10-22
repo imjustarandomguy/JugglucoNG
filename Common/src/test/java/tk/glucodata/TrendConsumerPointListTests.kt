@@ -28,7 +28,9 @@ class TrendConsumerPointListTests {
             it.sensorSerial = "sensor"; it.uncertainty = GlucoseUncertainty(80f, 110f)
             it.sealedDisplayValue = 105f; it.sealedDisplayViewMode = 0
         }
-        val live = snapshot(60_001L, 102f).copy(sensorId = "sensor")
+        // 50 s after its row: the same minute, but a reading of its own (closer, within the
+        // same-reading window, it would be that row's reading, merged onto it).
+        val live = snapshot(110_000L, 102f).copy(sensorId = "sensor")
         val tail = DisplayTrendSource.augmentHistory(listOf(source), live, "sensor", 0L).last()
         assertEquals(82f, tail.uncertainty!!.lower, 0f)
         assertEquals(112f, tail.uncertainty!!.upper, 0f)
