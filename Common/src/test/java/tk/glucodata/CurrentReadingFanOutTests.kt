@@ -115,7 +115,7 @@ class CurrentReadingFanOutTests {
         val gatt = source("Common/src/main/java/tk/glucodata/SuperGattCallback.java")
         val external = body(
             gatt,
-            "long timmsec, int sensorgen, DisplayedReading.Origin origin) {",
+            "long timmsec, int sensorgen, long sensorStartMs, DisplayedReading.Origin origin) {",
         )
         assertTrue(external.contains("Notify.glucosetimeout, sensorgen, reading, origin);"))
         // Nightscout, MQ and API sources all follow readings taken elsewhere.
