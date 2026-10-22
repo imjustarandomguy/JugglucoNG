@@ -157,25 +157,44 @@ object WearSync2 {
         if (Applic.isWearable && endCloudRecord(serial)) return
         run {
             run {
-                // Resolve this while the managed record still exists; after it
+                // Resolve these while the managed record still exists; after it
                 // is removed, a native short alias (for example P225043JMV)
                 // can no longer be related back to SIBI:P225043JMV safely.
                 val removedWasCurrent = SensorIdentity.matches(SensorIdentity.resolveMainSensor(), serial)
-                removalTombstones[removalKey(serial)] = System.currentTimeMillis()
+                val nativeRecords = nativeRecordsFor(serial)
+                val now = System.currentTimeMillis()
+                removalTombstones[removalKey(serial)] = now
+                nativeRecords.forEach { removalTombstones[removalKey(it)] = now }
                 tk.glucodata.drivers.ManagedSensorIdentityRegistry.removePersistedSensor(Applic.app, serial)
                 // removePersistedSensor finishes the managed driver's native
                 // mirror. Remove any live callback as well, then reconcile so
-                // neither the Sensors screen nor dashboard can retain it.
-                SensorBluetooth.sensorEnded(serial)
+                // neither the Sensors screen nor dashboard can retain it. A
+                // sensor read through native records stops the callbacks of
+                // those records and no other: sensorEnded() frees whichever
+                // callback a name matches first.
+                if (nativeRecords.isEmpty()) SensorBluetooth.sensorEnded(serial)
+                else endCallbacksOf(nativeRecords)
+                // End the native record of any other sensor (Dexcom, Libre, ...)
+                // the way the phone ends a sensor the user removed, so it is no
+                // longer listed, the rebuild below does not give it a callback
+                // again and no driver pairs the removed transmitter anew. Its
+                // readings stay, and a chunk written to it later does not make
+                // it active again.
+                nativeRecords.forEach(::removeNativeRecord)
+                SensorBluetooth.updateDevices()
+                // After the rebuild, so the replacement comes from what is left
+                // rather than from another spelling of the removed sensor.
                 runCatching {
-                    if (removedWasCurrent || SensorIdentity.matches(Natives.lastsensorname(), serial)) {
+                    val current = Natives.lastsensorname()
+                    if (removedWasCurrent || SensorIdentity.matches(current, serial) ||
+                        nativeRecords.any { SensorIdentity.matches(current, it) }
+                    ) {
                         val replacement = SensorBluetooth.resolveReplacementSensorSerial(serial)
                         SensorBluetooth.setCurrentSensorSelection(replacement ?: "")
                     }
                 }
-                SensorBluetooth.updateDevices()
                 UiRefreshBus.requestDataRefresh()
-                if (doLog) Log.i(LOG_ID, "removed $serial")
+                Log.i(LOG_ID, "removed $serial, ended native record(s) $nativeRecords")
             }
         }
     }
@@ -805,6 +824,48 @@ object WearSync2 {
                 "received calibration for ${payload.sensorId}: " +
                     "auto=${payload.auto.anchorsMgdl.size / 3} raw=${payload.raw.anchorsMgdl.size / 3}",
             )
+        }
+    }
+
+    /**
+     * The native records [serial] is held under here, active or not. None for
+     * a sensor a managed driver owns: its driver's removal ends its own mirror.
+     */
+    private fun nativeRecordsFor(serial: String): List<String> = runCatching {
+        WearSensorRemoval.nativeRecordsToEnd(
+            removed = serial,
+            managedOwned = tk.glucodata.drivers.ManagedSensorIdentityRegistry
+                .persistedSensorIds(Applic.app)
+                .any { SensorIdentity.matches(it, serial) },
+            spellings = SensorIdentity.resolveNativeHistorySensorNames(serial),
+            active = Natives.activeSensors(),
+            hasRecord = { name -> Natives.getSensorIndex(name) >= 0 },
+            sameSensor = SensorIdentity::matches,
+        )
+    }.onFailure { Log.stack(LOG_ID, "nativeRecordsFor($serial)", it) }.getOrDefault(emptyList())
+
+    /** Stops the Bluetooth callbacks reading [records], and no other. */
+    private fun endCallbacksOf(records: List<String>) {
+        val endedRecords = records.mapNotNullTo(HashSet()) { name ->
+            runCatching { Natives.getSensorIndex(name) }.getOrNull()?.takeIf { it >= 0 }
+        }
+        val ending = SensorBluetooth.mygatts().filter { callback ->
+            WearSensorRemoval.readsEndedRecord(callback.SerialNumber, recordOf(callback), records, endedRecords)
+        }
+        SensorBluetooth.callbacksEnded(ending)
+    }
+
+    /** The native record [callback] reads, or -1. Under its monitor, which free() takes. */
+    private fun recordOf(callback: SuperGattCallback): Int = synchronized(callback) {
+        val dataptr = callback.dataptr
+        if (dataptr == 0L) -1
+        else runCatching { Natives.getSensorIndexFromDataPtr(dataptr) }.getOrDefault(-1)
+    }
+
+    private fun removeNativeRecord(name: String) {
+        val result = NativeSensorTermination.removeAndConfirm(name)
+        if (result != NativeSensorTermination.Result.CONFIRMED) {
+            Log.w(LOG_ID, "native record $name not ended: $result")
         }
     }
 
