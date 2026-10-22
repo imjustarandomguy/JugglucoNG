@@ -3130,4 +3130,18 @@ OK дарснаар энэ утсан дээр холболт үүсч, өөр A
     <string name="dexcom_share_auth_blocked">Нэвтрэлт хаагдсан — бүртгэл болон нууц үгээ шалгана уу</string>
     <string name="dexcom_share_credentials_required">Эхлээд бүртгэл болон нууц үгээ оруулна уу</string>
     <string name="dexcom_share_warning">Албан бус интерфейс: Dexcom үүнийг хэзээ ч өөрчлөх эсвэл хааж болно. Энэ нь эмнэлгийн хэрэгслийн функц биш.</string>
+    <string name="floating_tap_details">Дарахад дэлгэрэнгүй</string>
+    <string name="floating_tap_details_desc">Дарахад график, дэлгэрэнгүйг харуулна</string>
+    <string name="floating_details_opacity_percent">Дэлгэрэнгүйн арын тунгалаг байдал: %1$d%%</string>
+    <string name="floating_next_reading">Дараагийн уншилт хүртэлх хугацаа</string>
+    <string name="floating_next_reading_desc">Сумыг тойрсон цагираг дараагийн уншилт хүртэл дүүрнэ</string>
+    <string name="floating_above_status_bar">Төлөвийн мөрийн дээр</string>
+    <string name="floating_above_status_bar_desc">Төлөвийн мөрийн дээр ч дарж болно</string>
+    <string name="floating_accessibility_service_off">Хүртээмжийн тохиргооноос «%1$s»-ийг асаана уу</string>
+    <string name="floating_accessibility_service_label">JugglucoNG хөвөгч глюкоз</string>
+    <string name="floating_accessibility_service_desc">Хөвөгч глюкозыг төлөвийн мөрийн дээр дарах боломжтой болгоно. Дэлгэцийг уншихгүй.</string>
+    <string name="floating_mirrored">Толин байршил</string>
+    <string name="floating_mirrored_desc">Эхлээд сум, дараа нь утга</string>
+    <string name="floating_restricted_settings_hint">Android «Хязгаарлагдсан тохиргоо» гэж мэдэгдвэл: Аппын мэдээлэл дотор ⋮ → Хязгаарлагдсан тохиргоог зөвшөөрөх-ийг дарж, дараа нь үйлчилгээг асаана уу.</string>
+    <string name="floating_open_app_info">Аппын мэдээлэл</string>
 </resources>

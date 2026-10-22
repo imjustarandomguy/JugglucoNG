@@ -3214,4 +3214,18 @@ Marka la cadaadiyo OK waxay dhalin doontaa xidhiidh teleefankan oo waxa ay soo b
     <string name="dexcom_share_auth_blocked">Gelitaanka waa la xannibay — hubi akoonka iyo furaha sirta</string>
     <string name="dexcom_share_credentials_required">Marka hore geli akoonka iyo furaha sirta</string>
     <string name="dexcom_share_warning">Interface aan rasmi ahayn: Dexcom wuu beddeli karaa ama xannibi karaa wakhti kasta. Tani maaha hawl qalab caafimaad.</string>
+    <string name="floating_tap_details">Faahfaahin marka la taabto</string>
+    <string name="floating_tap_details_desc">Taabashadu waxay muujisaa jaantuska iyo faahfaahinta</string>
+    <string name="floating_details_opacity_percent">Muuqda asalka faahfaahinta: %1$d%%</string>
+    <string name="floating_next_reading">Waqtiga akhriska xiga</string>
+    <string name="floating_next_reading_desc">Giraan falaarta isbeddelka ku wareegsan ayaa buuxsama ilaa akhriska xiga</string>
+    <string name="floating_above_status_bar">Korka baararka xaaladda</string>
+    <string name="floating_above_status_bar_desc">Weli waa la taaban karaa korka baararka xaaladda</string>
+    <string name="floating_accessibility_service_off">Shid “%1$s” ee goobaha gelitaanka</string>
+    <string name="floating_accessibility_service_label">JugglucoNG gulukoos sabaynaya</string>
+    <string name="floating_accessibility_service_desc">Waxay u oggolaataa in gulukooska sabaynaya la taabto korka baararka xaaladda. Ma akhriyo shaashadda.</string>
+    <string name="floating_mirrored">Rog qaabka</string>
+    <string name="floating_mirrored_desc">Fallaarta marka hore, kadibna qiimaha</string>
+    <string name="floating_restricted_settings_hint">Haddii Android uu yiraahdo “Dejin xaddidan”: Macluumaadka app-ka, taabo ⋮ → U oggolow dejimaha xaddidan, kadibna shid adeegga.</string>
+    <string name="floating_open_app_info">Macluumaadka app-ka</string>
 </resources>

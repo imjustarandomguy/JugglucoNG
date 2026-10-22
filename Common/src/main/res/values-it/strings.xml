@@ -3019,4 +3019,18 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="dexcom_share_auth_blocked">Accesso bloccato — controlla account e password</string>
     <string name="dexcom_share_credentials_required">Inserisci prima account e password</string>
     <string name="dexcom_share_warning">Interfaccia non ufficiale: Dexcom può modificarla o bloccarla in qualsiasi momento. Non è una funzione di un dispositivo medico.</string>
+    <string name="floating_tap_details">Dettagli al tocco</string>
+    <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli</string>
+    <string name="floating_details_opacity_percent">Opacità dello sfondo dei dettagli: %1$d%%</string>
+    <string name="floating_next_reading">Tempo alla prossima lettura</string>
+    <string name="floating_next_reading_desc">Un anello attorno alla freccia di tendenza si riempie fino alla prossima lettura</string>
+    <string name="floating_above_status_bar">Sopra la barra di stato</string>
+    <string name="floating_above_status_bar_desc">Resta toccabile sopra la barra di stato</string>
+    <string name="floating_accessibility_service_off">Attiva «%1$s» nelle impostazioni di accessibilità</string>
+    <string name="floating_accessibility_service_label">JugglucoNG glicemia fluttuante</string>
+    <string name="floating_accessibility_service_desc">Rende toccabile la glicemia fluttuante sopra la barra di stato. Non legge lo schermo.</string>
+    <string name="floating_mirrored">Layout speculare</string>
+    <string name="floating_mirrored_desc">Prima la freccia, poi il valore</string>
+    <string name="floating_restricted_settings_hint">Se Android indica «Impostazione con limitazioni»: in Informazioni app tocca ⋮ → Consenti impostazioni con limitazioni, poi attiva il servizio.</string>
+    <string name="floating_open_app_info">Informazioni app</string>
 </resources>
