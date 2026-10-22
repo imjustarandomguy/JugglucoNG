@@ -12,8 +12,10 @@ Every branch rebased (old tips `backup/2026-10-22/*`), personal rebuilt as
 `rebuild/2026-10-22` (worktree /c/source/ng-wt-sync), plus the new `fix/nightscout-jwt-renew`
 and `fix/restart-after-update`. What each conflict became: BUILD.md "Last full sync".
 test.sh: 9261 tests, NEW: 0. **Installed** 18:05:00 phone / 18:05:33 watch (APKs of
-9c8a744e1, before `fix/restart-after-update`). **Not pushed, `personal` not moved yet**
-(owner's go). Owner: keep both alarm syncs (#631 and `/sync2/silence`; harmless together).
+9c8a744e1, before `fix/restart-after-update`). **Pushed** on the owner's go (evening of
+10-22): `main`, every topic branch (force-with-lease on the `backup/2026-10-22/*` tips, plus
+the new `fix/nightscout-jwt-renew` and `fix/restart-after-update`) and `personal` = the rebuild.
+Owner: keep both alarm syncs (#631 and `/sync2/silence`; harmless together).
 Open choice: keep the pill's status-bar floor against #693?
 
 After the install the watch's `keeprunning` service did not come back (process up, no
