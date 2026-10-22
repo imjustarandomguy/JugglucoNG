@@ -1171,7 +1171,10 @@ public class Applic extends Application implements androidx.work.Configuration.P
     }
 
     // static private Runnable updater=null;
-    static private ArrayList<Runnable> updaters = new ArrayList<Runnable>();
+    // Registered until removed: the watch face adds its redraw once, when it is
+    // created, and clearing the list after the first run left every later reading
+    // without it. Run from the reading threads while the face adds and removes.
+    static private final java.util.List<Runnable> updaters = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public static void setscreenupdater(Runnable up) {
         updaters.add(up);
@@ -1188,7 +1191,6 @@ public class Applic extends Application implements androidx.work.Configuration.P
             app.curve.requestRender();
         for (var el : updaters)
             el.run();
-        updaters.clear();
     }
 
     static float headfontsize;
@@ -1339,7 +1341,9 @@ public class Applic extends Application implements androidx.work.Configuration.P
 
     @Keep
     static boolean updateDevices() { // Rename to reset
-        final boolean useBluetooth = Natives.getusebluetooth();
+        // Not native's flag alone: without Bluetooth the roster is rebuilt with no
+        // connection, which would leave a watch told to read a sensor reading nothing.
+        final boolean useBluetooth = WatchSensorRadio.bluetoothWanted();
         boolean ok = false;
 
         if (useBluetooth) {

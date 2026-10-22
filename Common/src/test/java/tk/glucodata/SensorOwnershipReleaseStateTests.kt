@@ -31,4 +31,18 @@ class SensorOwnershipReleaseStateTests {
         assertTrue(state.isReleased("230E260"))
         assertEquals(setOf("6ca04230e260"), state.releasedSerials())
     }
+
+    @Test
+    fun nothingReleasedAnswersWithoutKeying() {
+        // The connect gate asks under a callback's monitor; keying can reach the driver roster.
+        var keyed = 0
+        val state = SensorOwnershipReleaseState { keyed++; it.lowercase() }
+
+        assertFalse(state.isReleased("Sensor-A"))
+        assertEquals(0, keyed)
+
+        state.release("Sensor-B")
+        assertFalse(state.isReleased("Sensor-A"))
+        assertTrue(state.isReleased("SENSOR-B"))
+    }
 }

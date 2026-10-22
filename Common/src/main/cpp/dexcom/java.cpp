@@ -27,6 +27,8 @@
 #include "streamdata.hpp"
 #include <algorithm>
 #include <cstring>
+#include <iterator>
+#include <string>
 #include <string_view>
 #include <time.h>
 /*
@@ -621,6 +623,117 @@ extern "C" JNIEXPORT jboolean JNICALL fromjava(dexKnownSensor)(JNIEnv *env,
   return *reinterpret_cast<const streamdata *>(dataptr)
               ->hist->getinfo()
               ->DexDeviceName;
+}
+
+// What another device needs to pair with a G7 itself: {full record name,
+// scanned code (it ends in the PIN), Bluetooth name or "", start in seconds}.
+// Null for anything but a Dexcom record.
+extern "C" JNIEXPORT jobjectArray JNICALL
+fromjava(dexHandoff)(JNIEnv *env, jclass cl, jstring jsensor) {
+  if (!jsensor || !sensors)
+    return nullptr;
+  const char *sensorname = env->GetStringUTFChars(jsensor, nullptr);
+  if (!sensorname)
+    return nullptr;
+  const int ind = sensors->sensorindexshort(sensorname);
+  env->ReleaseStringUTFChars(jsensor, sensorname);
+  if (ind < 0)
+    return nullptr;
+  const SensorGlucoseData *hist = sensors->getSensorData(ind);
+  if (!hist || hist->error() || !hist->isDexcom())
+    return nullptr;
+  const auto *info = hist->getinfo();
+  const size_t codelen = std::min<size_t>(info->siIdlen, sizeof(info->siId));
+  if (!codelen)
+    return nullptr;
+  const std::string name(sensors->getsensor(ind)->fullname());
+  const std::string code(reinterpret_cast<const char *>(info->siId), codelen);
+  const std::string deviceName(
+      info->DexDeviceName,
+      strnlen(info->DexDeviceName, sizeof(info->DexDeviceName)));
+  const std::string start = std::to_string(hist->getstarttime());
+  const std::string *fields[] = {&name, &code, &deviceName, &start};
+  jobjectArray out = env->NewObjectArray(std::size(fields),
+                                         env->FindClass("java/lang/String"),
+                                         nullptr);
+  if (!out)
+    return nullptr;
+  for (size_t i = 0; i < std::size(fields); ++i) {
+    jstring field = env->NewStringUTF(fields[i]->c_str());
+    env->SetObjectArrayElement(out, i, field);
+    env->DeleteLocalRef(field);
+  }
+  return out;
+}
+
+// Makes the record this device keeps for a G7 (found by full name or short
+// alias, created if missing) one its Dexcom driver can connect with: the
+// sensor's real start, its scanned code and its Bluetooth name. A record the
+// user removed here is left removed: false.
+extern "C" JNIEXPORT jboolean JNICALL
+fromjava(dexAdoptSensor)(JNIEnv *env, jclass cl, jstring jsensor, jstring jcode,
+                         jlong startsec, jstring jdeviceName) {
+  if (!jsensor || !jcode || !sensors ||
+      !Sensoren::validSensorStarttime(startsec))
+    return false;
+  const char *sensorname = env->GetStringUTFChars(jsensor, nullptr);
+  if (!sensorname)
+    return false;
+  destruct releasename(
+      [env, jsensor, sensorname] { env->ReleaseStringUTFChars(jsensor, sensorname); });
+  const char *code = env->GetStringUTFChars(jcode, nullptr);
+  if (!code)
+    return false;
+  destruct releasecode([env, jcode, code] { env->ReleaseStringUTFChars(jcode, code); });
+
+  // The record ensureDirectStreamShell would take. One the user removed must
+  // not come back with a handoff: its driver would be rebuilt and pair the
+  // sensor again, an expired one included.
+  int listedind = sensors->sensorindex(sensorname);
+  if (listedind < 0)
+    listedind = sensors->sensorindexshort(sensorname);
+  if (listedind >= 0 && sensors->getsensor(listedind)->wasRemovedByUser()) {
+    LOGGER("dexAdoptSensor %s: removed by the user, not adopted\n", sensorname);
+    return false;
+  }
+  SensorGlucoseData *hist = sensors->ensureDirectStreamShell(sensorname);
+  if (!hist)
+    return false;
+  auto *info = hist->getinfo();
+  const uint32_t start = startsec;
+  if (hist->isDexcom() && !hist->hasDexcomCode(code)) {
+    LOGGER("dexAdoptSensor %s: another sensor's record, Dexcom record from %u\n",
+           sensorname, start);
+    hist->becomeDexcom(code, start);
+  } else if (!hist->isDexcom() || info->starttime != start) {
+    // This sensor's readings stay, each in the slot its time falls in from the
+    // handed start; a Dexcom record keeps its header.
+    LOGGER("dexAdoptSensor %s: Dexcom record from %u, readings kept\n",
+           sensorname, start);
+    const auto kept = hist->keptPolls();
+    if (hist->isDexcom())
+      hist->moveDexcomStart(start);
+    else
+      hist->becomeDexcom(code, start);
+    hist->restoreDexcomPolls(kept);
+  }
+  // A Dexcom record kept as it was takes the code's lifetime too, so one made
+  // with 10 days for a 15-day sensor gets the rest.
+  hist->raiseDexcomLifetime(code);
+  if (jdeviceName) {
+    // As dexSaveDeviceName: an ASCII name of at most 11 characters.
+    const int maxlen = sizeof(info->DexDeviceName) - 1;
+    const int len = std::min<int>(maxlen, env->GetStringUTFLength(jdeviceName));
+    env->GetStringUTFRegion(jdeviceName, 0, len, info->DexDeviceName);
+    info->DexDeviceName[len] = '\0';
+  }
+  const int ind = hist->sensorIndex;
+  sensor *listed = sensors->getsensor(ind);
+  listed->halfdays = info->days * 2;
+  listed->initialized = true;
+  listed->reactivateExplicitly();
+  sensors->setSensorStarttime(ind, start);
+  return true;
 }
 
 static bool isG7(const char *deviceName) {

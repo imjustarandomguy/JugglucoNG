@@ -46,13 +46,11 @@ object WearSync2 {
     private const val DEEP_SERVE_MIN_INTERVAL_MS = 30L * 60L * 1000L
     private const val MGDL_PER_MMOL = 18.0182
 
-    /** Context the arrow needs; matches what the display surfaces use. */
-    private const val TREND_WINDOW_MS = 35L * 60L * 1000L
-
     private val executor = Executors.newSingleThreadExecutor { r ->
         Thread(r, "WearSync2").apply { isDaemon = true }
     }
-    private val lastPushMs = AtomicLong(0L)
+    private val pushGate = WearPushGate(PUSH_THROTTLE_MS)
+    private val takenReadings = ConcurrentHashMap<String, Pair<String, TakenReading>>()
     private val lastServedMs = AtomicLong(0L)
     private val lastServedChunkCount = AtomicLong(0L)
     private val calibrationWireRevision = AtomicLong(0L)
@@ -61,13 +59,46 @@ object WearSync2 {
 
     // ---- phone side ----
 
-    /** Called from the reading dispatch path; throttled tail push. */
+    /**
+     * Called from the reading dispatch path after a reading of [serial] taken at
+     * [readingMs]: pushes the tail at once for a newer reading ([WearPushGate]).
+     */
     @JvmStatic
-    fun pushTail() {
+    fun pushTail(serial: String?, readingMs: Long) {
+        if (!wearCompanionEnabled()) return
         val now = System.currentTimeMillis()
-        val last = lastPushMs.get()
-        if (now - last < PUSH_THROTTLE_MS || !lastPushMs.compareAndSet(last, now)) return
-        executor.execute { runCatching { serveSince(tailStartSec()) }.onFailure { Log.stack(LOG_ID, "pushTail", it) } }
+        if (!pushGate.shouldPush(sensorKey(serial).orEmpty(), readingMs, now)) {
+            if (doLog) Log.i(LOG_ID, "push after $serial ${readingMs / 1000L} left out: no newer reading")
+            return
+        }
+        if (doLog) Log.i(LOG_ID, "push after $serial ${readingMs / 1000L}, ${now - readingMs} ms after the reading")
+        executor.execute {
+            runCatching { serveSince(tailStartSec(), routine = true) }.onFailure { Log.stack(LOG_ID, "pushTail", it) }
+        }
+    }
+
+    /**
+     * The newest reading this device took of [serial], in mg/dL as it stores
+     * them, so a serve right after it carries it ([WearPushGate.withReading]).
+     */
+    @JvmStatic
+    fun noteLocalReading(serial: String?, timeMs: Long, autoMgdl: Float, rawMgdl: Float) {
+        val name = serial?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val key = sensorKey(name) ?: return
+        if (timeMs <= 0L) return
+        takenReadings.merge(key, name to TakenReading(timeMs, autoMgdl, rawMgdl)) { old, new ->
+            if (new.second.timeMs >= old.second.timeMs) new else old
+        }
+    }
+
+    private fun takenReading(serial: String): TakenReading? {
+        sensorKey(serial)?.let { key -> takenReadings[key]?.let { return it.second } }
+        return takenReadings.values.firstOrNull { SensorIdentity.matches(it.first, serial) }?.second
+    }
+
+    private fun sensorKey(serial: String?): String? {
+        val trimmed = serial?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return (runCatching { SensorIdentity.canonicalSensorId(trimmed) }.getOrNull() ?: trimmed).lowercase()
     }
 
     /** Tell the watch a sensor was removed on the phone. */
@@ -123,6 +154,7 @@ object WearSync2 {
     }
 
     private fun removeSensorRecord(serial: String) {
+        if (Applic.isWearable && endCloudRecord(serial)) return
         run {
             run {
                 // Resolve this while the managed record still exists; after it
@@ -145,6 +177,69 @@ object WearSync2 {
                 UiRefreshBus.requestDataRefresh()
                 if (doLog) Log.i(LOG_ID, "removed $serial")
             }
+        }
+    }
+
+    /**
+     * A watch told that a cloud source (NSF-/API-/MQF-) is gone: ends its native
+     * record, the way the phone ends a stopped follower's, so it stops being
+     * listed — its readings stay. False, touching nothing, when [serial] is no
+     * cloud source; a sensor that transmits never takes this path.
+     *
+     * Nothing else is torn down, because nothing else exists: the watch builds
+     * no callback for a cloud record. Above all the roster is not rebuilt —
+     * rebuilding it is what once took the watch's sensor Bluetooth down.
+     */
+    private fun endCloudRecord(serial: String): Boolean {
+        val fullName: (String) -> String? = { name ->
+            runCatching { Natives.resolveFullSensorName(name) }.getOrNull()
+        }
+        if (CloudSensorRecord.cloudRecordId(serial, fullName) == null) return false
+        val wasCurrent = runCatching {
+            SensorIdentity.matches(SensorIdentity.resolveMainSensor(), serial)
+        }.getOrDefault(false)
+        val records = CloudSensorRecord.recordsToEnd(
+            runCatching { Natives.activeSensors() }.getOrNull(),
+            serial,
+            fullName,
+        )
+        val now = System.currentTimeMillis()
+        // Chunks already on their way must not bring the record back.
+        removalTombstones[removalKey(serial)] = now
+        records.forEach { name ->
+            removalTombstones[removalKey(name)] = now
+            endNativeRecord(name)
+        }
+        runCatching {
+            tk.glucodata.drivers.ManagedSensorIdentityRegistry.removePersistedSensor(Applic.app, serial)
+        }.onFailure { Log.stack(LOG_ID, "endCloudRecord($serial) registry", it) }
+        runCatching {
+            val current = Natives.lastsensorname()
+            if (wasCurrent || records.any { SensorIdentity.matches(current, it) }) {
+                SensorBluetooth.setCurrentSensorSelection(
+                    SensorBluetooth.resolveReplacementSensorSerial(serial) ?: "",
+                )
+            }
+        }.onFailure { Log.stack(LOG_ID, "endCloudRecord($serial) current sensor", it) }
+        SensorIdentity.invalidateCaches()
+        UiRefreshBus.requestDataRefresh()
+        Log.i(LOG_ID, "cloud source $serial removed on the phone: ended ${records.size} record(s) $records")
+        return true
+    }
+
+    /** Native's finishSensor works on a stream, borrowed here only for that. */
+    private fun endNativeRecord(name: String) {
+        val dataptr = runCatching { Natives.getdataptr(name) }.getOrDefault(0L)
+        if (dataptr == 0L) {
+            Log.w(LOG_ID, "no native record to end for $name")
+            return
+        }
+        try {
+            Natives.finishSensor(dataptr)
+        } catch (t: Throwable) {
+            Log.stack(LOG_ID, "endNativeRecord($name)", t)
+        } finally {
+            runCatching { Natives.freedataptr(dataptr) }
         }
     }
 
@@ -174,7 +269,7 @@ object WearSync2 {
         }
     }
 
-    /** Handle an incoming request from the watch. */
+    /** Handle an incoming request from the other device. */
     @JvmStatic
     fun onRequest(data: ByteArray?) {
         val fromSec = runCatching {
@@ -248,26 +343,59 @@ object WearSync2 {
         return out.take(MAX_SERVED_SENSORS)
     }
 
-    private fun serveSince(fromSec: Long) {
+    /**
+     * [routine]: the push after a reading. For a sensor both devices read, where
+     * a reading the other has is stored as nothing, the watch pushes none and the
+     * phone only one the watch has not said it read itself; a device that still
+     * misses a reading asks for it.
+     */
+    private fun serveSince(fromSec: Long, routine: Boolean = false) {
         if (!wearCompanionEnabled()) return
         val serials = serveSerials()
         if (serials.isEmpty()) return
-        serials.forEach { serial -> serveSensorSince(serial, fromSec) }
+        serials.forEach { serial ->
+            val bothRead = routine && SensorOwnershipRuntime.bothRead(serial)
+            // A message per reading on the watch's battery: the phone asks for one it missed.
+            if (bothRead && Applic.isWearable) return@forEach
+            // The watch serves only what it reads itself; the rest came from the phone.
+            if (Applic.isWearable && !SensorOwnershipRuntime.readsLocally(serial)) return@forEach
+            serveSensorSince(serial, fromSec, unlessWatchReadIt = bothRead)
+        }
     }
 
-    private fun serveSensorSince(serial: String, fromSec: Long) {
-        // Calibrations live on the phone; the watch must not echo back the
-        // anchors it was given or the two would fight over the revision.
-        if (!Applic.isWearable) sendCalibration(serial)
+    /**
+     * [unlessWatchReadIt]: the phone's routine push of a sensor both devices
+     * read, left out when the watch has said it read the newest of these
+     * readings itself ([DirectReadingStatus.phonePushesWhileBothRead]).
+     */
+    private fun serveSensorSince(serial: String, fromSec: Long, unlessWatchReadIt: Boolean = false) {
         // Serve the phone's authoritative Room-backed source lanes, not only the
         // native stream. For a managed driver native storage can begin after
         // Room history, which otherwise truncates the watch chart. Calibration
         // remains a display operation and is reproduced from the payload.
-        val points = runCatching {
+        val stored = runCatching {
             NotificationHistorySource.getRawHistory(fromSec * 1000L, serial)
         }.getOrDefault(emptyList())
             .filter { it.timestamp > 0L && GlucoseValuePlausibility.isPlausibleMgdl(it.value) }
             .sortedBy { it.timestamp }
+        val points = WearPushGate.withReading(stored, takenReading(serial), fromSec * 1000L)
+        if (unlessWatchReadIt) {
+            val newestMs = points.lastOrNull()?.timestamp ?: 0L
+            val watch = SensorOwnershipRuntime.peerDirectReading(serial)
+            val push = DirectReadingStatus.phonePushesWhileBothRead(watch, newestMs)
+            if (doLog && newestMs > 0L) {
+                Log.i(
+                    LOG_ID,
+                    "$serial newest=${newestMs / 1000L} watch direct=" +
+                        (if (watch.known) "${watch.lastMs / 1000L}" else "unknown") + ": " +
+                        if (push) "pushed, the watch has not said it read it" else "not pushed, the watch read it",
+                )
+            }
+            if (!push) return
+        }
+        // Calibrations live on the phone; the watch must not echo back the
+        // anchors it was given or the two would fight over the revision.
+        if (!Applic.isWearable) sendCalibration(serial)
         if (points.isEmpty()) return
         // Preserve the source precision on the wire. The earlier display-unit
         // snap was not a measured fix: native storage still stores whole mg/dL,
@@ -335,9 +463,20 @@ object WearSync2 {
     }
 
 
-    /** Canonical storage name, so an alias cannot create a parallel record. */
-    private fun existingSensorNameFor(serial: String): String? =
-        SensorIdentity.canonicalSensorId(serial)
+    /**
+     * Canonical storage name, so an alias cannot create a parallel record. A
+     * record made under the sensor's short alias is used when it exists, unless
+     * the screens show the full-named one.
+     */
+    private fun existingSensorNameFor(serial: String): String? {
+        val canonical = SensorIdentity.canonicalSensorId(serial) ?: return null
+        val alias = SensorIdentity.shortNamedNativeRecord(canonical) ?: return canonical
+        val shown = runCatching { WearSensorSelectionSync.primary() }.getOrNull()
+            ?.let { WearSensorSelectionSync.localName(it) }
+        val showsOne = shown != null &&
+            (shown.equals(canonical, ignoreCase = true) || shown.equals(alias, ignoreCase = true))
+        return if (showsOne) shown else alias
+    }
 
     private fun sendCalibration(serial: String) {
         // Never publish "no calibration" off the back of a failed load: the watch
@@ -406,6 +545,31 @@ object WearSync2 {
     // ---- watch side ----
 
     /**
+     * The phone handed this watch a G7 to read itself: make the record the
+     * watch keeps for it, the one its screens show, a Dexcom record its driver
+     * can connect with. Runs on the sync thread so no chunk is written while the
+     * record changes layout; the deep sync that follows the handoff refills it.
+     */
+    @JvmStatic
+    fun adoptDexcomSensor(serial: String, code: String, startSec: Long, deviceName: String?) {
+        executor.execute {
+            runCatching {
+                val local = existingSensorNameFor(serial) ?: serial
+                if (Natives.dexAdoptSensor(local, code, startSec, deviceName)) {
+                    Log.i(LOG_ID, "G7 $serial adopted as Dexcom record $local")
+                    // Also replaces a driver built for the record before it was a G7's.
+                    SensorBluetooth.updateDevices()
+                    // A claim that timed out while no driver here could reach the
+                    // sensor would otherwise wait for the next /bluetooth.
+                    WearSensorClaim.rearmIfRequested("G7 $local handed over")
+                } else {
+                    Log.e(LOG_ID, "could not adopt G7 $serial as $local")
+                }
+            }.onFailure { Log.stack(LOG_ID, "adoptDexcomSensor", it) }
+        }
+    }
+
+    /**
      * Ask the phone for what we are missing. [deep] asks for the whole horizon
      * (app open, empty store); the routine path only asks for the tail, so a
      * fortnight of readings is not re-sent — and re-decoded — every few
@@ -418,7 +582,8 @@ object WearSync2 {
             runCatching {
                 val nowSec = System.currentTimeMillis() / 1000L
                 val horizonStart = nowSec - BACKFILL_HORIZON_SEC
-                val lastSec = runCatching { Natives.lastglucosetime() }.getOrDefault(0L)
+                // lastglucosetime is in milliseconds.
+                val lastSec = runCatching { Natives.lastglucosetime() / 1000L }.getOrDefault(0L)
                 val fromSec = if (deep || lastSec <= 0L) {
                     horizonStart
                 } else {
@@ -466,17 +631,41 @@ object WearSync2 {
                     if (doLog) Log.i(LOG_ID, "ignored stale chunk for removed sensor $serial")
                     return@execute
                 }
-                // Chunks now travel in whichever direction ownership points, so
-                // the receiving side must not be reading the same sensor itself.
-                if (SensorOwnershipRuntime.readsLocally(serial)) {
-                    if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
-                    return@execute
+                val times = LongArray(count)
+                val autos = IntArray(count)
+                val rawWire = IntArray(count)
+                for (i in 0 until count) {
+                    times[i] = buf.long
+                    autos[i] = buf.int
+                    rawWire[i] = buf.int
                 }
+                // Chunks travel in whichever direction ownership points. A device
+                // reading the sensor itself takes from the other only the readings
+                // it missed: when both read it (a G7) they are the same readings,
+                // and its own must never be replaced. The same for a sensor read
+                // alongside that this device has not read yet since it started:
+                // what it asks for then is what it missed while it was down. Not
+                // a Libre 2: its polls are not minute slots, and filling them
+                // moves its BLE cursor (below).
+                val missingOnly = SensorOwnershipRuntime.readsLocally(serial) ||
+                    SensorOwnershipRuntime.readsAlongside(serial)
+                val alreadyHave = if (missingOnly) {
+                    val filled = if (isLibre2NativeSensor(serial)) null
+                    else runCatching { Natives.streamSlotsFilled(times, serial) }.getOrNull()
+                    filled ?: run {
+                        if (doLog) Log.i(LOG_ID, "ignored chunk for $serial: this device is reading it")
+                        return@execute
+                    }
+                } else null
                 // Libre 2's Abbott BLE IDs are not elapsed minutes. Importing
                 // minute-derived IDs into its phone polls advances the live BLE
                 // cursor and rejects real readings when ownership returns.
                 // The phone keeps synced data in Room; Wear needs native history.
                 val mirrorNative = Applic.isWearable || !isLibre2NativeSensor(serial)
+                // Taken before storing: a reading filled in behind this device's own
+                // newest is history, not the current value.
+                val newestBeforeMs = runCatching { Natives.lastglucosetime() }.getOrDefault(Long.MAX_VALUE)
+                val localNewestMs = if (missingOnly) newestBeforeMs else 0L
                 var written = 0
                 var earliest = 0L
                 val stamps = LongArray(count)
@@ -485,17 +674,20 @@ object WearSync2 {
                 val nativeSecs = LongArray(count)
                 val nativeValues = FloatArray(count)
                 for (i in 0 until count) {
-                    val t = buf.long
-                    val auto10 = buf.int
-                    val raw10 = buf.int
-                    if (t <= 0L || auto10 <= 0) continue
+                    val t = times[i]
+                    val auto10 = autos[i]
+                    val raw10 = rawWire[i]
+                    if (t <= 0L || auto10 <= 0 || alreadyHave?.get(i) == true) continue
                     if (earliest == 0L) {
                         earliest = t
                         // Native scale contract (g.cpp addGlucoseStreamInternal):
                         // glucose param = mgdl/10 (native ×10), raw param = plain
                         // mgdl. Triples carry mgdl*10.
                         if (mirrorNative) {
+                            val isNew = runCatching { Natives.getSensorIndex(serial) < 0 }.getOrDefault(false)
                             Natives.ensureSensorShell(serial, (t - 3600L).coerceAtLeast(1L))
+                            // Lookups made before this record existed were cached as unknown.
+                            if (isNew) SensorIdentity.invalidateCaches()
                         }
                     }
                     val rawMgdl = if (raw10 > 0) raw10 / 10f else 0f
@@ -519,6 +711,9 @@ object WearSync2 {
                         FloatArray(written),
                         serial,
                     )
+                    // The sensor serving this device one of these later is not a
+                    // fresh reading of its own.
+                    SensorOwnershipRuntime.noteSyncedReading(serial, (0 until written).maxOf { stamps[it] })
                 }
                 // The phone reads its history from Room and never looks at native,
                 // so readings taken over by the watch landed somewhere the phone
@@ -531,18 +726,26 @@ object WearSync2 {
                         raws.copyOf(written),
                     )
                     val newest = written - 1
-                    HistorySyncAccess.storeCurrentReadingAsync(
-                        stamps[newest],
-                        values[newest],
-                        raws[newest],
-                        0f,
-                        serial,
-                    )
-                    emitExchangeOutputsForSyncedReading(
-                        serial,
-                        stamps[newest],
-                        values[newest],
-                    )
+                    if (stamps[newest] > localNewestMs) {
+                        HistorySyncAccess.storeCurrentReadingAsync(
+                            stamps[newest],
+                            values[newest],
+                            raws[newest],
+                            0f,
+                            serial,
+                        )
+                    }
+                }
+                // The newest of them, when it is the current reading here, goes the
+                // way a reading this device takes goes: the screens show it at once
+                // and the loss alarm counts from it. On the phone that includes the
+                // alarms and every exchange output, each once. Before the refresh
+                // below, so nothing resolves the reading it replaces.
+                if (written > 0) {
+                    val newest = (0 until written).maxByOrNull { stamps[it] } ?: 0
+                    if (isCurrentPeerReading(stamps[newest], newestBeforeMs, System.currentTimeMillis(), Notify.glucosetimeout)) {
+                        handlePeerReading(serial, stamps[newest], values[newest], raws[newest])
+                    }
                 }
                 if (written > 0) {
                     // The receiver follows the mirrored selection, not the
@@ -555,65 +758,34 @@ object WearSync2 {
                     WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
                     UiRefreshBus.requestDataRefresh()
                 }
-                if (doLog) Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final")
+                if (doLog) {
+                    val scope = if (missingOnly) " (missing only)" else ""
+                    Log.i(LOG_ID, "ingested $written/$count triples for $serial final=$final$scope")
+                }
             }.onFailure { Log.stack(LOG_ID, "onChunk", it) }
         }
     }
 
     /**
-     * Runs the newest synced reading through the same outbound path a locally
-     * read one takes: Nightscout and LibreView through numdata, the outbound
-     * API, the widget, and the xDrip / Gadgetbridge / WearInt
-     * broadcasts.
-     *
-     * While the watch holds the sensor the phone's BLE callback never fires, so
-     * every one of those silently stopped for the duration — the phone kept
-     * displaying readings it was no longer forwarding anywhere. Alarms and
-     * notifications are deliberately not included: the device that read the
-     * sensor has already raised them.
-     *
-     * @param valueMgdl the reading in mg/dL, as the chunk carries it.
+     * Whether the newest reading a chunk stored, taken at [storedMs], is the
+     * current reading here: newer than any this device had before it
+     * ([newestBeforeMs]) and not yet stale. A backfill's older readings and a
+     * repeat of the tail are history.
      */
-    private fun emitExchangeOutputsForSyncedReading(
-        serial: String,
-        timestampMs: Long,
-        valueMgdl: Float,
-    ) {
-        if (Applic.isWearable || timestampMs <= 0L || !valueMgdl.isFinite() || valueMgdl <= 0f) return
+    internal fun isCurrentPeerReading(storedMs: Long, newestBeforeMs: Long, nowMs: Long, staleAfterMs: Long): Boolean =
+        storedMs > 0L && storedMs > newestBeforeMs && nowMs - storedMs < staleAfterMs
+
+    /** [SuperGattCallback.processPeerReading] with the chunk's mg/dL lanes in display units. */
+    private fun handlePeerReading(serial: String, timestampMs: Long, autoMgdl: Float, rawMgdl: Float) {
         runCatching {
             val isMmol = Applic.unit == 1
-            val displayValue =
-                if (isMmol) (valueMgdl / MGDL_PER_MMOL).toFloat() else valueMgdl
-            // The arrow the exchange targets carry has to come from the series,
-            // not the single reading; the payload resolver falls back to this.
-            val rate = runCatching {
-                val from = timestampMs - TREND_WINDOW_MS
-                val window = NotificationHistorySource
-                    .getDisplayHistory(from, isMmol, serial)
-                    .filter { it.timestamp in from..timestampMs }
-                if (window.size >= 2) TrendAccess.calculateVelocity(window, false, isMmol) else Float.NaN
-            }.getOrDefault(Float.NaN).takeIf { it.isFinite() } ?: 0f
-            val primaryText = String.format(Applic.usedlocale, Notify.pureglucoseformat, displayValue)
-            val sensorStartMs = runCatching {
-                val ptr = Natives.getdataptr(serial)
-                if (ptr != 0L) Natives.getSensorStartmsec(ptr) else 0L
-            }.getOrDefault(0L)
-            SuperGattCallback.emitExchangeOutputs(
-                serial,
-                displayValue,
-                rate,
-                0,
-                timestampMs,
-                sensorStartMs,
-                timestampMs / 1000L,
-                // Only a fallback: the payload resolver prefers the live
-                // snapshot's own generation when it has one.
-                0,
-                primaryText,
-                // Came from the peer; sending it straight back would echo.
-                false,
-            )
-        }.onFailure { Log.stack(LOG_ID, "emitExchangeOutputsForSyncedReading", it) }
+            fun display(mgdl: Float): Float = when {
+                !mgdl.isFinite() || mgdl <= 0f -> Float.NaN
+                isMmol -> (mgdl / MGDL_PER_MMOL).toFloat()
+                else -> mgdl
+            }
+            SuperGattCallback.processPeerReading(serial, timestampMs, display(autoMgdl), display(rawMgdl))
+        }.onFailure { Log.stack(LOG_ID, "handlePeerReading", it) }
     }
 
     @JvmStatic

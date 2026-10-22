@@ -36,6 +36,9 @@ public MobileGlucoseAlarms(Application context) {
 public    void handlealarm() {
     SensorBluetooth.reconnectall();
     SensorBluetooth.ensureCurrentSensorSelection();
+    // A reading this phone missed may be on the watch, which reads the sensor too.
+    if(SensorOwnershipRuntime.peerReadsAny())
+        WearSync2.requestSync();
     final var view=Floating.floatview;
     if(view!=null) {
         view.postInvalidate();

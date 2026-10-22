@@ -6,7 +6,6 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import tk.glucodata.drivers.ManagedBluetoothSensorDriver
 
 enum class WearSensorClaimState(val wireValue: Int) {
     PHONE_OWNS(0),
@@ -18,10 +17,36 @@ enum class WearSensorClaimState(val wireValue: Int) {
     }
 }
 
+/**
+ * The /sensorclaimstatus payload: the claim state's wire value, then a
+ * [STOPPED_ON_WATCH] byte only when the watch's own button has just turned
+ * "Direct sensor on watch" off. A phone reads the first byte alone, so an
+ * older phone reads the longer payload as before.
+ */
+internal object WearSensorClaimWire {
+    const val STOPPED_ON_WATCH: Byte = 1
+
+    fun encode(state: WearSensorClaimState, stoppedOnWatch: Boolean): ByteArray {
+        val value = state.wireValue.toByte()
+        return if (stoppedOnWatch) byteArrayOf(value, STOPPED_ON_WATCH) else byteArrayOf(value)
+    }
+
+    /** The watch's user stopped direct mode on the watch: the phone's switch follows. */
+    fun stoppedOnWatch(data: ByteArray?): Boolean =
+        data != null && data.size >= 2 &&
+            data[0].toInt() == WearSensorClaimState.PHONE_OWNS.wireValue &&
+            data[1] == STOPPED_ON_WATCH
+}
+
 /** Last process-visible claim state reported by each remote watch. */
 object WearSensorClaimStatus {
     private const val LOG_ID = "WearSensorClaimStatus"
     private const val REMOTE_STATUS_MAX_AGE_MS = 4L * 60L * 1000L
+
+    // The phone's "Direct sensor on watch" record (WearRoutingRequest, phone-only code).
+    private const val ROUTING_PREFS = "wear_routing_request"
+    private const val DIRECT_KEY_PREFIX = "direct."
+    private const val SENSOR_KEY_PREFIX = "sensor."
 
     private data class RemoteStatus(val state: WearSensorClaimState, val receivedAtMs: Long)
 
@@ -37,10 +62,37 @@ object WearSensorClaimStatus {
             return
         }
         val previous = remoteByNode.put(nodeId, RemoteStatus(state, System.currentTimeMillis()))?.state
-        if (previous != state) {
+        val routeDropped = WearSensorClaimWire.stoppedOnWatch(data) && dropDirectRoute(nodeId)
+        if (previous != state || routeDropped) {
             Log.i(LOG_ID, "watch claim state node=$nodeId ${previous ?: "unknown"} -> $state")
             _revision.value = _revision.value + 1L
         }
+    }
+
+    /**
+     * What switching "Direct sensor on watch" off on the phone does for
+     * [nodeId] (WearRoutingRequest.record, then the phone's Bluetooth back on),
+     * for a watch whose user switched it off there. Without it the phone kept
+     * the request: its switch stayed on, and its screens kept waiting for the
+     * watch to read. False when the phone held no request for that watch.
+     */
+    private fun dropDirectRoute(nodeId: String): Boolean {
+        val app = Applic.app ?: return false
+        val dropped = runCatching {
+            val prefs = app.getSharedPreferences(ROUTING_PREFS, android.content.Context.MODE_PRIVATE)
+            if (!prefs.getBoolean(DIRECT_KEY_PREFIX + nodeId, false)) return@runCatching false
+            prefs.edit()
+                .putBoolean(DIRECT_KEY_PREFIX + nodeId, false)
+                .remove(SENSOR_KEY_PREFIX + nodeId)
+                .remove(ManagedSensorHandoff.HANDED_DEXCOM_KEY_PREFIX + nodeId)
+                .apply()
+            true
+        }.onFailure { Log.stack(LOG_ID, "drop direct route $nodeId", it) }.getOrDefault(false)
+        if (!dropped) return false
+        Log.i(LOG_ID, "watch $nodeId stopped direct sensor itself; phone request dropped")
+        runCatching { Applic.setbluetooth(app, true) }
+            .onFailure { Log.stack(LOG_ID, "setbluetooth after watch stop", it) }
+        return true
     }
 
     @JvmStatic
@@ -78,9 +130,25 @@ internal object WearSensorClaimPolicy {
             SensorIdentity.matches(localReadingSerial, targetSensorId) &&
             SensorIdentity.matches(localReadingSerial, callbackSerial)
     }
+
+    /**
+     * Whether a reading this watch's own driver accepted brings back a direct
+     * request its claim window dropped: the watch is still told to read the
+     * sensor ([storedRequest], "Direct sensor on watch"), the request in
+     * memory timed out, and the reading is the claimed sensor's.
+     */
+    fun restoresDirectRequest(
+        directRequested: Boolean,
+        storedRequest: Boolean,
+        targetSensorId: String?,
+        readingSerial: String?,
+    ): Boolean =
+        !directRequested && storedRequest &&
+            !targetSensorId.isNullOrBlank() && !readingSerial.isNullOrBlank() &&
+            SensorIdentity.matches(readingSerial, targetSensorId)
 }
 
-/** Watch-only, process-local ownership claim for direct managed-sensor routing. */
+/** Watch-only, process-local ownership claim for direct sensor routing. */
 object WearSensorClaim {
     private const val LOG_ID = "WearSensorClaim"
     private const val CLAIM_TIMEOUT_MS = 3L * 60L * 1000L
@@ -112,6 +180,25 @@ object WearSensorClaim {
     @JvmStatic
     fun setDirectRequested(enabled: Boolean) {
         if (!Applic.isWearable) return
+        applyDirectRequested(enabled)
+        publishState()
+    }
+
+    /**
+     * The watch's own button ("Return sensor to phone" / "Stop reading on the
+     * watch"): direct mode off here, and the phone told that this watch's user
+     * did it, so its "Direct sensor on watch" switch goes off too. A stop the
+     * phone sent (/bluetooth) goes through [setDirectRequested] and is not
+     * echoed back.
+     */
+    @JvmStatic
+    fun stopOnWatch() {
+        if (!Applic.isWearable) return
+        applyDirectRequested(false)
+        publishState(stoppedOnWatch = true)
+    }
+
+    private fun applyDirectRequested(enabled: Boolean) {
         storeDirectRequested(enabled)
         synchronized(this) {
             directRequested = enabled
@@ -127,7 +214,6 @@ object WearSensorClaim {
             )
             if (enabled) scheduleMonitorLocked()
         }
-        publishState()
     }
 
     @JvmStatic
@@ -148,7 +234,29 @@ object WearSensorClaim {
     fun onLocalReadingAccepted(serial: String?, sampleTimeMs: Long = 0L) {
         if (!Applic.isWearable || serial.isNullOrBlank()) return
         val acceptedAtMs = System.currentTimeMillis()
+        // Looked up outside the lock, as checkClaim does.
+        val restore = !directRequested && WearSensorClaimPolicy.restoresDirectRequest(
+            directRequested = directRequested,
+            storedRequest = storedDirectRequested(),
+            targetSensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull(),
+            readingSerial = serial,
+        )
+        var restored = false
         synchronized(this) {
+            if (restore && !directRequested) {
+                // The claim window ran out before a driver here reached the
+                // sensor (no Dexcom driver yet for a G7 just handed over), and
+                // the request went with it until the next /bluetooth.
+                directRequested = true
+                requestedAtMs = acceptedAtMs
+                lastWaitingReason = ""
+                transitionLocked(
+                    WearSensorClaimState.REQUESTING,
+                    "local reading from $serial while direct mode is on; request restored",
+                )
+                scheduleMonitorLocked()
+                restored = true
+            }
             if (
                 !directRequested ||
                 state == WearSensorClaimState.CONNECTED ||
@@ -165,6 +273,7 @@ object WearSensorClaim {
             )
         }
         checkClaim()
+        if (restored && state != WearSensorClaimState.CONNECTED) publishState()
     }
 
     /** Called directly from the local Android GATT callback/transport close path. */
@@ -205,8 +314,18 @@ object WearSensorClaim {
             readingAcceptedAt = localReadingAcceptedAtMs
         }
 
+        val sensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull()
+        val callback = sensorId?.let { id ->
+            SensorBluetooth.mygatts()?.firstOrNull { candidate ->
+                candidate.supportsWatchClaim() && SensorIdentity.matches(candidate.SerialNumber, id)
+            }
+        }
         val now = System.currentTimeMillis()
-        if (now - requestStart >= CLAIM_TIMEOUT_MS) {
+        // The phone stands down only for the window, so a claim past it is void.
+        // A sensor read alongside the phone has no window: keep trying until it
+        // is reached and paired, however long that takes.
+        val alongside = callback?.readsAlongside() == true
+        if (!alongside && now - requestStart >= CLAIM_TIMEOUT_MS) {
             synchronized(this) {
                 if (!directRequested || requestedAtMs != requestStart) return
                 directRequested = false
@@ -220,18 +339,12 @@ object WearSensorClaim {
             return
         }
 
-        val sensorId = runCatching { SensorIdentity.resolveMainSensor() }.getOrNull()
         if (sensorId.isNullOrBlank()) {
             logWaiting("no active sensor identity")
             return
         }
-        val callback = SensorBluetooth.mygatts()
-            ?.firstOrNull { candidate ->
-                candidate is ManagedBluetoothSensorDriver &&
-                    SensorIdentity.matches(candidate.SerialNumber, sensorId)
-            }
         if (callback == null) {
-            logWaiting("no matching local managed GATT callback for $sensorId")
+            logWaiting("no matching local GATT callback for $sensorId")
             return
         }
         if (!callback.hasLocallyConnectedGatt()) {
@@ -325,19 +438,31 @@ object WearSensorClaim {
     fun isDirectRequested(): Boolean {
         if (!Applic.isWearable) return false
         if (directRequested) return true
-        return runCatching {
+        return storedDirectRequested()
+    }
+
+    private fun storedDirectRequested(): Boolean =
+        runCatching {
             Applic.app?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
                 ?.getBoolean(KEY_DIRECT_REQUESTED, false)
         }.getOrNull() ?: false
+
+    /**
+     * The phone has just handed this watch a sensor to read (a G7, see
+     * WearSync2.adoptDexcomSensor) while direct mode is on: the claim starts
+     * over, so it waits for that sensor again. One the watch holds stays.
+     */
+    @JvmStatic
+    fun rearmIfRequested(reason: String) {
+        if (!Applic.isWearable || state == WearSensorClaimState.CONNECTED || !isDirectRequested()) return
+        Log.i(LOG_ID, "direct sensor claim re-armed: $reason")
+        setDirectRequested(true)
     }
 
     @JvmStatic
     fun restoreOnStart() {
         if (!Applic.isWearable) return
-        val wanted = runCatching {
-            Applic.app?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
-                ?.getBoolean(KEY_DIRECT_REQUESTED, false)
-        }.getOrNull() ?: false
+        val wanted = storedDirectRequested()
         if (!wanted) return
         Log.i(LOG_ID, "restoring direct sensor mode after restart")
         setDirectRequested(true)
@@ -346,8 +471,8 @@ object WearSensorClaim {
             .onFailure { Log.stack(LOG_ID, "restoreOnStart setbluetooth", it) }
     }
 
-    private fun publishState() {
-        MessageSender.sendSensorClaimStatus()
+    private fun publishState(stoppedOnWatch: Boolean = false) {
+        MessageSender.sendSensorClaimStatus(stoppedOnWatch)
         MessageSender.sendnetinfo()
         syncHeartbeat()
     }
