@@ -3,7 +3,57 @@
 Hand-off notes for the next session. Read [BUILD.md](BUILD.md) first for the
 setup and branch model. Paths are relative to `Common/src/`.
 
-## Where things stand (2026-10-12 evening) — start here
+## Where things stand (2026-10-22 evening) — start here
+
+**Synced on upstream** `main` fc5e9bc07 (53 commits since 10-12: #649 selectable Dexcom
+Bluetooth slots, #631 phone–Wear alarm acknowledgement sync, #629 louder alerts, #693 floating
+overlay placement, #659/#665 stale readings on AOD/widget, #555 Nightscout follower...).
+Every branch rebased (old tips `backup/2026-10-22/*`), personal rebuilt as
+`rebuild/2026-10-22` (worktree /c/source/ng-wt-sync), plus the new `fix/nightscout-jwt-renew`.
+What each conflict became: BUILD.md "Last full sync". test.sh: 9261 tests, NEW: 0. Both
+release APKs built and signed (CN=Frederic Morin). **Not pushed, not installed, `personal`
+not moved yet** (owner's go). Open choices: `/sync2/silence` could shrink to the quiet
+window now that #631 syncs snooze/dismiss; keep the pill's status-bar floor against #693?
+
+**Device test after the install:**
+1. Watch: the current G7 (paired on slot 3 before #649) keeps reading
+   (`2388237d0` pins it to slot 3 on the watch); phone keeps reading too.
+2. Nightscout: at the next 8-hour renewal, `token exchange` one pass before `exp` and no 401.
+3. Alarms: snooze on one device silences the other (both #631 and `/sync2/silence` run);
+   alarm history still records firings and snoozes.
+4. Floating pill: stays below the status bar; AOD overlay dims when stale.
+
+## Owner's report of 2026-10-22 (sensor change 10-21, Nightscout stall)
+
+Data: phone trace + logcat from the Download folder (captured 16:08), `dumpsys
+bluetooth_manager` of the watch (its "Bond Events" go back to the sensor change).
+
+**Sensor change 2026-10-21 (new G7 `DXCMGD`, record 50321310929).** Phone side as designed:
+old G7 removed 08:42:47 (its bond on the watch went too), new one scanned 08:43:00, paired on
+the phone 08:43:09–11, handed to the watch 08:43:12, first reading 09:13:39 (warmup end
+09:10:27). The watch asked to pair at **08:43:54**, 08:53:49, 08:58:48, 09:03:48, 09:08:48,
+09:13:49, 09:23:46 and 09:33:50: each consent prompt closed unanswered after ~25 s
+(`BOND_NONE`, status 9, then the Wear settings app's `setPairingConfirmation accept=false`);
+the last was accepted 7 s after it showed (09:33:58 bonded) and the watch read the 09:33:39
+slot itself. So: 7 missed prompts, not a late request. The phone's trace alone misleads here:
+its `peer holds 50321310929=true` reports (08:48, 09:14, 09:33) caught only the watch links
+that outlasted an ownership tick, so the watch's bond log is the record to read at a sensor
+change. Idea (owner's call): buzz the watch / wake its screen when the watch starts a G7
+pairing, so the 25 s prompt is seen.
+
+**Nightscout stall 2026-10-21 19:38–22:37.** Not Wi-Fi: the token exchanged at 19:33:43 (every
+8 h as usual) was refused five minutes later (`401 Bad access token or JWT`, still at home on
+Wi-Fi), and the uploader kept sending it, since it only renewed at the token's own `exp`
+(03:33 next day). Away 19:52–22:16 the Wi-Fi gate held uploads (correct); back home 401 again
+until the owner's "Refresh token" at 22:37:22. Why the server refused a fresh token is not in
+the phone's logs (a Nightscout restart or update with a new signing key would do it; check the
+server's log around 19:34–19:38). Also seen: a 401 on the first request at exactly `exp`
+(10-14 23:37:30, 10-22 14:38:42: the phone's clock a hair behind the server's), each costing
+one reading. Fix: `fix/nightscout-jwt-renew` (from main 2026-10-22): the token is renewed 60 s
+before `exp` (the follower's margin) and dropped on any 401 that carried it, so the next pass
+(≤ 5 min with a sensor streaming) exchanges a new one. Test: `NightscoutTokenCacheTests`.
+
+## Where things stood (2026-10-12 evening)
 
 **Rebased on upstream** (owner's request; upstream #595 merged 2026-10-12, plus #617
 Material 3 Expressive, #612, #616/#621 Nightscout, #604, #603, #499, #600...): `main` =
