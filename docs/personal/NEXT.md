@@ -9,15 +9,23 @@ setup and branch model. Paths are relative to `Common/src/`.
 Bluetooth slots, #631 phone–Wear alarm acknowledgement sync, #629 louder alerts, #693 floating
 overlay placement, #659/#665 stale readings on AOD/widget, #555 Nightscout follower...).
 Every branch rebased (old tips `backup/2026-10-22/*`), personal rebuilt as
-`rebuild/2026-10-22` (worktree /c/source/ng-wt-sync), plus the new `fix/nightscout-jwt-renew`.
-What each conflict became: BUILD.md "Last full sync". test.sh: 9261 tests, NEW: 0. Both
-release APKs built and signed (CN=Frederic Morin). **Not pushed, not installed, `personal`
-not moved yet** (owner's go). Open choices: `/sync2/silence` could shrink to the quiet
-window now that #631 syncs snooze/dismiss; keep the pill's status-bar floor against #693?
+`rebuild/2026-10-22` (worktree /c/source/ng-wt-sync), plus the new `fix/nightscout-jwt-renew`
+and `fix/restart-after-update`. What each conflict became: BUILD.md "Last full sync".
+test.sh: 9261 tests, NEW: 0. **Installed** 18:05:00 phone / 18:05:33 watch (APKs of
+9c8a744e1, before `fix/restart-after-update`). **Not pushed, `personal` not moved yet**
+(owner's go). Owner: keep both alarm syncs (#631 and `/sync2/silence`; harmless together).
+Open choice: keep the pill's status-bar floor against #693?
+
+After the install the watch's `keeprunning` service did not come back (process up, no
+service; Android froze the app at 18:08:02) until the app was opened at 18:11: hence
+`fix/restart-after-update`; check it at the next install (the install itself is the test:
+`dumpsys activity services tk.glucodata.ng` on the watch shows `keeprunning` without opening
+the app).
 
 **Device test after the install:**
 1. Watch: the current G7 (paired on slot 3 before #649) keeps reading
-   (`2388237d0` pins it to slot 3 on the watch); phone keeps reading too.
+   (`2388237d0` pins it to slot 3 on the watch); phone keeps reading too. **Seen 18:08:42:**
+   both connected with their existing bonds (encrypted, no pairing prompt), ~5 s sessions.
 2. Nightscout: at the next 8-hour renewal, `token exchange` one pass before `exp` and no 401.
 3. Alarms: snooze on one device silences the other (both #631 and `/sync2/silence` run);
    alarm history still records firings and snoozes.
@@ -40,6 +48,19 @@ its `peer holds 50321310929=true` reports (08:48, 09:14, 09:33) caught only the 
 that outlasted an ownership tick, so the watch's bond log is the record to read at a sensor
 change. Idea (owner's call): buzz the watch / wake its screen when the watch starts a G7
 pairing, so the 25 s prompt is seen.
+
+**Watch alarm screen did not come up (alarms 10-22 04:38, 05:28, 05:33, Persistent low).** Both
+devices rang, but on the watch the alarm was only in the notification list. Watch records:
+the WEAR_ALARM_SCREEN notification passed Bedtime mode as an alarm (zen log
+`not_intercepted … allowedAlarm`; Bedtime ran 02:42–05:37 and suppresses full-screen intents,
+peek and screen wake for what it intercepts), usagestats show the notification's interruption
+but no `AlarmActivity` resumed, and the direct start was refused (appops `SYSTEM_ALERT_WINDOW`
+Reject 05:33:48.992). `USE_FULL_SCREEN_INTENT` is `default` with the permission granted, so its
+"Reject" entries are likely bookkeeping. Owner allowed the overlay on 10-22 18:03
+(`appops set tk.glucodata.ng SYSTEM_ALERT_WINDOW allow` on the watch; kept by the 18:05 update).
+To see: a test alarm with the watch screen off (not in Bedtime), then a night alarm in Bedtime
+mode. If Bedtime still keeps the screen down, the launch path needs another way (Wear OS keeps
+the screen off until the crown is pressed in Bedtime).
 
 **Nightscout stall 2026-10-21 19:38–22:37.** Not Wi-Fi: the token exchanged at 19:33:43 (every
 8 h as usual) was refused five minutes later (`401 Bad access token or JWT`, still at home on
