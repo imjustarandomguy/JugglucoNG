@@ -1949,6 +1949,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="invalid_interval">Invalid interval value</string>
     <string name="status_waiting_for_connection">Waiting for connection</string>
     <string name="status_ready_in_minutes">Sensor ready in %1$d minutes.</string>
+    <string name="status_waiting_for_first_reading">Waiting for first reading</string>
     <string name="range_custom">Custom</string>
     <string name="stats_patterns">Patterns</string>
     <string name="stats_no_readings_in_range">No readings available in this time range.</string>
