@@ -30,12 +30,18 @@ def method(signature, source=source):
 
 methods = '\n'.join(method(s) for s in [
     'public DexGattCallback(', 'private void preferBackgroundConnect(',
-    'protected boolean useAutoConnect(', 'protected long connectionAttemptTimeoutMillis(',
+    'protected boolean useAutoConnect(', 'private boolean bondedHere(', 'private boolean reconnectsInBackground(',
+    'protected long connectionAttemptTimeoutMillis(',
     'protected void onConnectionAttemptTimeout(', 'public synchronized boolean connectDevice(',
+    'private boolean connectNow(', 'public void free(', 'private String dialledAddress(',
+    'private boolean dialledByAnotherCallback(',
+    'public boolean reconnect(', 'private synchronized boolean sessionUnderWay(', 'public void setDevice(',
     'public synchronized void setPause(', 'public synchronized void bonded(',
     'public synchronized void onConnectionStateChange(', 'public synchronized void close(',
     'static private PendingIntent mkintents(', 'static  PendingIntent  setalarm(',
-    'private void cancelalarm(',
+    'private void cancelalarm(', 'private void waitShortReconnect(', 'private void runShortReconnect(',
+    'protected void pendingConnectEnded(', 'private synchronized void cancelShortReconnect(',
+    'private synchronized void releaseReconnectLock(',
     'public synchronized void onDescriptorWrite(', 'public synchronized void onServicesDiscovered(',
     'public synchronized void onCharacteristicChanged(' if 'public synchronized void onCharacteristicChanged(' in source
     else 'public void onCharacteristicChanged(',
@@ -44,7 +50,7 @@ methods = '\n'.join(method(s) for s in [
     else 'private void releaselock(',
     'private void authenticate(', 'static private boolean equalpart(',
     'static boolean    createBond(', 'private void resetCerts(', 'private void resetconnect(',
-    'private    void getdata(', 'private boolean isWarmupReading(',
+    'private    void getdata(', 'private boolean isWarmupReading(', 'private void askGlucoseAgain(',
     'private void docmd0(', 'private void requestAuth(', 'public int getAuthSlot(',
     'public synchronized boolean changeAuthSlot(',
 ])
@@ -84,14 +90,20 @@ class SuperGattCallback {
     String SerialNumber, mActiveDeviceAddress, handshake;
     long[] constatchange={0,0}, wrotepass={0,0};
     BluetoothGatt mBluetoothGatt;BluetoothDevice mActiveBluetoothDevice=new BluetoothDevice();
-    int directCalls, closes, rescans, disconnects, dataCommands;
+    int directCalls, closes, rescans, disconnects, dataCommands, scans;
     static Applic app=Applic.app;
     long executorDelay=-1;
     SuperGattCallback(String serial,long ptr,int gen){SerialNumber=serial;dataptr=ptr;mActiveDeviceAddress=Natives.getDeviceAddress(ptr,true);}
     protected boolean useAutoConnect(){return defaultAuto;}
     protected long connectionAttemptTimeoutMillis(){return 0;}
     protected void onConnectionAttemptTimeout(){}
-    public synchronized boolean connectDevice(long delay){directCalls++;executorDelay=delay;mBluetoothGatt=new BluetoothGatt();return true;}
+    protected boolean connectScheduled(){return false;}protected void pendingConnectEnded(){}
+    // As the base class: without a device to dial, a scan looks for it.
+    public synchronized boolean connectDevice(long delay){if(mActiveBluetoothDevice==null){scans++;foundtime=0;return false;}directCalls++;executorDelay=delay;mBluetoothGatt=new BluetoothGatt();return true;}
+    // As the base class past its own checks: the link is dropped and dialled again.
+    int reconnects;public boolean reconnect(long now){reconnects++;return connectDevice(0);}
+    // As a scan delivers a device.
+    public void setDevice(BluetoothDevice device){mActiveBluetoothDevice=device;}
     public void close(){closes++;mBluetoothGatt=null;}
     public void setPause(boolean pause){stop=pause;}
     public void onConnectionStateChange(BluetoothGatt g,int status,int state){}
@@ -100,7 +112,7 @@ class SuperGattCallback {
     public void onCharacteristicChanged(BluetoothGatt g,BluetoothGattCharacteristic c,byte[] value){}
     boolean discover(BluetoothGatt g){payloadCalls++;return true;}
     void tryer(Runnable r){r.run();}void enableIndication(BluetoothGatt g,BluetoothGattCharacteristic c){}
-    void askbackfill(){}void write(int which,byte[] value){lastWrite=value;}
+    void askbackfill(){}int glucoseRequests;void write(int which,byte[] value){lastWrite=value;if(which==0&&value.length==1&&value[0]==0x4E)glucoseRequests++;}
     void cmd(BluetoothGatt g,int num){}
     void enableGattDescriptor(BluetoothGatt g,BluetoothGattCharacteristic c,byte[] value){}
     void getcert(byte[] v){payloadCalls++;}void handleGlucoseResult(long res,long time){
@@ -129,7 +141,7 @@ class SuperGattCallback {
     static PendingIntent getBroadcast(Context c,int id,Intent i,int flags){return new PendingIntent(i.action);}
 }
 class BluetoothProfile {static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}
-class BluetoothDevice {static final int BOND_BONDING=11;int getBondState(){return 12;}boolean createBond(){return true;}}
+class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;String address=Natives.stored;int getBondState(){return bondState;}String getAddress(){return address;}boolean createBond(){return true;}}
 class BluetoothGatt {static final int GATT_CONNECTION_TIMEOUT=147,GATT_SUCCESS=0;BluetoothDevice getDevice(){return new BluetoothDevice();}int discoveries;boolean discoveryResult=true;boolean discoverServices(){if(!Thread.holdsLock(PowerManager.owner))throw new AssertionError("discovery outside callback monitor");discoveries++;return discoveryResult;}}
 class BluetoothGattCharacteristic {static final int WRITE_TYPE_DEFAULT=2;void setWriteType(int t){}UUID getUuid(){return UUID.randomUUID();}}
 class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;BluetoothGattDescriptor(BluetoothGattCharacteristic c){characteristic=c;}BluetoothGattCharacteristic getCharacteristic(){return characteristic;}byte[] getValue(){return new byte[]{0};}UUID getUuid(){return UUID.randomUUID();}}
@@ -169,8 +181,12 @@ class PowerManager {
     List<WakeLock> created=new ArrayList<>();
     WakeLock newWakeLock(int level,String tag){WakeLock w=new WakeLock();created.add(w);return w;}
     static class WakeLock {
-        boolean held;
-        void acquire(){held=true;}
+        boolean held,referenceCounted=true;long timeout;
+        void setReferenceCounted(boolean counted){referenceCounted=counted;}
+        void acquire(){held=true;timeout=0;}
+        void acquire(long ms){held=true;timeout=ms;}
+        boolean isHeld(){return held;}
+        void expire(){held=false;}
         void release(){
             if(!Thread.holdsLock(owner))throw new AssertionError("wake lock released outside callback monitor");
             if(!held)throw new AssertionError("wake lock released twice");
@@ -200,7 +216,12 @@ class Prefs {
 class Applic extends Context {
     static boolean isWearable;static Applic app=new Applic();static Prefs prefs=new Prefs();static AlarmManager alarms=new AlarmManager();
     static PowerManager power=new PowerManager();
-    static class Scheduler {void schedule(Runnable r,long delay,TimeUnit unit){}}
+    static class Scheduler {
+        List<Runnable> tasks=new ArrayList<>();List<Long> delays=new ArrayList<>();
+        void schedule(Runnable r,long delay,TimeUnit unit){tasks.add(r);delays.add(unit.toMillis(delay));}
+        long lastDelay(){return delays.isEmpty()?-1:delays.get(delays.size()-1);}
+        Runnable lastTask(){return tasks.get(tasks.size()-1);}
+    }
     static Scheduler scheduler=new Scheduler();
     void redraw(){}
     static List<Runnable> ui=new ArrayList<>();static void RunOnUiThread(Runnable r){ui.add(r);}
@@ -218,9 +239,210 @@ public class DexGattCallback extends SuperGattCallback {
     private final byte[] random8=new byte[8];
 '''+fields+methods+r'''
     static void check(boolean b,String message){if(!b)throw new AssertionError(message);}
+    static boolean waitsUnderLock(DexGattCallback cb,long delay){
+        PowerManager.WakeLock lock=cb.reconnectlock;
+        return Applic.scheduler.lastDelay()==delay&&cb.shortReconnectPending&&lock!=null&&lock.held
+            &&lock.timeout==delay+2000&&!lock.referenceCounted&&Applic.alarms.pending==null;
+    }
+    static boolean shortWaitEnded(DexGattCallback cb){
+        return !cb.shortReconnectPending&&(cb.reconnectlock==null||!cb.reconnectlock.held);
+    }
+    static void previousReadingAskedAgain() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // The reading already published comes back: not published again, asked for twice more.
+            DexGattCallback cb=fresh();isWearable=wear;BluetoothGatt gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==1000&&cb.datatime==System.now,"reading already published counted again or not asked again");
+            System.now+=1000;Applic.scheduler.lastTask().run();check(cb.glucoseRequests==1,"glucose not asked again");
+            cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==1000,"second ask missing");
+            System.now+=1000;Applic.scheduler.lastTask().run();check(cb.glucoseRequests==2,"glucose not asked a second time");
+            cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==0&&Applic.scheduler.lastDelay()==10,"asked more than twice, or published the reading it had");
+            cb.onConnectionStateChange(gatt,19,0);System.now+=300000;cb.connectDevice(0);gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(Applic.scheduler.lastDelay()==1000,"a new session did not ask again");
+
+            // The new value is ready a second later: published with its own time.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            System.now+=1000;Applic.scheduler.lastTask().run();
+            Natives.sampleAge=3000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&cb.lastPublishedTime==System.now-3000&&cb.publishedSampleMs==System.now-3000
+                &&Applic.scheduler.lastDelay()==10,"fresh reading after asking again not published");
+
+            // An old reading this device lacks is published at once, and the new one still asked for.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-600000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&Applic.scheduler.lastDelay()==1000,"missed reading dropped, or the new one not asked for");
+
+            // Gone before the second ask: nothing is written on a closed link.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.publishedSampleMs=System.now-300000;
+            Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            Runnable ask=Applic.scheduler.lastTask();cb.onConnectionStateChange(gatt,19,0);ask.run();
+            check(cb.glucoseRequests==0,"asked again on a closed link");
+
+            // A fresh reading or a failed one is never asked for again.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;cb.onConnectionStateChange(gatt,0,2);
+            Natives.sampleAge=4000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(cb.payloadCalls==1&&Applic.scheduler.lastDelay()==10,"fresh reading asked again");
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;cb.onConnectionStateChange(gatt,0,2);
+            Natives.result=0;Natives.sampleAge=300000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+            check(Applic.scheduler.lastDelay()==10,"failed reading asked again");
+        }
+    }
+    static void shortReconnectWaits() {
+        DexGattCallback cb=fresh();cb.close();int calls=cb.directCalls;
+        check(cb.connectDevice(5000)&&waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==calls,"short reconnect used an alarm clock or connected at once");
+        Applic.scheduler.lastTask().run();
+        check(cb.directCalls==calls+1&&shortWaitEnded(cb),"short wait did not connect or kept its wake lock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);Runnable replaced=Applic.scheduler.lastTask();
+        cb.connectDevice(6000);check(waitsUnderLock(cb,6000),"later short wait did not replace the first");
+        replaced.run();check(cb.directCalls==calls&&cb.reconnectlock.held,"replaced short wait connected or released its successor's lock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);Runnable cancelled=Applic.scheduler.lastTask();
+        cb.connectDevice(0);check(cb.directCalls==calls+1&&shortWaitEnded(cb),"immediate connect did not cancel the short wait");
+        cancelled.run();check(cb.directCalls==calls+1,"cancelled short wait connected");
+        cb=fresh();cb.close();cb.connectDevice(5000);cb.connectDevice(300000);
+        check(Applic.alarms.scheduled==1&&shortWaitEnded(cb),"long delay kept the short wait");
+        cb=fresh();cb.close();cb.connectDevice(300000);cb.connectDevice(5000);
+        check(waitsUnderLock(cb,5000),"short wait kept the alarm clock");
+        cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(5000);cancelled=Applic.scheduler.lastTask();cb.setPause(true);
+        check(shortWaitEnded(cb),"pause kept the short wait or its wake lock");
+        cancelled.run();check(cb.directCalls==calls,"paused callback connected after its short wait");
+        cb=fresh();cb.close();cb.connectDevice(7001);
+        check(Applic.alarms.scheduled==1&&shortWaitEnded(cb),"a wait past the cap skipped the alarm clock");
+    }
+    static void unbondedG7ConnectsLikeAFirstPairing() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // Bonded here: the background preference and the stored address stay in use.
+            DexGattCallback cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");
+            cb.close();int calls=cb.directCalls;
+            check(cb.useAutoConnect()&&cb.connectionAttemptTimeoutMillis()==0,"bonded G7 lost its background connect");
+            cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.scans==0&&cb.mActiveBluetoothDevice!=null,"bonded G7 scanned instead of dialling");
+
+            // Its bond removed: never the background connect, which cannot complete without a bond.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.close();calls=cb.directCalls;
+            BluetoothDevice.bondState=BOND_NONE;
+            check(!cb.useAutoConnect()&&cb.connectionAttemptTimeoutMillis()==45000,"unbonded G7 kept the background connect");
+            check(!cb.reconnectsInBackground(),"unbonded G7 skipped its next-slot alarm");
+            // Only its stored address known: a scan finds it first, as on a first pairing.
+            cb.connectDevice(0);
+            check(cb.directCalls==calls&&cb.scans==1&&cb.mActiveBluetoothDevice==null
+                &&Natives.stored.equals(cb.mActiveDeviceAddress),"unbonded G7 dialled its stored address instead of scanning");
+            // The scan found it: dialled directly, and pairing goes on from the connection.
+            cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());
+            cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.scans==1&&!cb.useAutoConnect(),"G7 the scan found not dialled directly");
+            // A dial between its adverts fails: still direct while it has no bond.
+            cb.onConnectionStateChange(cb.mBluetoothGatt,147,0);
+            check(!cb.useAutoConnect()&&cb.directCalls==calls+2&&cb.scans==1,"failed dial of an unbonded G7 went to the background");
+            // Bonded again: back to the background connect it preferred.
+            BluetoothDevice.bondState=BOND_BONDED;
+            check(cb.useAutoConnect()&&cb.connectionAttemptTimeoutMillis()==0,"bonded G7 lost its preference");
+
+            // The bond this callback removed, before the stack reports it gone.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;cb.close();calls=cb.directCalls;
+            check(!cb.useAutoConnect()&&!cb.reconnectsInBackground(),"G7 whose bond was removed kept the background connect");
+            cb.connectDevice(0);
+            check(cb.scans==1&&cb.directCalls==calls,"G7 whose bond was removed dialled its stored address");
+
+            // The application-wide setting still applies, to a device the scan found.
+            cb=fresh();isWearable=wear;defaultAuto=true;BluetoothDevice.bondState=BOND_NONE;cb.close();
+            check(cb.useAutoConnect(),"application background setting ignored");
+            cb.connectDevice(0);
+            check(cb.scans==1,"unbonded G7 dialled its stored address under the application setting");
+        }
+    }
+    static void unbondedG7DialledOnlyWithTheScannedDevice() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // A scan found it once; since then its bond went, and a roster update rebuilt
+            // the device from the stored address: scanned for again, not dialled.
+            DexGattCallback cb=fresh();isWearable=wear;cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());cb.close();
+            BluetoothDevice.bondState=BOND_NONE;int calls=cb.directCalls;
+            cb.mActiveBluetoothDevice=new BluetoothDevice();
+            cb.connectDevice(0);
+            check(cb.scans==1&&cb.directCalls==calls&&cb.mActiveBluetoothDevice==null,"unbonded G7 dialled from its stored address");
+            // The device the next scan delivers is dialled.
+            BluetoothDevice scanned=new BluetoothDevice();cb.foundtime=System.now;cb.setDevice(scanned);
+            cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.mActiveBluetoothDevice==scanned,"device the scan found not dialled");
+            // Bonded, the device made from the stored address is dialled as before.
+            cb=fresh();isWearable=wear;cb.foundtime=System.now;cb.setDevice(new BluetoothDevice());cb.close();calls=cb.directCalls;
+            cb.mActiveBluetoothDevice=new BluetoothDevice();cb.connectDevice(0);
+            check(cb.directCalls==calls+1&&cb.scans==0,"bonded G7 not dialled from its stored address");
+        }
+    }
+    static void bondBackAfterItsRemoval() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // Removed by this callback (tried too often), then paired again: the bond broadcast.
+            DexGattCallback cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;
+            check(!cb.useAutoConnect()&&!cb.reconnectsInBackground(),"removed bond still used");
+            cb.bonded();
+            check(!cb.removedBond&&cb.useAutoConnect()&&cb.reconnectsInBackground()&&cb.connectionAttemptTimeoutMillis()==0,
+                "G7 paired again kept dialling directly");
+            // Or found bonded when it connects.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;
+            cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);
+            check(!cb.removedBond&&cb.useAutoConnect(),"G7 bonded at connect kept dialling directly");
+            // Still unbonded: the removal stands.
+            cb=fresh();isWearable=wear;cb.preferBackgroundConnect("test");cb.removedBond=true;BluetoothDevice.bondState=BOND_NONE;
+            cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);cb.bonded();
+            check(cb.removedBond&&!cb.useAutoConnect(),"removal forgotten while the G7 is unbonded");
+        }
+    }
+    static void lossAlarmSparesASessionUnderWay() {
+        for(boolean wear:new boolean[]{false,true}) {
+            // A background connect issued minutes ago, answered at the G7's slot: the loss
+            // alarm then leaves the link alone.
+            DexGattCallback cb=fresh();isWearable=wear;BluetoothGatt gatt=cb.mBluetoothGatt;int calls=cb.directCalls;
+            System.now+=300000;cb.onConnectionStateChange(gatt,0,2);
+            System.now+=20000;
+            check(cb.reconnect(System.now)&&cb.reconnects==0&&cb.mBluetoothGatt==gatt&&cb.directCalls==calls,
+                "loss alarm closed a session under way");
+            // Another sensor's reading passes a time one showtime back.
+            check(cb.reconnect(System.now-cb.showtime+20)&&cb.reconnects==0,"another sensor's reading closed a session under way");
+            // A link up for a minute is not a session any more.
+            System.now+=40000;cb.reconnect(System.now);
+            check(cb.reconnects==1&&cb.directCalls==calls+1,"link up for a minute not reconnected");
+            // Once the session ended, and for a connect still pending, as before.
+            cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
+            cb.onConnectionStateChange(gatt,0,2);cb.onConnectionStateChange(gatt,19,0);cb.reconnect(System.now);
+            check(cb.reconnects==1,"ended session kept the loss alarm from reconnecting");
+            cb=fresh();isWearable=wear;System.now+=300000;cb.reconnect(System.now);
+            check(cb.reconnects==1,"pending connect not reconnected");
+        }
+    }
+    static void duplicateCallbackKeepsTheBond() {
+        // Two callbacks dialling one G7, as a roster rebuild can find: the one it
+        // drops leaves the bond to the one that keeps reading the sensor.
+        DexGattCallback kept=fresh(),dropped=fresh();
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(kept);SensorBluetooth.gattcallbacks.add(dropped);
+        dropped.free();
+        check(dropped.unbondCalls==0&&dropped.stop&&dropped.dataptr==0,"dropping a second callback removed the bond of the G7 still read");
+        // The last callback of the G7 going is the sensor going.
+        SensorBluetooth.gattcallbacks.remove(dropped);kept.free();
+        check(kept.unbondCalls==1,"the last callback of a G7 kept its bond");
+        // Neither another G7's callback nor a stopped one keeps it.
+        DexGattCallback other=fresh(),gone=fresh();other.mActiveBluetoothDevice.address="F0:00:00:00:00:02";
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(other);SensorBluetooth.gattcallbacks.add(gone);
+        gone.free();check(gone.unbondCalls==1,"another G7's callback kept this one's bond");
+        DexGattCallback paused=fresh(),freed=fresh();paused.setPause(true);
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(paused);SensorBluetooth.gattcallbacks.add(freed);
+        freed.free();check(freed.unbondCalls==1,"a stopped callback kept the bond");
+        // Without a device, its stored address names the G7.
+        DexGattCallback reading=fresh(),scanning=fresh();scanning.mActiveBluetoothDevice=null;
+        SensorBluetooth.gattcallbacks.clear();SensorBluetooth.gattcallbacks.add(reading);SensorBluetooth.gattcallbacks.add(scanning);
+        scanning.free();check(scanning.unbondCalls==0,"a callback between scans removed the bond of the G7 still read");
+        SensorBluetooth.gattcallbacks.clear();
+    }
     static DexGattCallback fresh(){
         Applic.prefs=new Prefs();Applic.alarms=new AlarmManager();
-        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();
+        Applic.power=new PowerManager();PowerManager.releases=0;Applic.ui.clear();Applic.scheduler=new Applic.Scheduler();BluetoothDevice.bondState=BOND_BONDED;
         defaultAuto=false;alarmClock=false;isWearable=false;CloneSensorRegistry.clone=false;SensorOwnershipRuntime.blocked=false;
         Natives.lastGlucose=-1;Natives.aesSuccess=true;Natives.resets=0;Natives.authenticated=true;
         Natives.sampleAge=0;Natives.result=100;Natives.saveName=false;System.now=1_760_000_000_000L;
@@ -357,44 +579,56 @@ public class DexGattCallback extends SuperGattCallback {
             check(cb.datatime==received&&cb.sampletime==received-120000,"response/sample clocks were mixed");
             check(cb.lastPublishedTime==received-120000,"published glucose lost its actual timestamp");
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+7000&&cb.directCalls==1,"old sample caused immediate post-reading reconnect");
+            check(waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"old sample caused immediate post-reading reconnect, or an alarm clock for its quiet period");
             check(cb.useAutoConnect()&&cb.wakelock==null,"post-reading policy/wake lock regressed");
             cb.connectDevice(0);gatt=cb.mBluetoothGatt;
+            check(shortWaitEnded(cb),"immediate connect left the quiet wait or its wake lock");
             cb.onConnectionStateChange(gatt,0,2);
             check(!cb.connected&&cb.wakelock==null,"old sample bypassed recent-response guard");
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==2,"recent-response link loss redialled immediately");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==2,"recent-response link loss redialled immediately");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,0,2);Natives.sampleAge=120000;
             cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             System.now+=10000;cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==1,"elapsed quiet period bypassed reconnect floor");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"elapsed quiet period bypassed reconnect floor");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             Natives.sampleAge=120000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+152500,"next-slot alarm followed reception instead of sample age");
+            check(Applic.alarms.at==System.now+152500&&shortWaitEnded(cb),"next-slot alarm followed reception instead of sample age");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            for(int kind=0;kind<3;kind++) {
+                // Bonded, known, background preference: no next-slot alarm clock, the quiet wait instead.
+                cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+                if(kind==1)cb.known=false;
+                if(kind==2)cb.removedBond=true;
+                Natives.sampleAge=120000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
+                cb.onConnectionStateChange(gatt,19,0);
+                if(kind==0)check(waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.useAutoConnect(),"bonded background G7 kept the next-slot alarm clock");
+                else check(Applic.alarms.at==System.now+152500&&shortWaitEnded(cb),"unknown or unbonded G7 lost its next-slot alarm");
+            }
+
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             Natives.sampleAge=280000;cb.onCharacteristicChanged(gatt,cb.charact[0],new byte[]{0x4e});
             cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000,"past slot alarm bypassed reconnect floor");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0,"past slot alarm bypassed reconnect floor");
 
-            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;
+            cb=fresh();isWearable=wear;alarmClock=true;gatt=cb.mBluetoothGatt;BluetoothDevice.bondState=BOND_NONE;
             cb.datatime=System.now;cb.justdata=true;cb.sampletime=0;
             cb.onConnectionStateChange(gatt,19,0);
             check(Applic.alarms.at==System.now+272500,"missing sample time lost reception fallback");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,0,2);cb.onConnectionStateChange(gatt,19,0);
-            check(Applic.alarms.at==System.now+5000&&cb.directCalls==1&&!cb.useAutoConnect(),"empty live session redialled immediately or changed direct policy");
+            check(waitsUnderLock(cb,5000)&&Applic.alarms.scheduled==0&&cb.directCalls==1&&!cb.useAutoConnect(),"empty live session redialled immediately or changed direct policy");
             cb.setPause(true);
-            check(Applic.alarms.pending==null,"pause retained empty-session reconnect alarm");
+            check(Applic.alarms.pending==null&&shortWaitEnded(cb),"pause retained empty-session reconnect wait");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             cb.onConnectionStateChange(gatt,133,0);
-            check(cb.directCalls==2&&Applic.alarms.scheduled==0&&cb.useAutoConnect(),"failed dial acquired a quiet delay");
+            check(cb.directCalls==2&&Applic.alarms.scheduled==0&&shortWaitEnded(cb)&&cb.useAutoConnect(),"failed dial acquired a quiet delay");
 
             cb=fresh();isWearable=wear;gatt=cb.mBluetoothGatt;
             Natives.result=0;cb.sensorstartmsec=System.now-600000;
@@ -492,7 +726,7 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();first=cb.mBluetoothGatt;cb.onConnectionStateChange(first,0,2);cb.close();cb.connectDevice(0);cb.onConnectionStateChange(cb.mBluetoothGatt,147,0);
         check(cb.useAutoConnect(),"missing old disconnect prevented new-attempt fallback");
         cb=fresh();first=cb.mBluetoothGatt;cb.datatime=System.currentTimeMillis();cb.justdata=true;cb.onConnectionStateChange(first,19,0);
-        check(cb.useAutoConnect()&&Applic.alarms.scheduled==1&&cb.directCalls==1,"data reconnect did not use wakeup alarm");
+        check(cb.useAutoConnect()&&waitsUnderLock(cb,7000)&&Applic.alarms.scheduled==0&&cb.directCalls==1,"data reconnect did not wait its quiet period under a wake lock");
         cb=fresh();first=cb.mBluetoothGatt;cb.justdata=true;cb.lastDataInvalidDuringWarmup=true;cb.lastWarmupRetryAt=System.currentTimeMillis()+600000;cb.onConnectionStateChange(first,19,0);
         check(Applic.alarms.scheduled==1&&cb.directCalls==1,"warmup used executor timer");
         cb=fresh();cb.close();calls=cb.directCalls;cb.connectDevice(300000);
@@ -507,6 +741,9 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();defaultAuto=true;check(cb.useAutoConnect()&&cb.connectionAttemptTimeoutMillis()==0,"application background setting ignored");
         cb=fresh();first=cb.mBluetoothGatt;cb.onConnectionStateChange(first,0,2);
         PowerManager.WakeLock firstLock=cb.wakelock;check(firstLock.held,"connection did not acquire wake lock");
+        check(firstLock.timeout>0&&!firstLock.referenceCounted,"connection wake lock was untimed or reference counted");
+        cb.onConnectionStateChange(first,0,2);
+        check(cb.wakelock==firstLock&&Applic.power.created.size()==1,"repeated connection stacked another wake lock");
         cb.close();check(!firstLock.held&&cb.wakelock==null&&PowerManager.releases==1,"Bluetooth-off close leaked wake lock");
         cb.close();check(PowerManager.releases==1,"repeated close released wake lock twice");
         cb.connectDevice(0);current=cb.mBluetoothGatt;cb.onConnectionStateChange(current,0,2);
@@ -516,6 +753,8 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);firstLock=cb.wakelock;cb.setPause(true);
         check(!firstLock.held&&cb.wakelock==null,"pause leaked wake lock");
         cb.close();check(PowerManager.releases==1,"close after pause released twice");
+        cb=fresh();cb.onConnectionStateChange(cb.mBluetoothGatt,0,2);cb.wakelock.expire();
+        cb.close();check(cb.wakelock==null&&PowerManager.releases==0,"wake lock released again after its timeout");
         cb=fresh();current=cb.mBluetoothGatt;cb.bonded();check(cb.dataCommands==1&&current.discoveries==0,"bonded discovery not queued");
         Applic.runUi();check(current.discoveries==1,"current bonded discovery skipped");
         cb=fresh();first=cb.mBluetoothGatt;cb.bonded();cb.close();Applic.runUi();
@@ -527,10 +766,12 @@ public class DexGattCallback extends SuperGattCallback {
         cb=fresh();cb.mActiveBluetoothDevice=null;cb.bonded();check(Applic.ui.isEmpty(),"bonded without device queued discovery");
         cb=fresh();current=cb.mBluetoothGatt;current.discoveryResult=false;cb.bonded();Applic.runUi();check(cb.disconnects==1,"current discovery failure lost recovery");
         publicationAndTeardownFinish(false);publicationAndTeardownFinish(true);stableRosterSnapshots();
-        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();
+        preservesBondBeforeFirstReading();recognizesVerifiedSensor();quietReconnectsRespectReceptionAndSampleTime();shortReconnectWaits();previousReadingAskedAgain();
         authSlots();
         challengeReplies();
-        System.out.println("PASS: Dexcom recovery, quiet/slot timing, auth slots, bond/challenge guards, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
+        unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
+        unbondedG7DialledOnlyWithTheScannedDevice();bondBackAfterItsRemoval();lossAlarmSparesASessionUnderWay();
+        System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, auth slots, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, an unbonded G7 dialled only with the device a scan found, a bond back after its removal, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
 '''

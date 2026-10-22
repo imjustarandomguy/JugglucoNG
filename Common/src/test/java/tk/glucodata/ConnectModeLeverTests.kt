@@ -117,6 +117,37 @@ class ConnectModeLeverTests {
     }
 
     @Test
+    fun theDexcomBackgroundPreferenceNeedsTheBond() {
+        // Issue #594's measurement is of a G7 bonded to the device. Without that bond (removed,
+        // or never made there) a background connect never completes, so the per-sensor
+        // preference may only switch a bonded one; the application-wide setting is unchanged.
+        val text = File(repoRoot(), "Common/src/dex/java/tk/glucodata/DexGattCallback.java")
+            .readText().replace(Regex("\\s+"), "")
+        fun body(signature: String): String {
+            val start = text.indexOf(signature)
+            assertTrue("DexGattCallback must declare $signature", start >= 0)
+            val open = start + signature.length - 1
+            var end = open
+            var depth = 0
+            do {
+                if (text[end] == '{') depth++ else if (text[end] == '}') depth--
+                end++
+            } while (depth > 0 && end < text.length)
+            return text.substring(open + 1, end - 1)
+        }
+        assertEquals(
+            "the Dexcom override may add its background preference only for a bonded G7",
+            "returnsuper.useAutoConnect()||(directConnectUnreachable&&bondedHere());",
+            body("protectedbooleanuseAutoConnect(){"),
+        )
+        val bond = body("privatebooleanbondedHere(){")
+        assertTrue(
+            "a G7 is bonded here only while Android reports the bond and this app kept it",
+            bond.contains("!removedBond") && bond.contains("BOND_BONDED"),
+        )
+    }
+
+    @Test
     fun everyGattDriverRecordsItsFirstCallbackLatency() {
         // The base class cannot funnel this: onConnectionStateChange is in practice the first
         // callback of an attempt and no driver except AiDex chains to super, so a driver that
