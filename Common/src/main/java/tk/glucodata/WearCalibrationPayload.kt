@@ -48,6 +48,13 @@ data class WearCalibrationPayload(
     val rawTuning: tk.glucodata.data.calibration.CalibrationTuning = tuning,
     /** Unit in which the phone fitted [tuning], expressed as mg/dL per unit. */
     val sourceUnitMgdlPerUnit: Double = 1.0,
+    /**
+     * Calibration is switched off for the auto lane. Needed because empty
+     * anchors also mean "not calibrated yet".
+     */
+    val autoDisabled: Boolean = false,
+    /** As [autoDisabled], for the raw lane. */
+    val rawDisabled: Boolean = false,
 ) {
     companion object {
         private const val VERSION = 4
@@ -60,6 +67,9 @@ data class WearCalibrationPayload(
         // payload; no version bump is needed.
         private const val FLAG_AUTO_INTEGRATED = 1 shl 3
         private const val FLAG_RAW_INTEGRATED = 1 shl 4
+        // Set when disabled, so an older phone (bits clear) still reads as enabled.
+        private const val FLAG_AUTO_DISABLED = 1 shl 5
+        private const val FLAG_RAW_DISABLED = 1 shl 6
         private const val FLAG_VALUES_PRECALIBRATED = 1
         private const val FLAG_HIDE_INITIAL = 1 shl 1
         private const val MAX_SERIAL_BYTES = 255
@@ -87,7 +97,9 @@ data class WearCalibrationPayload(
                     (if (payload.hideInitialWhenCalibrated) FLAG_HIDE_INITIAL else 0) or
                     (if (payload.overwriteSensorValues) FLAG_OVERWRITE_SENSOR_VALUES else 0) or
                     (if (payload.autoIntegratedByDriver) FLAG_AUTO_INTEGRATED else 0) or
-                    (if (payload.rawIntegratedByDriver) FLAG_RAW_INTEGRATED else 0)
+                    (if (payload.rawIntegratedByDriver) FLAG_RAW_INTEGRATED else 0) or
+                    (if (payload.autoDisabled) FLAG_AUTO_DISABLED else 0) or
+                    (if (payload.rawDisabled) FLAG_RAW_DISABLED else 0)
             validateTuning(payload.tuning)
             validateTuning(payload.rawTuning)
             val buffer = ByteBuffer.allocate(
@@ -161,6 +173,8 @@ data class WearCalibrationPayload(
                 overwriteSensorValues = flags and FLAG_OVERWRITE_SENSOR_VALUES != 0,
                 autoIntegratedByDriver = flags and FLAG_AUTO_INTEGRATED != 0,
                 rawIntegratedByDriver = flags and FLAG_RAW_INTEGRATED != 0,
+                autoDisabled = flags and FLAG_AUTO_DISABLED != 0,
+                rawDisabled = flags and FLAG_RAW_DISABLED != 0,
                 tuning = tuning,
                 rawTuning = rawTuning,
                 sourceUnitMgdlPerUnit = sourceUnitMgdlPerUnit,

@@ -512,6 +512,9 @@ object WearSync2 {
             // it is the one holding the sensor.
             autoIntegration = WearCalibrationMode(canonicalIntegrationAnchors(serial, false)),
             rawIntegration = WearCalibrationMode(canonicalIntegrationAnchors(serial, true)),
+            // So the watch stops offering calibration the user switched off here.
+            autoDisabled = !CalibrationAccess.isEnabledForMode(false, serial),
+            rawDisabled = !CalibrationAccess.isEnabledForMode(true, serial),
         )
         MessageSender.sendSyncMessage(
             WearMessagePath.SYNC2_CAL,
@@ -756,7 +759,7 @@ object WearSync2 {
                     // still gets off a dead sensor after a swap ("No data"
                     // with fresh chunks landing in the new one).
                     WearSensorSelectionSync.alignCurrentSensor(fallback = serial)
-                    UiRefreshBus.requestDataRefresh()
+                    UiRefreshBus.requestDataRefresh(stamps.copyOf(written).max())
                 }
                 if (doLog) {
                     val scope = if (missingOnly) " (missing only)" else ""

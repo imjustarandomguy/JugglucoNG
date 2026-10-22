@@ -39,14 +39,15 @@ import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
 import tk.glucodata.CurrentDisplaySource
+import tk.glucodata.DisplayTrendSource
 import tk.glucodata.Log
 import tk.glucodata.Notify
 import tk.glucodata.R
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertType
+import tk.glucodata.glucosecomplication.trendArrowText
 import tk.glucodata.receivers.AlarmActionReceiver
 import tk.glucodata.ui.screens.glucoseColor
-import tk.glucodata.ui.screens.trendArrow
 import tk.glucodata.ui.theme.WearJugglucoTheme
 
 class AlarmActivity : ComponentActivity() {
@@ -125,7 +126,9 @@ class AlarmActivity : ComponentActivity() {
         val alertType = AlertType.fromId(Notify.resolveAlertKind(alertTypeId))
         val snapshot = runCatching { CurrentDisplaySource.resolveCurrent() }.getOrNull()
         val fallback = fallbackGlucose(intent)
-        val rate = snapshot?.rate ?: intent.getFloatExtra(EXTRA_RATE, Float.NaN)
+        // The arrow the complications and the phone draw, not the alert engine's rate.
+        val rate = snapshot?.let { runCatching { DisplayTrendSource.loadDisplayArrowRate(it) }.getOrDefault(it.rate) }
+            ?: intent.getFloatExtra(EXTRA_RATE, Float.NaN)
         val alertLabel = alertType?.let { getString(it.nameResId) }
             ?: intent.getStringExtra(EXTRA_ALARM_MESSAGE).orEmpty()
                 .ifBlank { intent.getStringExtra(EXTRA_ALARM_TYPE).orEmpty() }
@@ -139,7 +142,7 @@ class AlarmActivity : ComponentActivity() {
             alertLabel = alertLabel,
             primaryGlucose = snapshot?.primaryStr ?: fallback.primary,
             secondaryGlucose = snapshot?.secondaryStr ?: fallback.secondary,
-            trend = trendArrow(rate),
+            trend = trendArrowText(rate),
             glucoseColor = snapshot?.let { glucoseColor(it) },
             snoozeMinutes = snoozeMinutes
         )

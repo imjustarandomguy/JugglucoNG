@@ -1,5 +1,8 @@
 package tk.glucodata
 
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,16 +31,35 @@ object UiRefreshBus {
 
     @JvmStatic
     fun requestDataRefresh() {
+        requestDataRefresh(0L)
+    }
+
+    /**
+     * [requestDataRefresh] after storing a reading taken at [readingTimeMillis]: a
+     * newer reading than the watch's complications have shown reaches them at once.
+     */
+    @JvmStatic
+    fun requestDataRefresh(readingTimeMillis: Long) {
         bumpRevision()
         _events.tryEmit(Event.DataChanged)
         Notify.scheduleDataChangedRefresh()
         GlucoseUpdateBroadcaster.send(Applic.app)
-        refreshWatchFaceSurfaces()
+        refreshWatchFaceSurfaces(readingTimeMillis)
     }
 
-    /** Complication updates arriving faster than this are dropped. */
+    /**
+     * Minimum spacing of complication updates for the same reading. A request
+     * inside it is postponed to the end of the interval, not dropped. The delay
+     * runs on uptime, which stops while the watch sleeps, so a newer reading is
+     * never put behind it.
+     */
     private const val COMPLICATION_MIN_INTERVAL_MS = 20_000L
-    @Volatile private var lastComplicationUpdateMs = 0L
+    private val complicationThrottle = TrailingThrottle(COMPLICATION_MIN_INTERVAL_MS)
+    private val complicationHandler by lazy { Handler(Looper.getMainLooper()) }
+    private val deferredComplicationUpdate = Runnable {
+        complicationThrottle.deferredRunStarting(SystemClock.elapsedRealtime())
+        updateComplications()
+    }
 
     /**
      * Watch face and complications only refreshed when the watch itself took a
@@ -47,12 +69,37 @@ object UiRefreshBus {
      * Throttled: a backfill delivers dozens of chunks, and each would otherwise
      * ask six data sources to redraw.
      */
-    private fun refreshWatchFaceSurfaces() {
+    private fun refreshWatchFaceSurfaces(readingTimeMillis: Long) {
         if (!Applic.isWearable) return
-        val now = System.currentTimeMillis()
-        if (now - lastComplicationUpdateMs < COMPLICATION_MIN_INTERVAL_MS) return
-        lastComplicationUpdateMs = now
-        runCatching { tk.glucodata.GlucoseValueRefreshAccess.get()?.updateAll() }
+        // Real time, sleep included: uptime stops while the watch sleeps, so the
+        // interval could still look open when the next reading arrives minutes later.
+        val delayMs = complicationThrottle.request(
+            SystemClock.elapsedRealtime(),
+            complicationKey(readingTimeMillis, System.currentTimeMillis(), Notify.glucosetimeout)
+        )
+        when {
+            delayMs == 0L -> {
+                complicationHandler.removeCallbacks(deferredComplicationUpdate)
+                updateComplications()
+            }
+            delayMs > 0L -> complicationHandler.postDelayed(deferredComplicationUpdate, delayMs)
+        }
+    }
+
+    /**
+     * The throttle key of a refresh for a reading taken at [readingTimeMillis]. A
+     * reading too old to be shown changes nothing on the face, so the chunks of a
+     * backfill stay coalesced until one carries a current reading.
+     */
+    internal fun complicationKey(readingTimeMillis: Long, nowMillis: Long, timeoutMillis: Long): Long =
+        if (readingTimeMillis > 0L && nowMillis - readingTimeMillis < timeoutMillis) {
+            readingTimeMillis
+        } else {
+            TrailingThrottle.NO_KEY
+        }
+
+    private fun updateComplications() {
+        runCatching { GlucoseValueRefreshAccess.get()?.updateAll() }
     }
 
     @JvmStatic

@@ -1,5 +1,8 @@
 package tk.glucodata
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertType
 
@@ -162,25 +165,28 @@ object WearToggleSync {
 
     // ------------------------------------------------------------- watch side
 
-    @Volatile private var received: List<Toggle> = emptyList()
+    private val received = MutableStateFlow<List<Toggle>>(emptyList())
 
-    /** The last state the phone sent, for the watch's screens to render. */
-    @JvmStatic
-    fun known(scope: String): List<Toggle> = received.filter { it.scope == scope }
+    /** The last state the phone sent; screens collect it so a switch redraws when the phone answers. */
+    val state: StateFlow<List<Toggle>> = received.asStateFlow()
 
     @JvmStatic
-    fun knownEnabled(scope: String, id: String): Boolean? =
-        received.firstOrNull { it.scope == scope && it.id == id }?.enabled
+    fun known(scope: String): List<Toggle> = received.value.filter { it.scope == scope }
+
+    /** Whether the phone reported [id] in [scope] as enabled, or null if it has not reported it. */
+    @JvmStatic
+    fun knownEnabled(toggles: List<Toggle>, scope: String, id: String): Boolean? =
+        toggles.firstOrNull { it.scope == scope && it.id == id }?.enabled
 
     /** Watch: remembers what the phone reported, and applies what is local. */
     @JvmStatic
     fun onState(data: ByteArray?) {
         val toggles = decode(data)
         if (toggles.isEmpty()) return
-        received = toggles
         // Alerts fire on the watch too, and the display preferences are read
-        // there, so both have to be written locally from the reply.
+        // there, so both are written locally, before the state is published.
         apply(toggles.filter { it.scope == SCOPE_ALERT || it.scope == SCOPE_PREF })
+        received.value = toggles
         UiRefreshBus.requestStatusRefresh()
     }
 

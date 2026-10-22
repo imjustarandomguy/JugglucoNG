@@ -994,7 +994,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         ;
 
         Applic.updatescreen();
-        UiRefreshBus.requestDataRefresh();
+        UiRefreshBus.requestDataRefresh(timmsec);
 
         if (!DontTalk) {
             if (dotalk && !alarmSpeechStarted) {
