@@ -98,30 +98,18 @@ class NotificationScreenOnTests {
         assertEquals(0, h.count("startupPosts"))
     }
 
-    @Test fun screenOnReconcilesStaleWithoutDeferredCharts() {
+    @Test fun freshnessIsNotTheReceiversWithoutDeferredCharts() {
+        // The reading ages with no incoming event: the current reading's clock reconciles
+        // at screen on and after a clock change, and its publish redraws the
+        // notification. This receiver only draws the charts it deferred.
         val h = harness()
         h.set("interactive", true)
         assertTrue(h.render())
-        h.wake()
-        assertEquals(0, h.count("livePosts"))
-        // The reading ages with no incoming events: the next screen-on must surface
-        // the stale state even though no chart work was deferred.
         h.set("forceStale", true)
         h.wake()
-        assertEquals(1, h.count("livePosts"))
-    }
-
-    @Test fun timeChangeReconcilesFreshnessWithoutDeferredCharts() {
-        val h = harness()
-        h.set("interactive", true)
-        assertTrue(h.render())
         h.timeShift()
-        assertEquals(1, h.count("livePosts"))
-        // A clock change with no reading still reconciles through the status path,
-        // never inventing a value.
-        h.set("hasCurrent", false)
-        h.timeShift()
-        assertEquals(1, h.count("startupPosts"))
+        assertEquals(0, h.count("livePosts"))
+        assertEquals(0, h.count("startupPosts"))
     }
 
     companion object {
@@ -130,7 +118,7 @@ class NotificationScreenOnTests {
                 .first { File(it, "Common/src/main/java/tk/glucodata/Notify.java").exists() }
             val source = File(root, "Common/src/main/java/tk/glucodata/Notify.java").readText()
             val methods = source.substring(source.indexOf("    private boolean isScreenOffChartPauseEnabled()"),
-                source.indexOf("    private final Runnable glucoseRefreshRunnable"))
+                source.indexOf("    private final Runnable dataChangedGlucoseRefreshRunnable"))
             val dir = java.nio.file.Files.createTempDirectory("notify-screen-on-test").toFile()
             val file = File(dir, "NotifyScreenOnHarness.java")
             file.writeText("""
@@ -139,7 +127,7 @@ class NotificationScreenOnTests {
                     public boolean interactive, isWearable, pauseEnabled = true, settingPresent = true,
                         hasCurrent = true, keepNotification = true, forceStale = false,
                         presentGlucose = true;
-                    public int livePosts, startupPosts, deadlineArms;
+                    public int livePosts, startupPosts;
                     public long snapshotTime = System.currentTimeMillis() - 60_000L;
                     public long lastPublishedTime;
                     static String LOG_ID = "test", glucoseformat = "%.0f";
@@ -180,15 +168,6 @@ class NotificationScreenOnTests {
                             long getTimeMillis() { return time; }
                         }
                     }
-                    static class NotificationRefreshPolicy {
-                        static boolean isFresh(long readingTimeMs, long nowMs, long freshnessMs) {
-                            // Mirrors the production rule pinned by NotificationRefreshPolicyTests:
-                            // inclusive age <= timeout, future clamped to fresh.
-                            if (readingTimeMs <= 0L || freshnessMs <= 0L) return false;
-                            if (nowMs <= readingTimeMs) return true;
-                            return nowMs - readingTimeMs <= freshnessMs;
-                        }
-                    }
                     static class Log { static void stack(String a, String b, Throwable t) {
                         throw new AssertionError(t);
                     } }
@@ -197,12 +176,6 @@ class NotificationScreenOnTests {
                         return !isWearable && keepNotification;
                     }
                     boolean shouldPresentForegroundGlucose() { return presentGlucose; }
-                    boolean isSameForegroundGlucose(CurrentDisplaySource.Snapshot current) {
-                        return current != null && current.getTimeMillis() == lastPublishedTime;
-                    }
-                    void armFreshnessDeadlineLocked(long generation, long displayedReadingMillis) {
-                        deadlineArms++;
-                    }
                     void scheduleVisualNotificationRefresh() {
                         CurrentDisplaySource.Snapshot resolved = resolveNotificationCurrentSnapshot();
                         if (resolved == null) { startupPosts++; return; }
@@ -223,9 +196,6 @@ class NotificationScreenOnTests {
                     String resolveNotificationSensorSerial() { return "sensor-1"; }
                     CurrentDisplaySource.Snapshot resolveNotificationCurrentSnapshot(String serial) {
                         return resolveNotificationCurrentSnapshot();
-                    }
-                    CurrentDisplaySource.Snapshot effectiveDisplaySnapshot(CurrentDisplaySource.Snapshot s, String serial) {
-                        return s;
                     }
                     Object getforgroundnotification() { canRenderNotificationCharts(true); return new Object(); }
                     void fornotify(Object notification) { startupPosts++; }

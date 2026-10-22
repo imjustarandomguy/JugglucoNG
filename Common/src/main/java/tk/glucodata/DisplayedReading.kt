@@ -59,6 +59,8 @@ data class DisplayedReading(
     val origin: Origin,
     val reason: Reason,
     val revision: Long,
+    /** The sensor generation, which bounds the values the status-bar icon spells out. */
+    val sensorGen: Int = 0,
 ) {
     enum class Freshness {
         /** The newest reading, while the next one is not yet overdue. */
@@ -140,6 +142,36 @@ data class DisplayedReading(
     /** The arrow a surface draws: [rate] while [showsArrow], else NaN. */
     val shownRate: Float get() = if (showsArrow) rate else Float.NaN
 
+    /**
+     * [shownText] with the view mode's other lanes after it, " · " between them, for a
+     * surface that has room for them.
+     */
+    val shownLanesText: String
+        get() = if (showsValue) listOfNotNull(valueText, secondaryText, tertiaryText).joinToString(" · ") else NO_VALUE_TEXT
+
+    /**
+     * The arrow an alarm on this reading draws, on its banner and its screen alike:
+     * [shownRate], or [firedRate] (the rate the alarm came with) for a fresh reading
+     * without a trend yet. A stale reading has no arrow here either.
+     */
+    fun alarmRate(firedRate: Float): Float = when {
+        showsArrow -> rate
+        freshness == Freshness.FRESH -> firedRate
+        else -> Float.NaN
+    }
+
+    /**
+     * [alarmRate] for an alarm that fired on the reading taken at [alertingTimeMillis]. The
+     * alert engine sees a reading before it is in place for this one (its stored row and the
+     * live slot follow the alerts), so while this reading is older the arrow is the alarm's
+     * own reading's, [alertingRate], or [firedRate] without one: never the previous reading's.
+     */
+    fun alarmRate(alertingTimeMillis: Long, firedRate: Float, alertingRate: () -> Float): Float {
+        if (alertingTimeMillis <= lastReadingMillis + SAME_READING_MS) return alarmRate(firedRate)
+        val own = alertingRate()
+        return if (own.isFinite()) own else firedRate
+    }
+
     /** True when [other] draws exactly the same: everything but the revision, reason and origin. */
     fun sameDisplayAs(other: DisplayedReading): Boolean =
         this == other.copy(origin = origin, reason = reason, revision = revision)
@@ -147,6 +179,9 @@ data class DisplayedReading(
     companion object {
         /** What every surface shows where there is no value. */
         const val NO_VALUE_TEXT = "---"
+
+        /** Two reading times closer than this are one reading stamped twice (ms and whole seconds). */
+        private const val SAME_READING_MS = 30_000L
 
         /** Before the first publish. */
         @JvmField

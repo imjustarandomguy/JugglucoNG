@@ -329,6 +329,12 @@
             android:enabled="true"
             android:exported="false" />
 
+        <!-- The current reading's clock: wakes it when the shown reading goes stale. -->
+        <receiver
+            android:name="tk.glucodata.PhoneReadingClockReceiver"
+            android:enabled="true"
+            android:exported="false" />
+
     </application>
 
 </manifest>
