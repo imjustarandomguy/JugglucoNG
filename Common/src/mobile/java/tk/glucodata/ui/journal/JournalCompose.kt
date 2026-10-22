@@ -416,7 +416,12 @@ fun JournalEntrySheet(
     var showTimePicker by remember(existingEntry?.id, initialType, selectedTimestamp) { mutableStateOf(false) }
     var noteFieldFocused by remember(existingEntry?.id) { mutableStateOf(false) }
     val selectedInsulinPreset = draft.insulinPresetId?.let(presetsById::get)
+    // A treatment received from Nightscout keeps the time it came with (timeEditableFor): the
+    // date and time are greyed out, and the edit is saved at the entry's own time regardless.
+    val timeEditable = timeEditableFor(existingEntry?.source)
+    val keptTimestamp = existingEntry?.timestamp?.takeUnless { timeEditable }
     val saveInputs = draft.toInputs(unit, sensorSerialProvider(), presetsById, foodMacrosEnabled)
+        .map { input -> keptTimestamp?.let { input.copy(timestamp = it) } ?: input }
     val canSave = saveInputs.isNotEmpty()
     val calculatorProfile = remember(doseProfile, draft.timestamp) {
         doseProfile?.at(draft.timestamp)?.takeIf {
@@ -575,13 +580,24 @@ fun JournalEntrySheet(
             }
 
             item(key = "date_time") {
-                JournalDateTimeCard(
-                    date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(draft.timestamp)),
-                    time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(draft.timestamp)),
-                    onDateClick = { showDatePicker = true },
-                    onTimeClick = { showTimePicker = true },
-                    onTimeLongClick = { draft = draft.copy(timestamp = System.currentTimeMillis()) }
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    JournalDateTimeCard(
+                        date = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(draft.timestamp)),
+                        time = DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(draft.timestamp)),
+                        onDateClick = { showDatePicker = true },
+                        onTimeClick = { showTimePicker = true },
+                        onTimeLongClick = { draft = draft.copy(timestamp = System.currentTimeMillis()) },
+                        enabled = timeEditable
+                    )
+                    if (!timeEditable) {
+                        Text(
+                            text = stringResource(R.string.journal_time_locked_nightscout),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+                }
             }
 
             when (draft.type) {
@@ -2951,7 +2967,8 @@ private fun JournalDateTimeCard(
     time: String,
     onDateClick: () -> Unit,
     onTimeClick: () -> Unit,
-    onTimeLongClick: () -> Unit
+    onTimeLongClick: () -> Unit,
+    enabled: Boolean = true
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -2969,7 +2986,8 @@ private fun JournalDateTimeCard(
                 icon = Icons.Default.Event,
                 contentDescription = stringResource(R.string.date),
                 value = date,
-                onClick = onDateClick
+                onClick = onDateClick,
+                enabled = enabled
             )
             Box(
                 modifier = Modifier
@@ -2984,7 +3002,8 @@ private fun JournalDateTimeCard(
                 value = time,
                 onClick = onTimeClick,
                 onLongClick = onTimeLongClick,
-                onLongClickLabel = stringResource(R.string.journal_quickadd_always_now_title)
+                onLongClickLabel = stringResource(R.string.journal_quickadd_always_now_title),
+                enabled = enabled
             )
         }
     }
@@ -2998,9 +3017,12 @@ private fun JournalDateTimeSegment(
     value: String,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
-    onLongClickLabel: String? = null
+    onLongClickLabel: String? = null,
+    enabled: Boolean = true
 ) {
     val haptics = LocalHapticFeedback.current
+    // Material's disabled look: on-surface content at 38%.
+    val disabledColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
     Row(
         modifier = modifier
             .heightIn(min = 56.dp)
@@ -3009,6 +3031,7 @@ private fun JournalDateTimeSegment(
                 role = Role.Button
             }
             .combinedClickable(
+                enabled = enabled,
                 onClick = onClick,
                 onLongClickLabel = onLongClickLabel,
                 onLongClick = onLongClick?.let { longClick ->
@@ -3024,13 +3047,14 @@ private fun JournalDateTimeSegment(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+            tint = if (enabled) MaterialTheme.colorScheme.primary else disabledColor,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyLarge,
+            color = if (enabled) Color.Unspecified else disabledColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

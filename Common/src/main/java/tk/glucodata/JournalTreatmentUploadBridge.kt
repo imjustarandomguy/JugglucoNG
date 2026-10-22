@@ -13,4 +13,13 @@ interface JournalTreatmentUploadBridge {
     fun getReceiveTreatments(): Boolean
 
     fun uploadAll(useV3: Boolean): Boolean
+
+    /**
+     * Whether a pass woken by a new glucose reading should also read treatments back. When it
+     * says yes, the treatment pass that follows reads only the newest few treatments.
+     */
+    fun readingReceiveDue(useV3: Boolean): Boolean
+
+    /** The app came to the front: the next treatment pass may read the newest few treatments. */
+    fun requestLightReceive()
 }

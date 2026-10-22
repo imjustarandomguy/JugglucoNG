@@ -36,7 +36,7 @@ import tk.glucodata.drivers.VirtualGlucoseSensorBridge
 class NightscoutFollowerManager(
     serial: String,
     private val url: String,
-    private val secret: String,
+    secret: String,
     @Volatile private var useV3: Boolean = false,
     dataptr: Long,
 ) : SuperGattCallback(serial, dataptr, SENSOR_GEN), ManagedBluetoothSensorDriver {
@@ -99,6 +99,8 @@ class NightscoutFollowerManager(
     @Volatile private var latestRateMgdlPerMin: Float = 0f
     @Volatile private var bootstrapHistoryPending =
         !NightscoutFollowerRegistry.hasCompleteHistoryImport(Applic.app, SerialNumber)
+    /** The server is fixed for the follower's lifetime (it names the follower); the secret is not. */
+    @Volatile private var secret: String = secret
 
     init {
         mActiveDeviceAddress = url
@@ -123,9 +125,14 @@ class NightscoutFollowerManager(
     override fun matchesManagedSensorId(sensorId: String?): Boolean =
         NightscoutFollowerRegistry.matchesSensorId(SerialNumber, sensorId)
 
-    /** Apply the persisted follower API choice to an already-running virtual sensor. */
-    internal fun updateApiVersion(useV3: Boolean) {
-        if (this.useV3 == useV3) return
+    /**
+     * Apply the persisted follower secret and API choice to an already-running virtual sensor.
+     * A new secret for the same server keeps this follower; without this it would go on polling
+     * with the old one until the app restarts.
+     */
+    internal fun updateSettings(secret: String, useV3: Boolean) {
+        if (this.secret == secret && this.useV3 == useV3) return
+        this.secret = secret
         this.useV3 = useV3
         // A cached token belongs to the previous authentication mode/credentials. The next
         // immediate refresh must negotiate from the newly selected mode instead.
@@ -292,7 +299,10 @@ class NightscoutFollowerManager(
     }
 
     override fun terminateManagedSensor(wipeData: Boolean) {
-        stop = true
+        // Set under the lock a poll writes under: once this returns, a poll that was already
+        // fetching cannot store a reading any more, so the caller can end the native record
+        // without the poll bringing it back a moment later.
+        publishGate.exclusive { stop = true }
         cancelPendingHandlerWork()
         mainHandler.removeCallbacks(probeRunnable)
         NightscoutFollowerDeviceStatus.clear()
@@ -580,7 +590,9 @@ class NightscoutFollowerManager(
             return
         }
         if (!fetched.historyImported) {
-            importHistory(readings)
+            // Through the gate too: history stored after the follower was switched off would
+            // bring back the native record that switching it off ended.
+            publishGate.publishIfCurrent(current) { importHistory(readings) }
         }
         val published = publishGate.publishIfCurrent(current) {
             publishLatest(readings)
@@ -657,6 +669,9 @@ class NightscoutFollowerManager(
             val result = NightscoutFollowerHistoryPaging.consumePages(
                 lowerBoundMs = null,
                 fetchPage = { beforeExclusiveMs ->
+                    // A first import pages through the server's whole history; a follower
+                    // switched off meanwhile must not go on downloading it.
+                    check(!stop) { "Nightscout follower stopped" }
                     fetchReadingsPage(lowerBoundMs = null, beforeExclusiveMs = beforeExclusiveMs)
                 },
                 consumePage = { page ->
@@ -749,8 +764,11 @@ class NightscoutFollowerManager(
     private fun importRemoteTreatments(): Int {
         fun importBatch(label: String, body: () -> String): Int =
             runCatching {
+                // A follower stopped mid-poll (switched off, or to another server) stores
+                // nothing more from the server it was following.
+                if (stop) return@runCatching 0
                 val json = body()
-                if (json.isBlank() || json == "[]") 0
+                if (stop || json.isBlank() || json == "[]") 0
                 else tk.glucodata.NightscoutTreatmentImportAccess.importTreatments(SerialNumber, json)
             }.getOrElse { error ->
                 Log.w(TAG, "Nightscout $label import ignored: ${error.message}")
@@ -921,6 +939,9 @@ internal class NightscoutFollowerPublishGate {
             publish()
             true
         }
+
+    /** Runs [block] with no publication under way; one that waited checks currency after it. */
+    fun exclusive(block: () -> Unit) = synchronized(lock, block)
 }
 
 internal object NightscoutFollowerJournalEndpoints {

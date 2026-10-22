@@ -1564,6 +1564,9 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="nightscout_url_placeholder">https://nightscout.example.com</string>
     <string name="nightscout_use_v3_api">v3 API használata</string>
     <string name="nightscout_use_v3_api_desc">Kapcsold ki, ha a szerver nem támogatja a v3-at</string>
+    <string name="nightscout_wifi_only">Feltöltés csak Wi-Fi-n</string>
+    <string name="nightscout_wifi_only_desc">Feltöltések visszatartása mobiladat-kapcsolaton</string>
+    <string name="nightscout_status_wifi_waiting">Várakozás Wi-Fi-re</string>
     <string name="nightscout_follow_desc">Csak olvasható virtuális szenzor létrehozása erről a Nightscout URL-ről.</string>
     <string name="nightscout_follow_interval_title">Ellenőrzési időköz</string>
     <string name="nightscout_follow_interval_desc">A rövidebb időközök hamarabb lekérik a méréseket, de több akkumulátort fogyasztanak. A hosszabbak késleltethetik a riasztásokat.</string>
@@ -2201,6 +2204,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="journal_source_api">API-n keresztül érkezett</string>
     <string name="journal_source_health_connect">Health Connect rendszerből</string>
     <string name="journal_source_meter">Vércukormérőből</string>
+    <string name="journal_time_locked_nightscout">A Nightscoutból érkezett kezelések ideje nem módosítható</string>
     <string name="journal_note_label">Megjegyzés</string>
     <string name="journal_onset_label">Hatáskezdet</string>
     <string name="journal_add_preset">Inzulintípus hozzáadása</string>

@@ -3,9 +3,11 @@ package tk.glucodata.data.journal
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tk.glucodata.data.journal.JournalTreatmentUploader.MAX_DELETE_ATTEMPTS
+import tk.glucodata.data.journal.JournalTreatmentUploader.ReceiveRead
 import tk.glucodata.data.journal.JournalTreatmentUploader.TombstoneAction
 import tk.glucodata.data.journal.JournalTreatmentUploader.tombstoneAction
 
@@ -109,6 +111,256 @@ class JournalTreatmentUploaderTests {
         assertEquals(0L, floor.waitMillis(key, 900_000L))
     }
 
+    // -- a new reading asking for a read -------------------------------------
+
+    private val ageMillis = JournalTreatmentUploader.READING_RECEIVE_MIN_AGE_MILLIS
+
+    private fun readingTriggers(
+        floor: JournalTreatmentUploader.ReceiveFloor,
+        nowMillis: Long,
+        key: String = "v1 https://ns.example.com",
+        receiveEnabled: Boolean = true
+    ) = JournalTreatmentUploader.readingTriggersReceive(receiveEnabled, floor, key, nowMillis)
+
+    @Test
+    fun aReadingAsksForNothingWithReceiveTreatmentsOff() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        assertFalse(readingTriggers(floor, 1_000_000L, receiveEnabled = false))
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertFalse(readingTriggers(floor, 1_000_000L + 3 * ageMillis, receiveEnabled = false))
+    }
+
+    @Test
+    fun theFirstReadingAsksAtOnce() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        assertTrue(readingTriggers(floor, 1_000_000L))
+    }
+
+    @Test
+    fun readingsAskOncePerFifteenMinutesNotOncePerReading() {
+        // A reading every minute must not read every minute, and neither must a reading past
+        // the light read's floor (it only says a read may go).
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 30_000L)
+        val key = "v1 https://ns.example.com"
+        val slack = JournalTreatmentUploader.READING_RECEIVE_SLACK_MILLIS
+        floor.recordRead(key, 1_000_000L)
+        for (minute in 1..14) {
+            assertFalse("minute $minute", readingTriggers(floor, 1_000_000L + minute * 60_000L))
+        }
+        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis - slack - 1))
+        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis - slack))
+        assertEquals(0L, floor.waitMillis(key, 1_000_000L + ageMillis - slack))
+    }
+
+    @Test
+    fun theThirdReadingFiveMinutesApartAsksThoughItsReadLandedSecondsLate() {
+        // The read is recorded when its answer comes, a few seconds after its reading; the
+        // readings themselves drift by a second or two. Every third reading still asks.
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 30_000L)
+        val key = "v1 https://ns.example.com"
+        val firstReading = 1_000_000L
+        floor.recordRead(key, firstReading + 4_000L)
+        assertFalse(readingTriggers(floor, firstReading + 5 * 60_000L + 2_000L))
+        assertFalse(readingTriggers(floor, firstReading + 10 * 60_000L - 2_000L))
+        assertTrue(readingTriggers(floor, firstReading + 15 * 60_000L - 2_000L))
+    }
+
+    @Test
+    fun aReadStartsTheFifteenMinutesAgain() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        val key = "v1 https://ns.example.com"
+        floor.recordRead(key, 1_000_000L)
+        assertTrue(readingTriggers(floor, 1_000_000L + ageMillis))
+        floor.recordRead(key, 1_000_000L + ageMillis)
+        assertFalse(readingTriggers(floor, 1_000_000L + ageMillis + 60_000L))
+        assertTrue(readingTriggers(floor, 1_000_000L + 2 * ageMillis))
+    }
+
+    @Test
+    fun anotherServerOrApiVersionIsAskedForAtOnce() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertTrue(readingTriggers(floor, 1_001_000L, key = "v3 https://ns.example.com"))
+        assertTrue(readingTriggers(floor, 1_001_000L, key = "v1 https://other.example.com"))
+    }
+
+    @Test
+    fun aClockThatWentBackwardsDoesNotHoldReadingsOff() {
+        val floor = JournalTreatmentUploader.ReceiveFloor(intervalMillis = 5 * 60_000L)
+        floor.recordRead("v1 https://ns.example.com", 1_000_000L)
+        assertTrue(readingTriggers(floor, 900_000L))
+    }
+
+    // -- a light read when the app comes to the front -------------------------
+
+    private val fullInterval = 5 * 60_000L
+    private val lightInterval = 30_000L
+    private val key = "v1 https://ns.example.com"
+
+    private fun schedule() = JournalTreatmentUploader.ReceiveSchedule(fullInterval, lightInterval)
+
+    private fun planFor(fullWaitMillis: Long, lightWanted: Boolean, lightWaitMillis: Long) =
+        JournalTreatmentUploader.receivePlan(fullWaitMillis, lightWanted, lightWaitMillis)
+
+    @Test
+    fun aPassWhoseIntervalIsOverReadsInFullWhateverWokeIt() {
+        for (lightWanted in listOf(false, true)) {
+            for (lightWait in listOf(0L, 10_000L)) {
+                val plan = planFor(fullWaitMillis = 0L, lightWanted = lightWanted, lightWaitMillis = lightWait)
+                assertEquals(ReceiveRead.FULL, plan.read)
+                assertNull(plan.wakeInMillis)
+            }
+        }
+    }
+
+    @Test
+    fun withoutTheAppOpenedAPassInsideTheIntervalWaitsForItsEnd() {
+        val plan = planFor(fullWaitMillis = 120_000L, lightWanted = false, lightWaitMillis = 0L)
+        assertEquals(ReceiveRead.HOLD, plan.read)
+        assertEquals(120_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun openingTheAppInsideTheIntervalReadsTheNewestAndStillBooksTheFullRead() {
+        // The pass may also be owed a full read (a journal change raised at the same moment).
+        val plan = planFor(fullWaitMillis = 120_000L, lightWanted = true, lightWaitMillis = 0L)
+        assertEquals(ReceiveRead.LIGHT, plan.read)
+        assertEquals(120_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun openingTheAppAgainInsideTheLightFloorWaitsForTheEarlierEnd() {
+        val light = planFor(fullWaitMillis = 120_000L, lightWanted = true, lightWaitMillis = 21_000L)
+        assertEquals(ReceiveRead.HOLD, light.read)
+        assertEquals(21_000L, light.wakeInMillis)
+        val full = planFor(fullWaitMillis = 5_000L, lightWanted = true, lightWaitMillis = 21_000L)
+        assertEquals(ReceiveRead.HOLD, full.read)
+        assertEquals(5_000L, full.wakeInMillis)
+    }
+
+    @Test
+    fun aDoseEnteredJustAfterABookedReadArrivesWithinHalfAMinuteOfOpeningTheApp() {
+        // A dose reaches the server seconds after a full read, and the app is opened 9 s after
+        // that read. The full read's floor would hold the dose back for five minutes however
+        // often the app is opened; the light read's holds it for the rest of half a minute.
+        val schedule = schedule()
+        val readAt = 1_000_000L
+        schedule.recordRead(ReceiveRead.FULL, key, readAt)
+        schedule.requestLight()
+        val opened = schedule.plan(key, readAt + 9_000L)
+        assertEquals(ReceiveRead.HOLD, opened.read)
+        assertEquals(21_000L, opened.wakeInMillis)
+        // The request was kept for the pass the booked wake brings.
+        val booked = schedule.plan(key, readAt + 30_000L)
+        assertEquals(ReceiveRead.LIGHT, booked.read)
+        assertEquals(fullInterval - 30_000L, booked.wakeInMillis)
+        schedule.recordRead(ReceiveRead.LIGHT, key, readAt + 30_500L)
+        // Used up: the next pass waits for the full read, which still comes at its time.
+        val later = schedule.plan(key, readAt + 60_000L)
+        assertEquals(ReceiveRead.HOLD, later.read)
+        assertEquals(fullInterval - 60_000L, later.wakeInMillis)
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, readAt + fullInterval).read)
+    }
+
+    @Test
+    fun openingTheAppOnceTheIntervalIsOverReadsInFull() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestLight()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + fullInterval).read)
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L + fullInterval)
+        // The full read answered the request too.
+        assertEquals(ReceiveRead.HOLD, schedule.plan(key, 1_000_000L + fullInterval + lightInterval).read)
+    }
+
+    @Test
+    fun aFullReadStartsTheLightFloorToo() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestLight()
+        val plan = schedule.plan(key, 1_000_000L + 10_000L)
+        assertEquals(ReceiveRead.HOLD, plan.read)
+        assertEquals(lightInterval - 10_000L, plan.wakeInMillis)
+    }
+
+    @Test
+    fun aLightReadStartsTheReadingsQuarterHourButNotTheFullInterval() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        val lightAt = 1_000_000L + fullInterval - 1_000L
+        schedule.recordRead(ReceiveRead.LIGHT, key, lightAt)
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + fullInterval).read)
+        // Either kind of read holds the newest documents, which is all a reading asks for.
+        assertFalse(readingTriggers(schedule.light, 1_000_000L + ageMillis))
+        assertTrue(readingTriggers(schedule.light, lightAt + ageMillis))
+    }
+
+    // -- the read a reading asks for -----------------------------------------
+
+    @Test
+    fun aPassAReadingRaisedReadsLightWhateverTheFullIntervalSays() {
+        for (fullWait in listOf(0L, 120_000L)) {
+            for (lightWanted in listOf(false, true)) {
+                val plan = JournalTreatmentUploader.receivePlan(fullWait, lightWanted, 0L, readingOnly = true)
+                assertEquals("fullWait=$fullWait lightWanted=$lightWanted", ReceiveRead.LIGHT, plan.read)
+                assertNull("a reading's read books a full one", plan.wakeInMillis)
+            }
+        }
+    }
+
+    @Test
+    fun readingsAloneMakeALightReadEveryQuarterHourAndNoFullOne() {
+        // A day of readings five minutes apart, nothing else happening. The newest 240
+        // documents every quarter of an hour would be close to a hundred full reads.
+        val schedule = schedule()
+        val start = 1_000_000L
+        var reads = 0
+        for (n in 0 until 24 * 12) {
+            val readingAt = start + n * 5 * 60_000L + (n % 5 - 2) * 1_000L
+            if (!readingTriggers(schedule.light, readingAt)) continue
+            schedule.requestReadingRead()
+            val plan = schedule.plan(key, readingAt + 1_000L)
+            assertEquals("reading $n", ReceiveRead.LIGHT, plan.read)
+            assertNull("reading $n books a read", plan.wakeInMillis)
+            schedule.recordRead(plan.read, key, readingAt + 4_000L)
+            schedule.endPass()
+            reads++
+        }
+        assertEquals(24 * 4, reads)
+    }
+
+    @Test
+    fun aReadingsRequestLastsItsOwnPassOnly() {
+        // The pass stopped before its read; the next one, a journal change, reads in full.
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.FULL, key, 1_000_000L)
+        schedule.requestReadingRead()
+        schedule.endPass()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_000L + ageMillis).read)
+    }
+
+    @Test
+    fun aHeldPassRecordsNoRead() {
+        val schedule = schedule()
+        schedule.recordRead(ReceiveRead.HOLD, key, 1_000_000L)
+        schedule.requestLight()
+        assertEquals(ReceiveRead.FULL, schedule.plan(key, 1_000_001L).read)
+    }
+
+    @Test
+    fun theLightReadAsksForTheNewestTwentyOnEitherApiVersion() {
+        val count = JournalTreatmentUploader.LIGHT_FETCH_COUNT
+        assertEquals(20, count)
+        assertEquals(
+            "https://ns.example.com/api/v1/treatments.json?count=20",
+            JournalTreatmentUploader.treatmentFetchUrl("https://ns.example.com", useV3 = false, count = count)
+        )
+        val v3 = JournalTreatmentUploader.treatmentFetchUrl("https://ns.example.com", useV3 = true, count = count)
+        assertTrue(v3, v3.contains("limit=20"))
+        // Newest first, so the twenty are the newest twenty.
+        assertTrue(v3, v3.contains("sort%24desc=date"))
+    }
+
     // -- what a refusal reports --------------------------------------------
 
     @Test
@@ -167,21 +419,124 @@ class JournalTreatmentUploaderTests {
     }
 
     @Test
-    fun aRefusedDeleteIsRetriedUntilTheAttemptCapIsReached() {
+    fun aRefusedDeleteIsRetriedUntilTheAttemptCapThenKeptHere() {
         // 403 is the reported case: a role with api:treatments:create but not :delete.
         assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 403, attemptsSoFar = 0))
         assertEquals(
             TombstoneAction.RETRY,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS - 2)
         )
+        // No longer sent, but the tombstone stays: the treatment stays deleted here.
         assertEquals(
-            TombstoneAction.GIVE_UP,
+            TombstoneAction.KEEP_LOCAL,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1)
         )
         assertEquals(
-            TombstoneAction.GIVE_UP,
+            TombstoneAction.KEEP_LOCAL,
             tombstoneAction(code = 403, attemptsSoFar = MAX_DELETE_ATTEMPTS)
         )
+        assertFalse(
+            JournalTreatmentUploader.sendsDelete(
+                JournalPendingDeleteEntity(entryId = 1L, nsRemoteId = "65a1", deletedAt = 0L, attempts = MAX_DELETE_ATTEMPTS)
+            )
+        )
+    }
+
+    @Test
+    fun aServerErrorOnOneDeleteIsCountedForThatDeleteAlone() {
+        // A document the server fails on every time does not hold the queue for good; it is
+        // retried on its own, and past the cap kept here, never dropped.
+        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.KEEP_LOCAL, tombstoneAction(code = 500, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+    }
+
+    @Test
+    fun anAnswerThatIsNotNightscoutsNeverUsesUpADeletesAttempts() {
+        // A proxy's or a captive portal's page, or a 500 with no body, says nothing about the
+        // document: whatever its status, the pass waits and the delete is not counted, so it is
+        // never "failed too often" for it.
+        fun action(code: Int, body: String, attemptsSoFar: Int) =
+            tombstoneAction(code, attemptsSoFar, JournalTreatmentUploader.answeredByNightscout(code, body))
+        val html500 = "<html><body><h1>500 Internal Server Error</h1></body></html>"
+        val html403 = "<html><head><title>403 Forbidden</title></head><body>nginx</body></html>"
+        val json500 = """{"status":500,"message":"MongoServerError: write failed"}"""
+        val json403 = """{"status":403,"message":"Missing permission api:treatments:delete"}"""
+
+        for (attemptsSoFar in listOf(0, MAX_DELETE_ATTEMPTS - 1)) {
+            assertEquals(TombstoneAction.WAIT, action(500, html500, attemptsSoFar))
+            assertEquals(TombstoneAction.WAIT, action(500, "", attemptsSoFar))
+            assertEquals(TombstoneAction.WAIT, action(403, html403, attemptsSoFar))
+        }
+        assertEquals(TombstoneAction.RETRY, action(500, json500, 0))
+        assertEquals(TombstoneAction.KEEP_LOCAL, action(500, json500, MAX_DELETE_ATTEMPTS - 1))
+        assertEquals(TombstoneAction.RETRY, action(403, json403, 0))
+        assertEquals(TombstoneAction.KEEP_LOCAL, action(403, json403, MAX_DELETE_ATTEMPTS - 1))
+    }
+
+    @Test
+    fun onlyWhatIsAboutTheWholeServerMakesTheQueueWait() {
+        val wait = JournalTreatmentUploader.OperationFailure.WAIT
+        for (code in listOf(-1, 401, 408, 429, 502, 503, 504)) {
+            assertEquals("$code", wait, JournalTreatmentUploader.operationFailure(code, answeredByNightscout = true))
+        }
+        // Not Nightscout's answer: the status is not Nightscout's either.
+        for (code in listOf(400, 403, 422, 500, 501, 507)) {
+            assertEquals("$code", wait, JournalTreatmentUploader.operationFailure(code, answeredByNightscout = false))
+        }
+        assertEquals(
+            JournalTreatmentUploader.OperationFailure.RETRY,
+            JournalTreatmentUploader.operationFailure(500, answeredByNightscout = true)
+        )
+        for (code in listOf(400, 403, 422)) {
+            assertEquals(
+                JournalTreatmentUploader.OperationFailure.REFUSED,
+                JournalTreatmentUploader.operationFailure(code, answeredByNightscout = true)
+            )
+        }
+    }
+
+    @Test
+    fun aFailedOperationWaitsLongerEachTimeUpToItsCap() {
+        val retryDelay = JournalTreatmentUploader::retryDelayMillis
+        assertEquals(0L, retryDelay(0))
+        assertEquals(60_000L, retryDelay(1))
+        assertEquals(120_000L, retryDelay(2))
+        assertEquals(240_000L, retryDelay(3))
+        assertEquals(6 * 60 * 60_000L, retryDelay(12))
+        assertEquals(6 * 60 * 60_000L, retryDelay(MAX_DELETE_ATTEMPTS))
+        assertEquals(6 * 60 * 60_000L, retryDelay(Int.MAX_VALUE))
+    }
+
+    @Test
+    fun aFailedOperationGoesAgainOnceItsWaitIsUp() {
+        val last = 1_700_000_000_000L
+        val isDue = JournalTreatmentUploader::isRetryDue
+        assertTrue("never failed", isDue(0, 0L, last))
+        assertFalse(isDue(1, last, last + 59_000L))
+        assertTrue(isDue(1, last, last + 60_000L))
+        assertFalse(isDue(3, last, last + 200_000L))
+        assertTrue("the clock went back", isDue(3, last, last - 1_000L))
+    }
+
+    @Test
+    fun anEditThatKeepsFailingCountsItsAttemptsUntilItIsEditedAgain() {
+        val retries = JournalTreatmentUploader.EditRetries()
+        val now = 1_700_000_000_000L
+        val updatedAt = now - 60_000L
+
+        assertTrue(retries.isDue(7L, updatedAt, now))
+        assertNull(retries.dueAt(7L, updatedAt))
+        assertEquals(1, retries.recordFailure(7L, updatedAt, now))
+        assertFalse(retries.isDue(7L, updatedAt, now + 1_000L))
+        assertEquals(now + 60_000L, retries.dueAt(7L, updatedAt))
+        assertEquals(2, retries.recordFailure(7L, updatedAt, now + 60_000L))
+        // Another entry is not held for it.
+        assertTrue(retries.isDue(8L, updatedAt, now + 1_000L))
+        // A further edit is a new one: tried at once, counted afresh.
+        assertTrue(retries.isDue(7L, updatedAt + 5_000L, now + 61_000L))
+        assertEquals(1, retries.recordFailure(7L, updatedAt + 5_000L, now + 61_000L))
+        retries.clear(7L)
+        assertTrue(retries.isDue(7L, updatedAt + 5_000L, now + 62_000L))
     }
 
     @Test
@@ -358,9 +713,15 @@ class JournalTreatmentUploaderTests {
     }
 
     @Test
-    fun aDeleteThatNeverGotAnAnswerIsRetriedToo() {
-        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = -1, attemptsSoFar = 0))
-        assertEquals(TombstoneAction.RETRY, tombstoneAction(code = 500, attemptsSoFar = 0))
+    fun aDeleteThatNeverGotAnAnswerWaitsWithoutCountingAgainstTheTombstone() {
+        // A server reachable only at home answers nothing for days while away; counting that
+        // would drop the tombstone, and the next read at home would bring the treatment back.
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = -1, attemptsSoFar = MAX_DELETE_ATTEMPTS))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 502, attemptsSoFar = MAX_DELETE_ATTEMPTS - 1))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 503, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 408, attemptsSoFar = 0))
+        assertEquals(TombstoneAction.WAIT, tombstoneAction(code = 429, attemptsSoFar = 0))
     }
 
     // -- receive endpoint --------------------------------------------------
@@ -453,5 +814,60 @@ class JournalTreatmentUploaderTests {
         val start = 1_000_000L
         assertEquals(0, log.suppressedSince("HTTP 401", start))
         assertEquals(0, log.suppressedSince("HTTP 401", start - 60_000L))
+    }
+
+    /** A token without api:treatments:read answers every read with 403. */
+    @Test
+    fun aRefusedReceiveDoesNotHoldTheSendsBack() {
+        for (wrote in listOf(false, true)) {
+            assertTrue(
+                JournalTreatmentUploader.treatmentPassOk(
+                    sendsOk = true,
+                    deletesUnanswered = false,
+                    receive = JournalTreatmentUploader.ReceiveResult.REFUSED,
+                    wroteThisPass = wrote
+                )
+            )
+        }
+    }
+
+    @Test
+    fun anUnansweredReceiveBacksOffUnlessThisPassReachedTheServer() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = false
+            )
+        )
+        assertTrue(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.UNANSWERED,
+                wroteThisPass = true
+            )
+        )
+    }
+
+    @Test
+    fun failedSendsAndUnansweredDeletesStillBackOff() {
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = false,
+                deletesUnanswered = false,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
+        assertFalse(
+            JournalTreatmentUploader.treatmentPassOk(
+                sendsOk = true,
+                deletesUnanswered = true,
+                receive = JournalTreatmentUploader.ReceiveResult.DONE,
+                wroteThisPass = true
+            )
+        )
     }
 }
