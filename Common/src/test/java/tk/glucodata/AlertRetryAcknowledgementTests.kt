@@ -335,6 +335,7 @@ class AlertRetryAcknowledgementTests {
                         static void wakestreamsender() {}
                     }
                     static class SensorOwnershipRuntime { static boolean peerReadsAny() { return false; } }
+                    static class PhoneReadingClock { static void reconcileAwake() {} }
                     static boolean hasalarmloss() { return true; }
                     static long waitmmsec() { return 0; }
                     static class LossOfSensorAlarm { static void setalarm(Object app, long at) {} }
