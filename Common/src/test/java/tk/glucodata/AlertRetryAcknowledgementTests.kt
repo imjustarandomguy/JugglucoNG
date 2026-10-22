@@ -306,6 +306,7 @@ class AlertRetryAcknowledgementTests {
                         static RetryHarness onenot;
                         static long glucosetimeout = 60_000;
                         static void stoplossalarm() { onenot.soundingKind = -1; }
+                        static void scheduleOngoingStatusRefresh() {}
                     }
                     static class SensorBluetooth { static void reconnectall() {} static void ensureCurrentSensorSelection() {} }
                     static class View { void postInvalidate() {} }
