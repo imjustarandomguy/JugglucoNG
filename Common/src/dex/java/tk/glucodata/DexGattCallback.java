@@ -94,6 +94,12 @@ private int authSlot;
         showtime=6*60*1000L;
     }
 
+    /** Dexcom sensors send one reading every five minutes. */
+    @Override
+    public long readingIntervalMillis() {
+        return 5L * 60L * 1000L;
+    }
+
     static private byte[] lencode(int which, int code) {
         byte[] output = new byte[6];
         output[0] = 0x0b;
