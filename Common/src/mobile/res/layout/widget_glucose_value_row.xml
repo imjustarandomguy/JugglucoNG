@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The value and its trend arrow, included by every widget layout. The value's line
+     box is far taller than any widget and centred in the row, so its empty ascent and
+     descent fall outside the row and are clipped: the digits (about 0.7 em) can then
+     fill a row that their 1.2 to 1.3 em line box would not fit into. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_value_row"
+    android:layout_width="wrap_content"
+    android:layout_height="match_parent"
+    android:layout_gravity="center"
+    android:baselineAligned="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/widget_value"
+        android:layout_width="wrap_content"
+        android:layout_height="@dimen/widget_value_line_box"
+        android:gravity="center_vertical"
+        android:importantForAccessibility="no"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:padding="0dp"
+        android:textColor="@android:color/white"
+        android:textSize="32sp" />
+
+    <ImageView
+        android:id="@+id/widget_value_image"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/widget_arrow"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:importantForAccessibility="no"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+</LinearLayout>

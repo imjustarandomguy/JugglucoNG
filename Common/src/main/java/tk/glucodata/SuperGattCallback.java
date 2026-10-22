@@ -1042,8 +1042,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
 
     /**
      * Every outbound use of a reading: broadcasts, the outbound API, Nightscout
-     * and LibreView through numdata, the widget, and the xDrip / Gadgetbridge /
-     * WearInt targets.
+     * and LibreView through numdata, and the xDrip / Gadgetbridge / WearInt
+     * targets. (The home-screen widgets follow GlucoseUpdateBroadcaster, which
+     * the data refresh after every reading drives.)
      *
      * Split out of {@link #dowithglucose} so a reading that arrived from the
      * watch can travel exactly the same way. When the watch holds the sensor the
@@ -1131,7 +1132,6 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
             WearSync2.pushTail(SerialNumber, timmsec);
         if (!isWearable) {
             app.numdata.sendglucose(SerialNumber, tim, gl, thresholdchange(rate), alarm | 0x10);
-            GlucoseWidget.update();
             // Keep the webserver's /pebble IOB in step with the journal,
             // independent of whether any broadcast target is configured.
             JournalIobAccess.pushWatchserver(System.currentTimeMillis());

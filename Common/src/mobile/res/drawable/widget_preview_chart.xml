@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sample glucose line over the target range, for the chart widget's picker preview. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="230dp"
+    android:height="60dp"
+    android:viewportWidth="230"
+    android:viewportHeight="60">
+    <path
+        android:fillColor="#264E8A55"
+        android:pathData="M0,22h230v24h-230z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M2,40 C24,36 40,24 62,28 S96,50 122,44 S166,14 190,20 S218,30 228,26"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFE0E0E0"
+        android:strokeLineCap="round" />
+</vector>

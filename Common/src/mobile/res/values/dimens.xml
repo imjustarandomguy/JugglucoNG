@@ -7,4 +7,7 @@ http://developer.android.com/guide/topics/appwidgets/index.html#CreatingLayout
     -->
     <dimen name="widget_margin">0dp</dimen>
 
+    <!-- Taller than any widget: see widget_glucose_value_row.xml. -->
+    <dimen name="widget_value_line_box">1000dp</dimen>
+
 </resources>
