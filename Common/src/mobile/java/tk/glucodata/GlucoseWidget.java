@@ -34,9 +34,4 @@ public class GlucoseWidget extends GlucoseWidgetProvider {
     public GlucoseWidget() {
         super(WidgetKind.VALUE);
     }
-
-    /** The loss alarm found no new reading in time: switch the widgets to their stale look. */
-    public static void oldvalue(long time) {
-        GlucoseWidgets.onReadingStale(Applic.app);
-    }
 }

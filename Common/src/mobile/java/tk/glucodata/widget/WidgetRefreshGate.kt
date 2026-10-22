@@ -1,21 +1,21 @@
 package tk.glucodata.widget
 
+import tk.glucodata.DisplayedReading
+
 /**
  * When the widgets need drawing, without a timer of its own.
  *
  * Nobody sees a widget while the screen is off, so updates then only mark the
- * widgets dirty and screen-on draws them once. Screen-on also draws when the
- * value last shown as fresh has aged past [freshnessMillis] since: the loss
- * alarm that would have switched the widget to its stale look may have come
- * while the screen was off, or not at all (no sensor, alarm cancelled).
+ * widgets dirty and screen-on draws them once. Their stale look needs no clock
+ * either: CurrentReadingHub publishes the moment the reading goes stale or its
+ * value is taken down, and that publish is an update like any other.
  *
  * Starts dirty: after a process start nothing is known about what the hosts
  * still show.
  */
-class WidgetRefreshGate(private val freshnessMillis: Long) {
+class WidgetRefreshGate {
     private var dirty = true
     private var deferrals = 0L
-    private var shownFreshReadingMillis = 0L
 
     /** An update came while nobody could see it. */
     @Synchronized
@@ -29,23 +29,34 @@ class WidgetRefreshGate(private val freshnessMillis: Long) {
     fun beginRender(): Long = deferrals
 
     /**
-     * Every placed widget was just drawn. [freshReadingMillis] is the time of
-     * the reading they show as fresh, or 0 when they show it as stale or show none.
-     * An update deferred while the render ran (its data was already loaded) keeps
-     * the widgets dirty.
+     * Every placed widget was just drawn. An update deferred while the render ran
+     * (its data was already loaded) keeps the widgets dirty.
      */
     @Synchronized
-    fun renderedAll(token: Long, freshReadingMillis: Long) {
+    fun renderedAll(token: Long) {
         if (token == deferrals) dirty = false
-        shownFreshReadingMillis = freshReadingMillis
     }
 
     @Synchronized
-    fun needsRenderOnScreenOn(nowMillis: Long): Boolean {
-        if (dirty) return true
-        return shownFreshReadingMillis > 0L && nowMillis - shownFreshReadingMillis > freshnessMillis
-    }
+    fun needsRenderOnScreenOn(): Boolean = dirty
 
     @Synchronized
     fun isDirty(): Boolean = dirty
+
+    companion object {
+        /**
+         * Whether a deadline of the hub's [reading] (its stale moment, or the removal of
+         * its value) has passed at [nowMillis] without the hub's republish. The hub's
+         * clock may sleep with the phone (CurrentReadingHub.onClockChanged): the widgets
+         * are then drawn from its republish, not from a reading already out of date.
+         */
+        fun hubIsBehind(reading: DisplayedReading, nowMillis: Long): Boolean {
+            val deadline = when (reading.freshness) {
+                DisplayedReading.Freshness.FRESH -> reading.staleAtMillis
+                DisplayedReading.Freshness.STALE -> reading.noValueAtMillis
+                else -> 0L
+            }
+            return deadline in 1L..nowMillis
+        }
+    }
 }
