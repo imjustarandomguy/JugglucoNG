@@ -240,6 +240,7 @@ static public int deleteUrlCode(String urlstring,String secret) {
         urlConnection = (HttpURLConnection) url.openConnection();
         urlConnection.setConnectTimeout(UPLOAD_CONNECT_TIMEOUT_MS);
         urlConnection.setReadTimeout(UPLOAD_READ_TIMEOUT_MS);
+        String sentToken=null;
         if(secret!=null)
                 urlConnection.setRequestProperty("api-secret", secret);
         else {
@@ -253,11 +254,14 @@ static public int deleteUrlCode(String urlstring,String secret) {
                 return ERROR_NO_RESPONSE;
             }
             urlConnection.setRequestProperty("Authorization", auth);
+            sentToken=auth;
         }
         urlConnection.setRequestProperty("Content-Type", "application/json");
         urlConnection.setRequestMethod("DELETE");
 
         final int code=urlConnection.getResponseCode();
+        if(code==HttpURLConnection.HTTP_UNAUTHORIZED)
+            tokenRefused(sentToken);
         String res=getstring(urlConnection);
         lastPrimaryResponseBody=res;
         if(code==HTTP_OK || code==HttpURLConnection.HTTP_NO_CONTENT) {
@@ -297,8 +301,7 @@ static public int deleteUrlCode(String urlstring,String secret) {
   "iat": 1708854156,
   "exp": 1708882956
 } */
-static private long  expire=0L;
-static private String token="";
+static private final NightscoutTokenCache tokenCache=new NightscoutTokenCache();
 
 static JSONObject  readJSONObject(HttpURLConnection urlConnection)  throws IOException, JSONException {
     String ant=getstring(urlConnection);
@@ -347,24 +350,18 @@ private static TokenExchange exchangeToken(int connectTimeoutMs,int readTimeoutM
         }
     }
 
-private static void cacheGrant(NightscoutTokenGrant grant) {
-    expire=grant.getExpiresAtMillis();
-    token="Bearer "+grant.getToken();
-    }
-
 private static synchronized String gettoken(
         long now,
         int connectTimeoutMs,
         int readTimeoutMs,
         boolean updateVisibleStatus
 ) {
-    if(now<expire)
-        return token;
+    final String cached=tokenCache.current(now);
+    if(!cached.isEmpty())
+        return cached;
     final TokenExchange exchange=exchangeToken(connectTimeoutMs,readTimeoutMs);
-    if(exchange.ok()) {
-        cacheGrant(exchange.grant());
-        return token;
-        }
+    if(exchange.ok())
+        return tokenCache.store(exchange.grant());
     final String error="gettoken failed "+exchange.error();
     if(updateVisibleStatus)
         uploadstatus=error;
@@ -383,14 +380,24 @@ private static synchronized String gettoken(
  */
 @Keep
 static public synchronized TokenExchange refreshToken() {
-    expire=0L;
-    token="";
+    tokenCache.clear();
     final TokenExchange exchange=exchangeToken(UPLOAD_CONNECT_TIMEOUT_MS,UPLOAD_READ_TIMEOUT_MS);
     if(exchange.ok())
-        cacheGrant(exchange.grant());
+        tokenCache.store(exchange.grant());
     else
         Log.e(LOG_ID,"token refresh failed "+exchange.error());
     return exchange;
+    }
+
+/**
+ * Nightscout answered 401 to a request sent with {@code auth}. A token it no longer takes was
+ * kept until its own expiry, so every upload failed for hours; dropped here, the next request
+ * exchanges the access token again. Called for every v3 request that carried the token.
+ */
+@Keep
+static public void tokenRefused(String auth) {
+    if(tokenCache.refused(auth))
+        Log.i(LOG_ID,"Nightscout refused the token; the next request exchanges a new one");
     }
 
 /**
@@ -407,7 +414,7 @@ static public String getV3AuthorizationHeader() {
     }
 
 private static synchronized String getCachedToken(long now) {
-    return now<expire ? token : "";
+    return tokenCache.current(now);
     }
 
 private static long ancillaryTokenAttemptTime=0L;
@@ -712,6 +719,7 @@ private static int uploadWithTimeouts(
         urlConnection.setReadTimeout(readTimeoutMs);
         urlConnection.setRequestMethod(requestMethod);
         urlConnection.setDoOutput(true);
+        String sentToken=null;
         if(secret!=null)
             urlConnection.setRequestProperty("api-secret", secret);
         else {
@@ -728,6 +736,7 @@ private static int uploadWithTimeouts(
                 return updateVisibleStatus ? -1 : ERROR_NO_TOKEN;
             }
             urlConnection.setRequestProperty("Authorization", auth);
+            sentToken=auth;
         }
         urlConnection.setRequestProperty("Content-Type", "application/json");
            urlConnection.setRequestProperty( "Content-Length", Integer.toString( postdata.length ));
@@ -737,6 +746,8 @@ private static int uploadWithTimeouts(
             outputPost.flush();
         }
         final int code=urlConnection.getResponseCode();
+        if(code==HttpURLConnection.HTTP_UNAUTHORIZED)
+            tokenRefused(sentToken);
         String res=getstring(urlConnection);
         if(updateVisibleStatus)
             lastPrimaryResponseBody=res;
