@@ -18,9 +18,15 @@ Open choice: keep the pill's status-bar floor against #693?
 
 After the install the watch's `keeprunning` service did not come back (process up, no
 service; Android froze the app at 18:08:02) until the app was opened at 18:11: hence
-`fix/restart-after-update`; check it at the next install (the install itself is the test:
-`dumpsys activity services tk.glucodata.ng` on the watch shows `keeprunning` without opening
-the app).
+`fix/restart-after-update`. **Second install 18:24:25 phone / 18:25:59 watch** (ece8074bc's
+APKs, with the fix): the watch's process was started "for broadcast NumAlarm" at once and
+`keeprunning` was foreground 10 s later, app never opened; both read 18:28:43, no freezing.
+But the first `startForeground` (18:26:01.645) was refused (`uidState: CEM`, no temp
+allowlist: MY_PACKAGE_REPLACED's FGS exemption was not seen), and the retry 0.2 s later was
+allowed as `ACTIVITY_STARTER` (the overlay permission granted at 18:03 lets the app start
+activities from the background) with a 30 s allowance from GMS (uid 10092, a phone message).
+So on this watch the restart may rest on the overlay permission; to tell, reinstall once
+with `SYSTEM_ALERT_WINDOW default` and look for the same two lines.
 
 **Device test after the install:**
 1. Watch: the current G7 (paired on slot 3 before #649) keeps reading
