@@ -176,6 +176,12 @@ public class Libre2GattCallback extends SuperGattCallback {
 		{if(doLog) {Log.d(LOG_ID, "Libre2GattCallback(..)");};};
 	}
 
+	/** Libre 2 streams one reading a minute. */
+	@Override
+	public long readingIntervalMillis() {
+		return 60_000L;
+	}
+
 
 	boolean pack1 = false, pack2 = false;
 	final byte[] packet = new byte[46];
