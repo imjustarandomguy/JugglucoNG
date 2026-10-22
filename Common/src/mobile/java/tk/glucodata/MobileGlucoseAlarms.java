@@ -90,7 +90,7 @@ public    void handlealarm() {
                             }
                         }
                     else {
-                        Notify.onenot.oldnotification(wastime);
+                        // The notification already went stale with the current reading, above.
                         }
                     }
                  else {
