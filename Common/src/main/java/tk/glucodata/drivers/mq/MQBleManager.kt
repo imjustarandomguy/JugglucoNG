@@ -600,11 +600,7 @@ class MQBleManager(
         val age = System.currentTimeMillis() - lastGlucoseAtMs
         if (age > maxAgeMillis) return null
         val glucoseMgdl = lastGlucoseMgdlTimes10 / 10f
-        val glucoseDisplay = if (Applic.unit == 1) {
-            (glucoseMgdl / MQConstants.MMOL_TO_MGDL).toFloat()
-        } else {
-            glucoseMgdl
-        }
+        val glucoseDisplay = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(glucoseMgdl, Applic.unit == 1)
         return MQCurrentSnapshot(
             timeMillis = lastGlucoseAtMs,
             glucoseValue = glucoseDisplay,

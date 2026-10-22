@@ -1,6 +1,7 @@
 package tk.glucodata
 
 import tk.glucodata.drivers.ManagedSensorRuntime
+import tk.glucodata.ui.util.GlucoseFormatter
 
 object CurrentGlucoseSource {
     private const val DEFAULT_MAX_AGE_MS = 15 * 60 * 1000L
@@ -69,7 +70,7 @@ object CurrentGlucoseSource {
         return resolveForOwnership(
             isCloneSensor = CloneSensorRegistry.isCloneSensor(targetSensor),
             targetSensorId = targetSensor,
-            readNative = { getFromNative(now, maxAgeMillis, targetSensor) },
+            readNative = { withStoredNativeValue(getFromNative(now, maxAgeMillis, targetSensor)) },
             readLocal = { getFromLocalOrNative(now, maxAgeMillis, targetSensor, preferredSensorId) }
         )
     }
@@ -114,7 +115,7 @@ object CurrentGlucoseSource {
             if (callback != null && (targetSensor == null || SensorIdentity.matches(callback.sensorId, targetSensor))) {
                 return enrichWithManagedRaw(callback)
             }
-            return enrichWithManagedRaw(native)
+            return enrichWithManagedRaw(withStoredNativeValue(native))
         }
 
         if (managed != null && SensorIdentity.matches(managed.sensorId, preferredSensorId)) {
@@ -124,7 +125,7 @@ object CurrentGlucoseSource {
             return enrichWithManagedRaw(callback)
         }
         if (native != null && SensorIdentity.matches(native.sensorId, preferredSensorId)) {
-            return enrichWithManagedRaw(native)
+            return enrichWithManagedRaw(withStoredNativeValue(native))
         }
         return null
     }
@@ -198,6 +199,10 @@ object CurrentGlucoseSource {
         )
     }
 
+    /**
+     * Native's latest reading with the value of its formatted text. Every route that
+     * shows it, the Clone one included, passes it through [withStoredNativeValue].
+     */
     private fun getFromNative(now: Long, maxAgeMillis: Long, targetSensor: String? = null): Snapshot? {
         if (targetSensor != null) {
             for (nativeName in SensorIdentity.resolveNativeHistorySensorNames(targetSensor)) {
@@ -231,6 +236,58 @@ object CurrentGlucoseSource {
             index = latest.index,
             source = "native"
         )
+    }
+
+    /**
+     * Native formats mmol/L as mg/dL / 18 with one decimal, while the stored rows
+     * multiply by [GlucoseFormatter.MGDL_TO_MMOL], so the two disagree on some
+     * readings (127 mg/dL is 7.1 as parsed text, 7.0 in every row-backed
+     * surface). Once the native reading is the one shown, its value is taken from
+     * the mg/dL native stored for it, converted like the rows, so a reading shows
+     * the same wherever it appears; the text stays the fallback. Looked up only
+     * then, as it reads the sensor's native history.
+     */
+    private fun withStoredNativeValue(snapshot: Snapshot?): Snapshot? {
+        snapshot ?: return null
+        val isMmol = Applic.unit == 1
+        if (!isMmol) {
+            return snapshot
+        }
+        val value = nativeDisplayValue(
+            parsedValue = snapshot.numericValue,
+            storedMgdl = nativeStoredMgdl(snapshot.sensorId, snapshot.timeMillis / 1000L),
+            isMmol = true
+        )
+        return if (value == snapshot.numericValue) snapshot else snapshot.copy(numericValue = value)
+    }
+
+    internal fun nativeDisplayValue(parsedValue: Float, storedMgdl: Float, isMmol: Boolean): Float =
+        if (isMmol && storedMgdl.isFinite() && storedMgdl > 0f) {
+            GlucoseFormatter.displayFromMgDl(storedMgdl, true)
+        } else {
+            parsedValue
+        }
+
+    /** The auto mg/dL native stored at [timeSec] for [sensorId], or NaN. */
+    private fun nativeStoredMgdl(sensorId: String?, timeSec: Long): Float {
+        if (sensorId.isNullOrBlank() || timeSec <= 0L) {
+            return Float.NaN
+        }
+        val history = runCatching { Natives.getGlucoseHistoryForSensor(sensorId, timeSec - 1L) }.getOrNull()
+        return storedMgdlAt(history, timeSec)
+    }
+
+    /** The auto mg/dL of native's `[time_sec, auto_mgdl*10, raw_mgdl*10, ...]` row at [timeSec], or NaN. */
+    internal fun storedMgdlAt(history: LongArray?, timeSec: Long): Float {
+        history ?: return Float.NaN
+        var i = 0
+        while (i + 2 < history.size) {
+            if (history[i] == timeSec && history[i + 1] > 0L) {
+                return history[i + 1] / 10f
+            }
+            i += 3
+        }
+        return Float.NaN
     }
 
     private fun enrichWithManagedRaw(snapshot: Snapshot?): Snapshot? {

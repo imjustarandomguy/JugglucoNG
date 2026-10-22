@@ -13,6 +13,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.Implementation
 import org.robolectric.annotation.Implements
+import tk.glucodata.ui.util.GlucoseFormatter
 
 /** Real getFresh/registry/freshness path; only JNI inputs are shadowed. No Room or sidecar. */
 @RunWith(RobolectricTestRunner::class)
@@ -21,9 +22,11 @@ class CloneCurrentGlucoseProductionRouteTests {
     private val selected = "CLONETEST01"
     private val peer = "CLONETEST02"
     private var now = 0L
+    private var savedUnit = 0
 
     @Before
     fun setUp() {
+        savedUnit = Applic.unit
         Applic.app = RuntimeEnvironment.getApplication() as CloneCurrentTestApplication
         Applic.app.getSharedPreferences("tk.glucodata_preferences", Context.MODE_PRIVATE).edit().clear().commit()
         ManagedCurrentSensor.clear()
@@ -37,6 +40,7 @@ class CloneCurrentGlucoseProductionRouteTests {
 
     @After
     fun tearDown() {
+        Applic.unit = savedUnit
         SuperGattCallback.previousglucose = null
         SuperGattCallback.previousglucosereading = null
         SuperGattCallback.previousglucosevalue = 0f
@@ -165,6 +169,75 @@ class CloneCurrentGlucoseProductionRouteTests {
         assertEquals(49f, requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected)).numericValue, 0.001f)
     }
 
+    /**
+     * Native's text divides mg/dL by 18 while the stored rows multiply by
+     * [GlucoseFormatter.MGDL_TO_MMOL]: 127 mg/dL is "7.1" as text, 7.0 in every row.
+     * A Clone reading must show what its row shows, like a local native one.
+     */
+    @Test
+    fun cloneMmolReadingShowsWhatItsStoredRowShows() {
+        Applic.unit = 1
+        registerClone(selected)
+        val imported = nativeReading(value = "7.1")
+        CloneCurrentNativeInputs.readings[selected] = imported
+        CloneCurrentNativeInputs.histories[selected] = storedRow(imported, 127)
+
+        val current = requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected))
+
+        assertEquals("native", current.source)
+        assertEquals(GlucoseFormatter.displayFromMgDl(127f, true), current.numericValue, 0.0001f)
+        assertEquals(listOf(selected), CloneCurrentNativeInputs.historyReads)
+    }
+
+    @Test
+    fun cloneMmolReadingWithoutStoredRowKeepsItsText() {
+        Applic.unit = 1
+        registerClone(selected)
+        CloneCurrentNativeInputs.readings[selected] = nativeReading(value = "7.1")
+
+        assertEquals(7.1f, requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected)).numericValue, 0.001f)
+    }
+
+    @Test
+    fun cloneMgdlReadingReadsNoStoredRow() {
+        Applic.unit = 0
+        registerClone(selected)
+        val imported = nativeReading(value = "127")
+        CloneCurrentNativeInputs.readings[selected] = imported
+        CloneCurrentNativeInputs.histories[selected] = storedRow(imported, 127)
+
+        assertEquals(127f, requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected)).numericValue, 0.001f)
+        assertTrue(CloneCurrentNativeInputs.historyReads.isEmpty())
+    }
+
+    @Test
+    fun localNativeMmolReadingShowsWhatItsStoredRowShows() {
+        Applic.unit = 1
+        SuperGattCallback.previousglucose = null
+        val imported = nativeReading(value = "7.1")
+        CloneCurrentNativeInputs.global = imported
+        CloneCurrentNativeInputs.histories[selected] = storedRow(imported, 127)
+
+        val current = requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected))
+
+        assertEquals("native", current.source)
+        assertEquals(GlucoseFormatter.displayFromMgDl(127f, true), current.numericValue, 0.0001f)
+    }
+
+    @Test
+    fun shownCallbackReadsNoStoredNativeRow() {
+        Applic.unit = 1
+        val imported = nativeReading(value = "7.1")
+        CloneCurrentNativeInputs.global = imported
+        CloneCurrentNativeInputs.histories[selected] = storedRow(imported, 127)
+
+        assertEquals("callback", requireNotNull(CurrentGlucoseSource.getFresh(60_000L, selected)).source)
+        assertTrue(CloneCurrentNativeInputs.historyReads.isEmpty())
+    }
+
+    /** Native's `[time_sec, auto_mgdl*10, raw_mgdl*10]` row for [reading]. */
+    private fun storedRow(reading: strGlucose, mgdl: Int) = longArrayOf(reading.time / 1000L, mgdl * 10L, 0L)
+
     @Test
     fun cloneInvalidNativeValueDoesNotResurrectCallback() {
         registerClone(selected)
@@ -188,6 +261,8 @@ class CloneCurrentNativeInputs {
         val readings = linkedMapOf<String, strGlucose>()
         val namedReads = mutableListOf<String>()
         var globalReads = 0
+        val histories = linkedMapOf<String, LongArray>()
+        val historyReads = mutableListOf<String>()
 
         fun reset() {
             selected = null
@@ -195,6 +270,8 @@ class CloneCurrentNativeInputs {
             readings.clear()
             namedReads.clear()
             globalReads = 0
+            histories.clear()
+            historyReads.clear()
         }
 
         @JvmStatic @Implementation
@@ -210,6 +287,12 @@ class CloneCurrentNativeInputs {
         fun lastglucoseForSensor(sensor: String): strGlucose? {
             namedReads.add(sensor)
             return readings[sensor]
+        }
+
+        @JvmStatic @Implementation
+        fun getGlucoseHistoryForSensor(sensor: String, startTime: Long): LongArray? {
+            historyReads.add(sensor)
+            return histories[sensor]
         }
 
         @JvmStatic @Implementation
