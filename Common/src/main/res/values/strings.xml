@@ -3299,4 +3299,6 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="floating_mirrored_desc">Arrow first, then the value</string>
     <string name="floating_restricted_settings_hint">If Android says “Restricted setting”: in App info, tap ⋮ → Allow restricted settings, then turn the service on.</string>
     <string name="floating_open_app_info">App info</string>
+    <string name="status_bar_icon_colored_title">Colored status bar icon</string>
+    <string name="status_bar_icon_colored_desc">Draw the status bar value in its range color</string>
 </resources>

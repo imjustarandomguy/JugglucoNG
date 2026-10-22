@@ -3085,4 +3085,6 @@
     <string name="floating_mirrored_desc">Najpierw strzałka, potem wartość</string>
     <string name="floating_restricted_settings_hint">Jeśli Android pokazuje „Ustawienie z ograniczonym dostępem”: w informacjach o aplikacji dotknij ⋮ → Zezwól na ustawienia z ograniczonym dostępem, a potem włącz usługę.</string>
     <string name="floating_open_app_info">Informacje o aplikacji</string>
+    <string name="status_bar_icon_colored_title">Kolorowa ikona na pasku stanu</string>
+    <string name="status_bar_icon_colored_desc">Rysuje wartość na pasku stanu w kolorze zakresu</string>
 </resources>
