@@ -329,6 +329,16 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     // static long oldtime = thefuture;
 
     long showtime = Notify.glucosetimeout;
+
+    /**
+     * How often this sensor delivers a reading, in milliseconds, or 0 when the driver does
+     * not say: the current reading is called stale once the next one was due and did not
+     * come (CurrentReadingHub). Unknown, the interval is measured from the stored readings.
+     */
+    public long readingIntervalMillis() {
+        return 0L;
+    }
+
     static long lastfoundL = 0L;
 
     private static final Object realtimeReadingOrderLock = new Object();
@@ -790,6 +800,7 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         previousglucosereading = reading;
         previousglucosevalue = gl;
         previousglucosesensorid = SerialNumber;
+        CurrentReadingHub.onReadingAccepted(SerialNumber, timmsec, DisplayedReading.Origin.LOCAL);
         Applic.app.sendBroadcast(new Intent("tk.glucodata.action.AOD_IMMEDIATE_REFRESH"));
         final var fview = Floating.floatview;
         // MainActivity.showmessage=null;
