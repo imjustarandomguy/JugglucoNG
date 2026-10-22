@@ -23,6 +23,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Snooze
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,8 +40,8 @@ import androidx.wear.compose.material3.Button
 import androidx.wear.compose.material3.Icon
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.Text
-import tk.glucodata.CurrentDisplaySource
-import tk.glucodata.DisplayTrendSource
+import tk.glucodata.CurrentReadingHub
+import tk.glucodata.DisplayedReading
 import tk.glucodata.Log
 import tk.glucodata.Notify
 import tk.glucodata.R
@@ -116,7 +118,7 @@ class AlarmActivity : ComponentActivity() {
     private fun showAlarmContent() {
         if (closeIfAcknowledged()) return
         observeAcknowledgement()
-        val model = buildUiModel()
+        val model = buildUiModel(CurrentReadingHub.current())
         Notify.cancelQueuedAlarmActivityLaunch(
             Notify.resolveAlertKind(model.alertTypeId),
             intent.getStringExtra(Notify.EXTRA_CUSTOM_ALERT_ID),
@@ -124,9 +126,13 @@ class AlarmActivity : ComponentActivity() {
         )
 
         setContent {
+            // Kept current while it is open: the value and arrow follow the watch's
+            // current reading, as the face and the complications behind it do.
+            val shown by CurrentReadingHub.readings.collectAsState()
+            val live = remember(shown) { buildUiModel(shown) }
             WearJugglucoTheme {
                 AlarmContent(
-                    model = model,
+                    model = live,
                     onSnooze = {
                         sendAlarmAction(
                             action = AlarmActionReceiver.ACTION_SNOOZE,
@@ -141,14 +147,11 @@ class AlarmActivity : ComponentActivity() {
         }
     }
 
-    private fun buildUiModel(): AlarmUiModel {
+    private fun buildUiModel(shown: DisplayedReading): AlarmUiModel {
         val alertTypeId = intent.getIntExtra(EXTRA_ALERT_TYPE_ID, -1)
         val alertType = AlertType.fromId(Notify.resolveAlertKind(alertTypeId))
-        val snapshot = runCatching { CurrentDisplaySource.resolveCurrent() }.getOrNull()
         val fallback = fallbackGlucose(intent)
-        // The arrow the complications and the phone draw, not the alert engine's rate.
-        val rate = snapshot?.let { runCatching { DisplayTrendSource.loadDisplayArrowRate(it) }.getOrDefault(it.rate) }
-            ?: intent.getFloatExtra(EXTRA_RATE, Float.NaN)
+        val glucose = alarmGlucose(shown, fallback.primary, fallback.secondary, intent.getFloatExtra(EXTRA_RATE, Float.NaN))
         val alertLabel = alertType?.let { getString(it.nameResId) }
             ?: intent.getStringExtra(EXTRA_ALARM_MESSAGE).orEmpty()
                 .ifBlank { intent.getStringExtra(EXTRA_ALARM_TYPE).orEmpty() }
@@ -160,10 +163,10 @@ class AlarmActivity : ComponentActivity() {
         return AlarmUiModel(
             alertTypeId = alertTypeId,
             alertLabel = alertLabel,
-            primaryGlucose = snapshot?.primaryStr ?: fallback.primary,
-            secondaryGlucose = snapshot?.secondaryStr ?: fallback.secondary,
-            trend = trendArrowText(rate),
-            glucoseColor = snapshot?.let { glucoseColor(it) },
+            primaryGlucose = glucose.primary,
+            secondaryGlucose = glucose.secondary,
+            trend = glucose.trend,
+            glucoseColor = glucoseColor(shown),
             snoozeMinutes = snoozeMinutes
         )
     }
@@ -247,6 +250,25 @@ class AlarmActivity : ComponentActivity() {
         const val EXTRA_RATE = "EXTRA_RATE"
     }
 }
+
+/** The glucose lines of the alarm screen. */
+internal data class AlarmGlucose(val primary: String, val secondary: String?, val trend: String)
+
+/**
+ * The watch's current reading as every other watch surface shows it, the arrow only while it
+ * is fresh; without a value, the one the alarm was raised with and its [alarmRate].
+ */
+internal fun alarmGlucose(
+    shown: DisplayedReading,
+    fallbackPrimary: String,
+    fallbackSecondary: String?,
+    alarmRate: Float,
+): AlarmGlucose =
+    if (shown.showsValue) {
+        AlarmGlucose(shown.valueText, shown.secondaryText, trendArrowText(shown.shownRate))
+    } else {
+        AlarmGlucose(fallbackPrimary, fallbackSecondary, trendArrowText(alarmRate))
+    }
 
 @Composable
 private fun AlarmContent(

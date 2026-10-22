@@ -138,6 +138,14 @@ val updater:Runnable= object: Runnable{
             postInvalidate()
         }
     }
+
+    /**
+     * Redraws with every publish of the current reading: a new one, wherever it came from
+     * (the screen updater above runs only for the watch's own Bluetooth readings), and its
+     * stale moment, when the complications change too.
+     */
+    private val readingListener = tk.glucodata.ReadingHub.Listener { postInvalidate() }
+
     private val sensorlist: SensorEventListener
     init {
         Log.i(LOG_ID,"init")
@@ -169,6 +177,7 @@ override fun onSensorChanged(event: SensorEvent) {
         }
 
    setscreenupdater(updater)
+   tk.glucodata.CurrentReadingHub.addListener(readingListener)
 
 //   thisone=this
     }
@@ -248,6 +257,7 @@ override fun shouldAnimate(): Boolean {
         }
 
    removescreenupdater(updater)
+   tk.glucodata.CurrentReadingHub.removeListener(readingListener)
         scope.cancel("WatchRenderer scope clear() request")
         super.onDestroy()
     }
@@ -303,7 +313,7 @@ override fun render(canvas: Canvas, bounds: Rect, zonedDateTime: ZonedDateTime,s
         if(renderParameters.watchFaceLayers.contains(WatchFaceLayer.COMPLICATIONS_OVERLAY)) {
             val unixtime = zonedDateTime.toEpochSecond()
             rendertime=unixtime
-            val glucose = tk.glucodata.glucosecomplication.GlucoseComplicationData.currentReading()
+            val glucose = tk.glucodata.CurrentReadingHub.current()
             val drawAmbient = renderParameters.drawMode == DrawMode.AMBIENT
             if (drawAmbient) {
                 timePaint.color = watchFaceColors.ambientPrimaryColor
@@ -319,7 +329,8 @@ override fun render(canvas: Canvas, bounds: Rect, zonedDateTime: ZonedDateTime,s
             glucosePaint.textSize =canvas.height*.25f
             val localtime= zonedDateTime.toLocalTime()
             watchtime(canvas,localtime)
-            if(glucose!=null)  {
+            // A reading once there was one: its value, dimmed once stale, or "---".
+            if(glucose.timeMillis > 0L)  {
                 val density=canvas.height/250.0f
                  val getx= canvas.width*0.5f
                  val gety= canvas.height*0.66f
@@ -397,22 +408,28 @@ override fun render(canvas: Canvas, bounds: Rect, zonedDateTime: ZonedDateTime,s
  * Ambient drops the sparkline fill and the colour: on an always-on screen a
  * bright, static block is exactly what burns in.
  */
-private fun   showglucose(canvas:Canvas,glucosePaint:Paint,agePaint:Paint,getxin:Float,gety:Float,density:Float,unixtime:Long,glucose:tk.glucodata.glucosecomplication.GlucoseComplicationData.Reading,ambient:Boolean)  {
+private fun   showglucose(canvas:Canvas,glucosePaint:Paint,agePaint:Paint,getxin:Float,gety:Float,density:Float,unixtime:Long,glucose:tk.glucodata.DisplayedReading,ambient:Boolean)  {
       var getx=getxin
-      var age:Int=(unixtime-(glucose.timeMillis/1000L)).toInt()
-      val oldage=tk.glucodata.Notify.glucosetimeoutSEC
-      if(age>=oldage) {
-         Log.i(LOG_ID,"age ($age) >= oldage ($oldage)")
-         return
-         }
-      if(age<0) age=0
+      // How far the reading is into its interval: the bar is full when the next one is overdue.
+      val ageFraction = if (glucose.staleAtMillis > glucose.timeMillis) {
+          ((unixtime * 1000L - glucose.timeMillis).toFloat() / (glucose.staleAtMillis - glucose.timeMillis))
+              .coerceIn(0f, 1f)
+      } else {
+          1f
+      }
       with(canvas) {
           val isMmol = tk.glucodata.glucosecomplication.ComplicationRenderer.isMmol()
           // Range colour only when the user asked for it, and never in ambient.
-          val valueColor = if (ambient) {
+          val toneColor = if (ambient || !glucose.showsValue) {
               glucosePaint.color
           } else {
               tk.glucodata.glucosecomplication.ComplicationRenderer.valueColor(glucose.value, isMmol)
+          }
+          // The stale look every watch surface shares: the value dimmed, without arrow.
+          val valueColor = if (glucose.isDimmed) {
+              tk.glucodata.glucosecomplication.ComplicationRenderer.dimmed(toneColor)
+          } else {
+              toneColor
           }
 
           // Sparkline across the lower third, under the value. Skipped in
@@ -438,7 +455,7 @@ private fun   showglucose(canvas:Canvas,glucosePaint:Paint,agePaint:Paint,getxin
               }
           }
 
-          val rate=glucose.rate
+          val rate=glucose.shownRate
           if(rate.isNaN()) {
              getx*=0.82f
              }
@@ -453,7 +470,7 @@ private fun   showglucose(canvas:Canvas,glucosePaint:Paint,agePaint:Paint,getxin
               }
           val previousColor = glucosePaint.color
           glucosePaint.color = valueColor
-          drawText(glucose.text,getx,gety, glucosePaint)
+          drawText(glucose.shownText,getx,gety, glucosePaint)
           glucosePaint.color = previousColor
 
           val idbounds=Rect()
@@ -463,7 +480,7 @@ private fun   showglucose(canvas:Canvas,glucosePaint:Paint,agePaint:Paint,getxin
           glucosePaint.getTextBounds(sensorid, 0,sensorid.length, idbounds)
           val yid= gety+idbounds.height()*1.5f
           val wid= idbounds.width()
-          val relage=age*wid/oldage
+          val relage=ageFraction*wid
           val xage= getx-wid*.5f
           val hid= idbounds.height()
           // Staleness bar, in the palette's own out-of-range tone rather than
