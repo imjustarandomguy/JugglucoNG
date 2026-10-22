@@ -121,6 +121,8 @@
                 android:name="android.nfc.action.TECH_DISCOVERED"
                 android:resource="@xml/nfc_tech_filter" />
         </activity-alias>
+        <!-- Starts the service again after a reboot, and after an update of the app, which
+             ends it: an updated app otherwise ran without it until it was opened. -->
         <receiver
             android:name=".NumAlarm"
             android:enabled="true"
@@ -128,6 +130,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
