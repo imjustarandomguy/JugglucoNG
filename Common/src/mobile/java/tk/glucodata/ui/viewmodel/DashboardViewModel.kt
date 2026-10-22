@@ -2213,6 +2213,9 @@ class DashboardViewModel(
 
     private fun refreshCurrentDisplayAfterSmoothingChange() {
         refreshCurrentDisplaySnapshot()
+        // Every surface draws the smoothed current reading: resolved again now, not at the
+        // next reading.
+        tk.glucodata.CurrentReadingHub.onDisplayInputsChanged(tk.glucodata.DisplayedReading.Reason.SETTINGS)
         // Every smoothing setter funnels through here, so this is the one place
         // the watch needs telling; it smooths with the same settings.
         tk.glucodata.WearPrefsSync.push()
