@@ -1013,13 +1013,13 @@ class AlarmSilenceSyncTests {
     @Test
     fun localChangesAreSentAndChangesFromTheOtherDeviceAreNot() {
         val snoozeManager = source("src/main/java/tk/glucodata/alerts/SnoozeManager.kt")
-        assertTrue(body(snoozeManager, "fun snooze(").contains("if (!fromPeer) AlarmSilenceSync.onLocalSnoozeChanged(alertType)"))
+        assertTrue(body(snoozeManager, "fun snoozeUntil(").contains("if (!fromPeer) AlarmSilenceSync.onLocalSnoozeChanged(alertType)"))
         assertTrue(body(snoozeManager, "fun clearSnooze(").contains("if (wasSnoozed && !fromPeer) AlarmSilenceSync.onLocalSnoozeChanged(alertType)"))
         val tracker = source("src/main/java/tk/glucodata/alerts/AlertStateTracker.kt")
         // One dismissal path; the other device's goes through it with the flag set.
-        assertTrue(body(tracker, "fun onAlertDismissed(type: AlertType): Boolean").contains("if (!dismissingFromPeer) AlarmSilenceSync.onLocalDismiss(type)"))
-        val peerPath = body(tracker, "fun onAlertDismissed(type: AlertType, fromPeer: Boolean): Boolean")
-        assertTrue(peerPath.contains("dismissingFromPeer = true") && peerPath.contains("return onAlertDismissed(type)"))
+        assertTrue(body(tracker, "fun onAlertDismissed(type: AlertType, cooldownUntilMs: Long").contains("if (!dismissingFromPeer) AlarmSilenceSync.onLocalDismiss(type)"))
+        val peerPath = body(tracker, "fun onAlertDismissed(type: AlertType, fromPeer: Boolean")
+        assertTrue(peerPath.contains("dismissingFromPeer = true") && peerPath.contains("return onAlertDismissed(type, cooldownUntilMs)"))
         val quiet = source("src/main/java/tk/glucodata/alerts/QuietWindow.kt")
         assertTrue(body(quiet, "fun startUntil(").contains("if (!fromPeer) AlarmSilenceSync.onLocalQuietWindowChanged()"))
         assertTrue(body(quiet, "fun end(").contains("if (!fromPeer) AlarmSilenceSync.onLocalQuietWindowChanged()"))
