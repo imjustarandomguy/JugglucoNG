@@ -63,6 +63,9 @@ class MessageSender(val activity: Context):CapabilityClient.OnCapabilityChangedL
         // rather than waiting for its next announcement to fail.
         if (wasEmpty != ns.isEmpty()) {
             runCatching { SensorOwnershipRuntime.onPeerReachabilityChanged(!ns.isEmpty()) }
+            // Snoozes, dismissals and the quiet window catch up as the other device returns.
+            runCatching { tk.glucodata.alerts.AlarmSilenceSync.onPeerReachabilityChanged(!ns.isEmpty()) }
+            runCatching { tk.glucodata.alerts.WatchAlarmReadiness.onPeerReachabilityChanged(!ns.isEmpty()) }
         }
         ns.forEach { WearAlertSync.pushTo(it.id) }
         // The watch mirrors the phone's display settings and colour scheme. A
