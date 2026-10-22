@@ -140,11 +140,7 @@ object AlertStateTracker {
      * not send it back.
      */
     @Synchronized
-    fun onAlertDismissed(
-        type: AlertType,
-        fromPeer: Boolean,
-        cooldownUntilMs: Long = System.currentTimeMillis() + DEFAULT_REARM_COOLDOWN_MS,
-    ): Boolean {
+    fun onAlertDismissed(type: AlertType, fromPeer: Boolean, cooldownUntilMs: Long = System.currentTimeMillis() + DEFAULT_REARM_COOLDOWN_MS): Boolean {
         if (!fromPeer) return onAlertDismissed(type, cooldownUntilMs)
         dismissingFromPeer = true
         try {
