@@ -39,7 +39,8 @@ class GlucoseTileFrameTests {
     private fun version(
         text: String? = "5.6", time: Long = 1_000L, rate: Float = 0f,
         mmol: Boolean = true, now: Long = 120_000L, size: GlucoseTileFrame.Size = this.size,
-    ) = GlucoseTileFrame.version(size, text, time, rate, mmol, now)
+        stale: Boolean = false,
+    ) = GlucoseTileFrame.version(size, text, time, rate, mmol, now, stale)
 
     @Test fun versionIsStableWhileNothingChanges() {
         assertEquals(version(now = 120_000L), version(now = 179_999L))
@@ -53,6 +54,7 @@ class GlucoseTileFrameTests {
         assertNotEquals(base, version(mmol = false))
         assertNotEquals(base, version(size = GlucoseTileFrame.Size(320, 192)))
         assertNotEquals("the trace slides with the clock", base, version(now = 180_000L))
+        assertNotEquals("a reading going stale is drawn dimmed", base, version(stale = true))
     }
 
     @Test fun versionToleratesAMissingReading() {

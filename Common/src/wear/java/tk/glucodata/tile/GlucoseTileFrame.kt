@@ -52,8 +52,9 @@ internal object GlucoseTileFrame {
     /**
      * Identity of one rendering. The system keeps a tile's resources by this string and does not
      * ask for them again while it is unchanged, so it must change whenever the picture would:
-     * with a new reading, a changed arrow, a different unit or size, and once a minute because
-     * the trace slides along with the clock even when the reading does not.
+     * with a new reading, a changed arrow, a different unit or size, the reading going stale,
+     * and once a minute because the trace slides along with the clock even when the reading
+     * does not.
      */
     fun version(
         size: Size,
@@ -62,9 +63,10 @@ internal object GlucoseTileFrame {
         rate: Float,
         isMmol: Boolean,
         nowMillis: Long,
+        stale: Boolean = false,
     ): String {
         val arrow = if (rate.isFinite()) (rate * 10f).roundToInt() else 0
         return "${size.widthPx}x${size.heightPx}|${text.orEmpty()}|$timeMillis|$arrow|" +
-            "${if (isMmol) "mmol" else "mgdl"}|${nowMillis / 60_000L}"
+            "${if (isMmol) "mmol" else "mgdl"}|${nowMillis / 60_000L}|${if (stale) "stale" else "fresh"}"
     }
 }
