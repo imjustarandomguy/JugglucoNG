@@ -195,7 +195,7 @@ internal object SettingsSearchIndex {
         SettingsSearchEntry(R.string.glucose_alerts_title, TOP, Icons.Default.AddAlert, E, route("settings/alerts"),
             keywords = listOf(R.string.settings_alerts_desc)),
         SettingsSearchEntry(R.string.low_alerts_title, ALERTS, Icons.AutoMirrored.Filled.TrendingDown, E, route("settings/alerts"),
-            keywords = listOf(R.string.alert_very_low, R.string.alert_forecast_low),
+            keywords = listOf(R.string.alert_very_low, R.string.alert_forecast_low, R.string.alert_persistent_low),
             anchor = SettingsSearchAnchors.LOW_ALERTS),
         SettingsSearchEntry(R.string.high_alerts_title, ALERTS, Icons.AutoMirrored.Filled.TrendingUp, E, route("settings/alerts"),
             keywords = listOf(R.string.alert_very_high, R.string.alert_forecast_high, R.string.alert_persistent_high),
