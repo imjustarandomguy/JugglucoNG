@@ -509,7 +509,8 @@ object JournalTreatmentTransfer {
                 val intensity = JournalIntensity.fromStorage(entry.intensity)
                 if (intensity != null && intensity != server.intensity) fields.put("intensity", intensity.storageValue)
             }
-            JournalEntryType.NOTE -> Unit
+            // A temporary basal is imported from AAPS: like a note, only its note can be edited here.
+            JournalEntryType.NOTE, JournalEntryType.TEMP_BASAL -> Unit
         }
         val note = entry.note.normalizedNote()
         if (note != server.note.normalizedNote()) {
