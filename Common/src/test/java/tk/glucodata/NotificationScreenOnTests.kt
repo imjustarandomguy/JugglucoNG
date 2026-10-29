@@ -118,7 +118,7 @@ class NotificationScreenOnTests {
                 .first { File(it, "Common/src/main/java/tk/glucodata/Notify.java").exists() }
             val source = File(root, "Common/src/main/java/tk/glucodata/Notify.java").readText()
             val methods = source.substring(source.indexOf("    private boolean isScreenOffChartPauseEnabled()"),
-                source.indexOf("    private final Runnable dataChangedGlucoseRefreshRunnable"))
+                source.indexOf("    private final Runnable periodicAnnouncementRunnable"))
             val dir = java.nio.file.Files.createTempDirectory("notify-screen-on-test").toFile()
             val file = File(dir, "NotifyScreenOnHarness.java")
             file.writeText("""
