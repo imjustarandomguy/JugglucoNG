@@ -263,7 +263,9 @@ object CurrentDisplaySource {
             viewMode = viewMode,
             smoothAllData = smoothingMode.smoothAllData,
             smoothingMinutes = smoothingMode.smoothingMinutes,
-            collapseChunks = smoothingMode.collapseChunks
+            collapseChunks = smoothingMode.collapseChunks,
+            causal = smoothingMode.causal,
+            mgdlPerUnit = if (isMmol) MGDL_PER_MMOLL else 1f
         ).mapNotNull { point ->
             val value = resolveDisplayValuesForPoint(point, viewMode, isMmol, sensorId).primaryValue
             if (value.isFinite() && value > 0f) point.timestamp to value else null
