@@ -119,6 +119,8 @@ class AlarmWindowFallbackTests {
                         void postDelayed(Runnable task, long delayMs) { delayed.add(task); }
                     }
                     static final Handler alarmWindowCheckHandler = new Handler();
+                    // Notify.cancelAlertNotification also takes the watch's alarm screen notification down.
+                    static void cancelAlarmScreenNotification(int kind) {}
                     public static void schedule(String name) {
                         postAlarmNotificationUnlessWindowShows(() -> posted.add(name));
                     }
