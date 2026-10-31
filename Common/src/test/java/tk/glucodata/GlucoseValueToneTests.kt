@@ -109,7 +109,7 @@ class GlucoseValueToneTests {
             )
         )
         assertEquals(
-            GlucoseRangeColors.valueOut(true),
+            GlucoseRangeColors.veryHigh(true),
             GlucoseValueTone.valueColorArgb(
                 value = 300f, isDark = true, isMmol = false,
                 targetLow = 70f, targetHigh = 180f,

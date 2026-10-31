@@ -9,6 +9,8 @@ import android.content.Context
  * per-band overrides held in SharedPreferences. Those prefs are per device, so
  * a watch always painted the compiled-in Muted defaults no matter what the user
  * had picked on the phone — "the same colours" was only ever true by accident.
+ * The same holds for where the bands are cut, so the phone's ranges
+ * ([GlucoseRanges]) travel with the colours.
  *
  * The payload is a short key=value text block rather than a packed struct: it
  * is sent on connect and on change (a handful of bytes, rarely), and a
@@ -20,6 +22,13 @@ object GlucoseColorSync {
     private const val KEY_PALETTE = "palette"
     private const val KEY_TARGET_BACKGROUND = "target_background"
     private const val KEY_VALUE_RANGE_COLORS = "value_range_colors"
+    private const val KEY_RANGE_UNIT = "range_unit"
+    private const val KEY_TARGET_LOW = "range_target_low"
+    private const val KEY_TARGET_HIGH = "range_target_high"
+    private const val KEY_VERY_LOW = "range_very_low"
+    private const val KEY_VERY_HIGH = "range_very_high"
+    private const val UNIT_MMOL = "mmol"
+    private const val UNIT_MGDL = "mgdl"
     private const val NONE = "none"
 
     /**
@@ -33,6 +42,8 @@ object GlucoseColorSync {
         val overrides: List<Int?>,
         val targetBackground: Int?,
         val valueRangeColors: Boolean,
+        /** Where the sender cuts the bands; null from a phone that does not send them. */
+        val ranges: GlucoseRanges.Ranges? = null,
     )
 
     private val bandCount = GlucoseRangeColors.Band.values().size
@@ -53,6 +64,15 @@ object GlucoseColorSync {
         append(KEY_TARGET_BACKGROUND).append('=')
             .append(scheme.targetBackground?.toString() ?: NONE).append('\n')
         append(KEY_VALUE_RANGE_COLORS).append('=').append(scheme.valueRangeColors).append('\n')
+        // In the sender's unit, as its own colour code reads them: converting here
+        // could move a value that sits exactly on a threshold to the other side.
+        scheme.ranges?.let { ranges ->
+            append(KEY_RANGE_UNIT).append('=').append(if (ranges.isMmol) UNIT_MMOL else UNIT_MGDL).append('\n')
+            append(KEY_TARGET_LOW).append('=').append(ranges.targetLow).append('\n')
+            append(KEY_TARGET_HIGH).append('=').append(ranges.targetHigh).append('\n')
+            append(KEY_VERY_LOW).append('=').append(ranges.veryLow).append('\n')
+            append(KEY_VERY_HIGH).append('=').append(ranges.veryHigh).append('\n')
+        }
     }.toByteArray(Charsets.UTF_8)
 
     /** Parses a payload, or null when it carries nothing usable. */
@@ -96,7 +116,24 @@ object GlucoseColorSync {
             overrides = overrides,
             targetBackground = fields[KEY_TARGET_BACKGROUND]?.takeUnless { it == NONE }?.toIntOrNull(),
             valueRangeColors = fields[KEY_VALUE_RANGE_COLORS].toBoolean(),
+            ranges = decodeRanges(fields),
         )
+    }
+
+    /** The ranges in a payload, or null when it has none or any of them is unusable. */
+    private fun decodeRanges(fields: Map<String, String>): GlucoseRanges.Ranges? {
+        val isMmol = when (fields[KEY_RANGE_UNIT]) {
+            UNIT_MMOL -> true
+            UNIT_MGDL -> false
+            else -> return null
+        }
+        return GlucoseRanges.Ranges(
+            isMmol = isMmol,
+            targetLow = fields[KEY_TARGET_LOW]?.toFloatOrNull() ?: return null,
+            targetHigh = fields[KEY_TARGET_HIGH]?.toFloatOrNull() ?: return null,
+            veryLow = fields[KEY_VERY_LOW]?.toFloatOrNull() ?: return null,
+            veryHigh = fields[KEY_VERY_HIGH]?.toFloatOrNull() ?: return null,
+        ).takeIf { it.isUsable }
     }
 
     /** This device's current scheme, ready to send. */
@@ -110,6 +147,7 @@ object GlucoseColorSync {
             overrides = GlucoseRangeColors.Band.values().map { GlucoseRangeColors.getOverride(it) },
             targetBackground = GlucoseRangeColors.getTargetBackgroundOverride(),
             valueRangeColors = prefs?.getBoolean(GlucoseValueTone.PREF_VALUE_RANGE_COLORS, false) ?: false,
+            ranges = GlucoseRanges.local(),
         )
     }
 
@@ -137,22 +175,32 @@ object GlucoseColorSync {
             editor.putInt(GlucoseRangeColors.PREF_TARGET_BACKGROUND, scheme.targetBackground)
         }
         editor.putBoolean(GlucoseValueTone.PREF_VALUE_RANGE_COLORS, scheme.valueRangeColors)
+        // Without ranges (an older phone) the watch falls back to its own settings.
+        GlucoseRanges.write(editor, scheme.ranges)
         editor.apply()
 
         // initFromPrefs is the same path app start uses, so the static getters
         // and every Compose reader of the palette pick the change up at once.
         GlucoseRangeColors.initFromPrefs(context)
+        GlucoseRanges.reload(context)
         UiRefreshBus.requestDataRefresh()
         return true
     }
 
-    /** Pushes the current scheme to every paired node. */
+    /**
+     * Phone: pushes the current scheme to every paired node. Call it after any
+     * change to the palette, the value-colour switch or the ranges.
+     */
     @JvmStatic
     fun push() {
+        // The phone owns the scheme; a watch only mirrors it.
+        if (Applic.isWearable) return
         runCatching {
             val payload = encode(Applic.app)
             MessageSender.getMessageSender()?.sendGlucoseColors(payload)
-            lastSentHash = payload.contentHashCode()
+            // A broadcast is dropped when no watch is in reach, so it does not
+            // count as sent: the next request from a watch gets it once more.
+            lastSentHash = null
         }.onFailure { Log.stack(LOG_ID, "push", it) }
     }
 
@@ -178,7 +226,9 @@ object GlucoseColorSync {
      * that was installed after the user last touched the palette, would never
      * hear about a scheme and sit on the compiled-in defaults indefinitely.
      * This rides along with the sync the watch already asks for, so it converges
-     * on its own without adding chatter.
+     * on its own without adding chatter. That request comes only after a missed
+     * reading, so the watch also asks for the scheme whenever the phone comes
+     * into reach ([MessageSender.requestWearPrefs]).
      */
     @JvmStatic
     fun pushIfChanged(nodeName: String?) {

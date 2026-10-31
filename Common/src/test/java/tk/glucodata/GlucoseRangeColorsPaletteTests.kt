@@ -125,30 +125,33 @@ class GlucoseRangeColorsPaletteTests {
     }
 
     @Test
-    fun valueTrafficColorsFollowThePreset() {
-        // MUTED keeps the historical traffic tones (regression guarantee).
+    fun warningTonesFollowThePreset() {
+        // MUTED keeps the historical warning tones (regression guarantee).
         GlucoseRangeColors.setPalette(Palette.MUTED)
-        assertEquals(0xFF2E7D32.toInt(), GlucoseRangeColors.valueInRange(false))
+        assertEquals(0xFFF9A825.toInt(), GlucoseRangeColors.valueBorderline(false))
         assertEquals(0xFFC62828.toInt(), GlucoseRangeColors.valueOut(false))
+        assertEquals(0xFFE57373.toInt(), GlucoseRangeColors.valueOut(true))
 
-        // GDH_LIKE drives the value/arrow colouring to GDH's pure primaries.
+        // GDH_LIKE drives the arrow warning to GDH's pure primaries.
         GlucoseRangeColors.setPalette(Palette.GDH_LIKE)
-        assertEquals(0xFF00FF00.toInt(), GlucoseRangeColors.valueInRange(false))
         assertEquals(0xFFFFDC00.toInt(), GlucoseRangeColors.valueBorderline(false))
         assertEquals(0xFFFF0000.toInt(), GlucoseRangeColors.valueOut(false))
 
-        // Vibrant differs from muted for the value colouring too.
+        // Vibrant differs from muted for the warning too.
         GlucoseRangeColors.setPalette(Palette.VIBRANT)
-        assertNotEquals(0xFF2E7D32.toInt(), GlucoseRangeColors.valueInRange(false))
         assertNotEquals(0xFFC62828.toInt(), GlucoseRangeColors.valueOut(false))
     }
 
     @Test
-    fun inRangeOverrideFlowsToValueInRange() {
+    fun inRangeOverrideFlowsToTheValue() {
         GlucoseRangeColors.setPalette(Palette.MUTED)
         GlucoseRangeColors.setOverride(Band.IN_RANGE, 0xFF0000FF.toInt())
-        assertEquals(0xFF0000FF.toInt(), GlucoseRangeColors.valueInRange(false))
-        assertEquals(0xFF0000FF.toInt(), GlucoseRangeColors.valueInRange(true))
+        for (dark in listOf(false, true)) {
+            assertEquals(
+                0xFF0000FF.toInt(),
+                GlucoseRangeColors.trafficColorForValue(110f, 70f, 180f, 54f, 250f, dark, false, 0)
+            )
+        }
     }
 
     @Test
