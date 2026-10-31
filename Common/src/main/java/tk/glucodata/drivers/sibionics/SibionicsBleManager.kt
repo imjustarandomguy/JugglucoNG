@@ -2996,7 +2996,7 @@ class SibionicsBleManager(
         if (startTimeMs <= 0L) -1 else ((System.currentTimeMillis() - startTimeMs) / 3_600_000L).toInt()
 
     private fun toDisplay(mgdl: Float): Float =
-        if (Applic.unit == 1) mgdl / SibionicsConstants.MGDL_PER_MMOLL else mgdl
+        tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(mgdl, Applic.unit == 1)
 
     private fun connectedStatus(): String =
         runCatching { Applic.app.getString(R.string.status_connected) }.getOrDefault("Connected")
