@@ -38,6 +38,7 @@ base_methods = '\n'.join(method(base, signature) for signature in [
     'public final synchronized void closeGattTransport(', 'public synchronized void disconnect(',
     'public synchronized void setPause(', 'public void onConnectionStateChange(',
     'public void close()', 'protected boolean useAutoConnect(',
+    'public final boolean hasLocallyConnectedGatt(', 'public boolean holdsSensor(',
     'protected void onConnectionAttemptTimeout(',
 ])
 libre_methods = '\n'.join(method(libre, signature) for signature in [
@@ -80,7 +81,7 @@ class SuperGattCallback {
         boolean enabled=true; boolean bluetoothIsEnabled(){return enabled;} void scanStarter(int delay){}
     }
     static class CloneSensorRegistry { static boolean clone; static boolean isCloneSensor(String s){return clone;} }
-    static class SensorOwnershipRuntime { static boolean blocked; static boolean blocksLocalConnection(String s){return blocked;} }
+    static class SensorOwnershipRuntime { static boolean blocked; static boolean blocksLocalConnection(SuperGattCallback c){return blocked;} }
     static class WearSensorClaim { static int releases; static void onLocalGattDisconnected(String s){releases++;} }
     static class Natives { static int resets; static void resetbluetooth(long ptr){resets++;} }
     static class Build { static class VERSION { static int SDK_INT=37; } static class VERSION_CODES { static int M=23; } }

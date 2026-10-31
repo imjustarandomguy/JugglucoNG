@@ -148,7 +148,7 @@ class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;Blueto
 class Build {static class VERSION {static int SDK_INT=36;}static class VERSION_CODES {static int M=23,P=28,TIRAMISU=33;}}
 class android {static class os {static class Build extends tk.glucodata.Build {}}}
 class CloneSensorRegistry {static boolean clone;static boolean isCloneSensor(String s){return clone;}}
-class SensorOwnershipRuntime {static boolean blocked;static boolean blocksLocalConnection(String s){return blocked;}}
+class SensorOwnershipRuntime {static boolean blocked;static boolean blocksLocalConnection(SuperGattCallback cb){return blocked;}}
 class Natives {
     static String stored="F0:00:00:00:00:01";
     static long lastGlucose=-1;static boolean aesSuccess=true;static int resets;

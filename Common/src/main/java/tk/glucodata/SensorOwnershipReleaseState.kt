@@ -22,7 +22,8 @@ internal class SensorOwnershipReleaseState(
         released.remove(keyOf(serial))
     }
 
-    fun isReleased(serial: String): Boolean = released[keyOf(serial)] == true
+    /** Keys [serial] only while something is released: the connect gate asks on every attempt. */
+    fun isReleased(serial: String): Boolean = released.isNotEmpty() && released[keyOf(serial)] == true
 
     fun releasedSerials(): Set<String> = released.keys.toSet()
 }

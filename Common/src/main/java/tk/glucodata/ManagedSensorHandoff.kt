@@ -55,7 +55,10 @@ object ManagedSensorHandoff {
     )
 
     @JvmStatic
-    fun createOutgoingPayload(context: Context? = Applic.app): ByteArray {
+    fun createOutgoingPayload(context: Context? = Applic.app): ByteArray =
+        buildPayload(context, switchOnDexcom()?.let(::dexcomPayload))
+
+    private fun buildPayload(context: Context?, dexcom: JSONObject?): ByteArray {
         val ctx = context ?: Applic.app
         val candidates = collectManagedCandidates(ctx)
         val currentManaged = ManagedCurrentSensor.get()
@@ -73,6 +76,7 @@ object ManagedSensorHandoff {
             }
         }
         root.put("entries", entries)
+        dexcom?.let { root.put("dexcom", it) }
         // Which namespaces actually travelled is otherwise invisible: a receiver that comes up
         // with no auth material looks exactly like one that was never sent any.
         run {
@@ -108,6 +112,7 @@ object ManagedSensorHandoff {
                         ManagedCurrentSensor.set(sensorId)
                     }
                 }
+            root.optJSONObject("dexcom")?.let(::adoptDexcom)
             run {
             val perPrefs = LinkedHashMap<String, Int>()
             for (i in 0 until entries.length()) {
@@ -137,6 +142,164 @@ object ManagedSensorHandoff {
             Log.stack(LOG_ID, "applyIncoming", th)
             false
         }
+    }
+
+    /** [sensorId]'s G7 record as a handoff carries it, or null for any other sensor. */
+    private fun dexcomRecord(sensorId: String?): DexcomFollow.Record? {
+        if (sensorId.isNullOrBlank()) return null
+        return DexcomFollow.fromFields(runCatching { Natives.dexHandoff(sensorId) }.getOrNull())
+    }
+
+    /**
+     * What the receiving device needs to pair with [record]'s G7 itself. A G7
+     * record is native, so none of the preferences above describe it. Like
+     * Juggluco's own mirror this sends the scanned code (it ends in the PIN),
+     * the sensor's Bluetooth name and its start, not the pairing key: the
+     * receiver pairs with the PIN.
+     */
+    private fun dexcomPayload(record: DexcomFollow.Record): JSONObject =
+        JSONObject()
+            .put("name", record.name)
+            .put("code", record.code)
+            .put("deviceName", record.deviceName)
+            .put("start", record.start)
+
+    /**
+     * The G7 switching a watch on hands it ([DexcomFollow.onSwitchOn]), the one
+     * [followNewestDexcom] would hand it; null for none. What the watch then
+     * remembers ([HANDED_DEXCOM_KEY_PREFIX]) is this record.
+     */
+    internal fun switchOnDexcom(
+        access: FollowAccess = SystemFollowAccess,
+        selected: String? = SensorIdentity.resolveMainSensor(),
+    ): DexcomFollow.Record? =
+        DexcomFollow.onSwitchOn(access.activeDexcomRecords()) { access.isDexcom(selected) }
+
+    /** Per watch: the G7 it was last handed and that G7's start ("Direct sensor on watch" preferences). */
+    const val HANDED_DEXCOM_KEY_PREFIX = "dexcom."
+    private const val ROUTING_PREFS = "wear_routing_request"
+    private const val DIRECT_KEY_PREFIX = "direct."
+    private const val SENSOR_KEY_PREFIX = "sensor."
+
+    /** Per watch, the last reason [followNewestDexcom] did not hand it a G7, so each is logged once. */
+    private val followSkips = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * "Direct sensor on watch" hands the watch the newest G7 when it is
+     * switched on ([switchOnDexcom]). A sensor started later has to follow:
+     * called from the phone's ownership tick, this hands every such watch the
+     * newest G7 once the phone has paired it ([DexcomFollow]), and again only
+     * if its start moves.
+     */
+    @JvmStatic
+    fun followNewestDexcom() {
+        if (Applic.isWearable) return
+        val prefs = Applic.app?.getSharedPreferences(ROUTING_PREFS, Context.MODE_PRIVATE) ?: return
+        followNewestDexcom(prefs, SystemFollowAccess)
+    }
+
+    /** What [followNewestDexcom] reads and sends besides the routing preferences. */
+    internal interface FollowAccess {
+        /** Every active G7 record this phone can hand over. */
+        fun activeDexcomRecords(): List<DexcomFollow.Record>
+
+        fun isDexcom(sensorId: String?): Boolean
+
+        fun watchUnreachable(): Boolean
+
+        /** Sends [node] the handoff for [record]; true once it was delivered. */
+        fun handOver(node: String, record: DexcomFollow.Record): Boolean
+
+        /** The id the routing preferences name [sensorId] by (SensorIdentity.canonicalSensorId). */
+        fun canonicalSensorId(sensorId: String): String
+    }
+
+    private object SystemFollowAccess : FollowAccess {
+        override fun activeDexcomRecords(): List<DexcomFollow.Record> =
+            runCatching { Natives.activeSensors() }.getOrNull()
+                .orEmpty()
+                .mapNotNull(::dexcomRecord)
+                .distinctBy { it.name.uppercase(java.util.Locale.ROOT) }
+
+        override fun isDexcom(sensorId: String?): Boolean = dexcomRecord(sensorId) != null
+
+        override fun watchUnreachable(): Boolean =
+            runCatching { MessageSender.peerUnreachable() }.getOrDefault(true)
+
+        override fun handOver(node: String, record: DexcomFollow.Record): Boolean {
+            val sender = MessageSender.getMessageSender() ?: return false
+            return sender.sendSensorHandoff(node, buildPayload(Applic.app, dexcomPayload(record)))
+        }
+
+        override fun canonicalSensorId(sensorId: String): String =
+            runCatching { SensorIdentity.canonicalSensorId(sensorId) }.getOrNull() ?: sensorId
+    }
+
+    internal fun followNewestDexcom(prefs: SharedPreferences, access: FollowAccess) {
+        val nodes = prefs.all
+            .filter { (key, value) -> key.startsWith(DIRECT_KEY_PREFIX) && value == true }
+            .keys
+            .map { it.removePrefix(DIRECT_KEY_PREFIX) }
+            .filter { it.isNotBlank() }
+        if (nodes.isEmpty()) return
+        val newest = DexcomFollow.newest(access.activeDexcomRecords()) ?: return
+        val due = nodes.filter { node ->
+            val decision = DexcomFollow.decide(
+                handed = prefs.getString(HANDED_DEXCOM_KEY_PREFIX + node, null),
+                assignedIsDexcom = { access.isDexcom(prefs.getString(SENSOR_KEY_PREFIX + node, null)) },
+                newest = newest,
+            )
+            when (decision) {
+                DexcomFollow.Decision.HAND -> true
+                DexcomFollow.Decision.HANDED -> false
+                DexcomFollow.Decision.NOT_PAIRED -> {
+                    noteFollowSkip(node, newest.name, "not paired on this phone yet")
+                    false
+                }
+                DexcomFollow.Decision.NOT_FOLLOWING -> {
+                    noteFollowSkip(node, newest.name, "the watch reads another sensor")
+                    false
+                }
+            }
+        }
+        if (due.isEmpty()) return
+        // The send waits for delivery: don't hold up the ownership tick for an absent watch.
+        if (access.watchUnreachable()) {
+            due.forEach { node -> noteFollowSkip(node, newest.name, "watch out of reach") }
+            return
+        }
+        // The sensor a watch was told to read is the one the phone's Wear OS
+        // screen reports on (its status, and what the phone offers or stands
+        // down for), and was otherwise written only when direct mode went on:
+        // it kept naming the old G7, removed or not.
+        val assigned = access.canonicalSensorId(newest.name)
+        due.forEach { node ->
+            if (access.handOver(node, newest)) {
+                prefs.edit()
+                    .putString(HANDED_DEXCOM_KEY_PREFIX + node, DexcomFollow.handedValue(newest))
+                    .putString(SENSOR_KEY_PREFIX + node, assigned)
+                    .apply()
+                followSkips.remove(node)
+                Log.i(LOG_ID, "handed G7 ${newest.name} (start ${newest.start}) to watch $node")
+            } else {
+                noteFollowSkip(node, newest.name, "handoff not delivered")
+            }
+        }
+    }
+
+    private fun noteFollowSkip(node: String, name: String, reason: String) {
+        val skip = "$name: $reason"
+        if (followSkips.put(node, skip) != skip) {
+            Log.i(LOG_ID, "G7 $name not handed to watch $node: $reason")
+        }
+    }
+
+    private fun adoptDexcom(dexcom: JSONObject) {
+        val name = dexcom.optString("name").trim().takeIf { it.isNotEmpty() } ?: return
+        val code = dexcom.optString("code").takeIf { it.isNotEmpty() } ?: return
+        val start = dexcom.optLong("start").takeIf { it > 0L } ?: return
+        val deviceName = dexcom.optString("deviceName").takeIf { it.isNotEmpty() }
+        WearSync2.adoptDexcomSensor(name, code, start, deviceName)
     }
 
     private fun collectManagedCandidates(context: Context?): Set<String> {

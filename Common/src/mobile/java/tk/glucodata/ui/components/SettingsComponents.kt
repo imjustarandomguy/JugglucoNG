@@ -257,6 +257,8 @@ fun SettingsItem(
     modifier: Modifier = Modifier,
     subtitleStyle: TextStyle? = null,
     searchAnchor: String? = null,
+    /** Below the subtitle, for lines that need their own colour. */
+    supportingContent: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (animatePosition) animatedCardShape(position) else cardShape(position)
     Surface(
@@ -300,6 +302,7 @@ fun SettingsItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    supportingContent?.invoke()
                 }
             }
         }

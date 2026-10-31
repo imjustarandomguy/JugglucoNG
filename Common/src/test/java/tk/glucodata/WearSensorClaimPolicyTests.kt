@@ -68,4 +68,29 @@ class WearSensorClaimPolicyTests {
             )
         )
     }
+
+    private fun restores(
+        directRequested: Boolean = false,
+        storedRequest: Boolean = true,
+        targetSensorId: String? = "4444455555666664",
+        readingSerial: String? = "4444455555666664",
+    ) = WearSensorClaimPolicy.restoresDirectRequest(directRequested, storedRequest, targetSensorId, readingSerial)
+
+    @Test
+    fun aClaimedSensorsReadingBringsBackARequestTheClaimWindowDropped() {
+        assertTrue(restores())
+    }
+
+    @Test
+    fun onlyADroppedRequestWhileDirectModeIsOnIsBroughtBack() {
+        assertFalse("still requested", restores(directRequested = true))
+        assertFalse("direct mode off", restores(storedRequest = false))
+    }
+
+    @Test
+    fun anotherSensorsReadingBringsNothingBack() {
+        assertFalse(restores(readingSerial = "1111122222333331"))
+        assertFalse(restores(targetSensorId = null))
+        assertFalse(restores(readingSerial = null))
+    }
 }

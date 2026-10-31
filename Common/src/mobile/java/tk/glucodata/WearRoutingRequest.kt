@@ -18,6 +18,7 @@ object WearRoutingRequest {
     private const val KEY_DIRECT = "direct."
     private const val KEY_ENTER = "enter."
     private const val KEY_SENSOR = "sensor."
+    private const val KEY_HANDED_DEXCOM = ManagedSensorHandoff.HANDED_DEXCOM_KEY_PREFIX
 
     private fun prefs() = Applic.app
         ?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -34,6 +35,11 @@ object WearRoutingRequest {
     fun enterRequested(nodeId: String): Boolean =
         prefs()?.getBoolean(KEY_ENTER + nodeId, false) ?: false
 
+    /** The sensor the watch was told to read, or null when none was recorded. */
+    @JvmStatic
+    fun assignedSensor(nodeId: String): String? =
+        prefs()?.getString(KEY_SENSOR + nodeId, null)?.takeIf { it.isNotBlank() }
+
     @JvmStatic
     fun record(nodeId: String, direct: Boolean, enter: Boolean) {
         val editor = prefs()?.edit()
@@ -41,11 +47,17 @@ object WearRoutingRequest {
             ?.putBoolean(KEY_ENTER + nodeId, enter)
             ?: return
         if (direct) {
-            SensorIdentity.canonicalSensorId(SensorIdentity.resolveMainSensor())
+            // Switching on handed the watch the newest G7 already when the selected
+            // sensor is a G7, and that is the one it reads; later ones follow
+            // through ManagedSensorHandoff.followNewestDexcom.
+            val handed = ManagedSensorHandoff.switchOnDexcom()
+            SensorIdentity.canonicalSensorId(handed?.name ?: SensorIdentity.resolveMainSensor())
                 ?.takeIf { it.isNotBlank() }
                 ?.let { editor.putString(KEY_SENSOR + nodeId, it) }
+            handed?.let { editor.putString(KEY_HANDED_DEXCOM + nodeId, DexcomFollow.handedValue(it)) }
         } else {
             editor.remove(KEY_SENSOR + nodeId)
+            editor.remove(KEY_HANDED_DEXCOM + nodeId)
         }
         editor.apply()
     }
@@ -86,6 +98,7 @@ object WearRoutingRequest {
         routes.forEach { route ->
             editor.putBoolean(KEY_DIRECT + route.nodeId, false)
             editor.remove(KEY_SENSOR + route.nodeId)
+            editor.remove(KEY_HANDED_DEXCOM + route.nodeId)
         }
         editor.apply()
         return routes

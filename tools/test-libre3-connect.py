@@ -30,7 +30,8 @@ methods = [method(source, x) for x in [
 ]]
 methods.append(method(libre, 'protected long connectionAttemptTimeoutMillis('))
 if ng:
-    methods += [method(source,x) for x in ['private synchronized void markConnectRunnableStarted(', 'private synchronized void clearPendingConnect(', 'protected void pendingConnectEnded(', 'public synchronized void setPause(']]
+    methods += [method(source,x) for x in ['private synchronized void markConnectRunnableStarted(', 'private synchronized void clearPendingConnect(', 'protected void pendingConnectEnded(', 'public synchronized void setPause(',
+        'public final boolean hasLocallyConnectedGatt(', 'public boolean holdsSensor(']]
     methods += ['public void close() { closeGattTransport(); }']
 
 preamble = r'''
@@ -52,7 +53,7 @@ class SuperGattCallback {
     static SensorBluetooth blueone=new SensorBluetooth();
     static class SensorBluetooth { boolean enabled=true; boolean bluetoothIsEnabled(){return enabled;} void scanStarter(int n){} }
     static class CloneSensorRegistry { static boolean clone; static boolean isCloneSensor(String s){return clone;} }
-    static class SensorOwnershipRuntime { static boolean blocked; static boolean blocksLocalConnection(String s){return blocked;} }
+    static class SensorOwnershipRuntime { static boolean blocked; static boolean blocksLocalConnection(SuperGattCallback c){return blocked;} }
     static class WearSensorClaim { static void onLocalGattDisconnected(String s){} }
     static class Build { static class VERSION { static int SDK_INT=37; } static class VERSION_CODES { static int M=23; } }
     static class R { static class string { static int turn_on_nearby_devices_permission=0; } }
