@@ -27,12 +27,10 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
 
 import static android.app.AlarmManager.RTC_WAKEUP;
 import static android.app.PendingIntent.getBroadcast;
 import static android.content.Context.ALARM_SERVICE;
-import static tk.glucodata.Applic.isWearable;
 import static tk.glucodata.Log.doLog;
 
 public class LossOfSensorAlarm extends BroadcastReceiver {
@@ -73,15 +71,10 @@ static    void setalarm(Context context, long alarmtime) {
         AlarmManager manager= (AlarmManager) context.getSystemService(ALARM_SERVICE);
 
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if(isWearable) {
-                 manager.setAlarmClock(new AlarmManager.AlarmClockInfo(alarmtime, onalarm), onalarm);
-                 }
-            else 
-                manager.setExactAndAllowWhileIdle(type,alarmtime,onalarm);
-           }
-        else
-            manager.setExact(type,alarmtime,onalarm);
+        // Not setAlarmClock, on Wear either: this alarm is re-armed on every reading and
+        // every glucosetimeout, and a pending alarm clock keeps Doze from going idle.
+        // Allow-while-idle still fires in Doze, so the watch keeps its periodic sync.
+        manager.setExactAndAllowWhileIdle(type,alarmtime,onalarm);
        }
        catch(Throwable e) {
            Log.stack(LOG_ID,"setalarm", e);
