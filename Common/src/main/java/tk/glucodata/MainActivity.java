@@ -879,6 +879,9 @@ public class MainActivity extends AppCompatActivity implements NfcAdapter.Reader
             } catch (Throwable th) {
                 Log.stack(LOG_ID, "onResume wakestream", th);
             }
+        } else if (!Applic.isWearable && Applic.Nativesloaded) {
+            // Treatments entered on the server are read back by a treatment pass only.
+            NightscoutUploadWake.afterAppToFront();
         }
         if (!Applic.isWearable && Applic.Nativesloaded) {
             // Home-screen widgets redraw only on a glucose update broadcast, and the

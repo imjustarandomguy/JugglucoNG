@@ -227,11 +227,42 @@ interface JournalDao {
     @Query("UPDATE journal_entries SET nsUploadedAt = :uploadedAt, nsRemoteId = :remoteId WHERE id = :id")
     suspend fun markEntryUploadedToNightscout(id: Long, remoteId: String, uploadedAt: Long)
 
-    @Query("SELECT nsRemoteId FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL")
+    /**
+     * Settles the user's edit of a row received from Nightscout: [nsUploadedAt] at or after
+     * [updatedAt] when the server took it, null when the server's copy stands. Only while the row
+     * still holds the edit that was sent; one made meanwhile stays pending for the next pass.
+     */
+    @Query("UPDATE journal_entries SET nsUploadedAt = :nsUploadedAt WHERE id = :id AND updatedAt = :updatedAt")
+    suspend fun settleReceivedNightscoutEdit(id: Long, updatedAt: Long, nsUploadedAt: Long?): Int
+
+    /**
+     * [settleReceivedNightscoutEdit] for an edit the server took in a write. The write gave the
+     * document a revision this row has not received (lvUploadedAt, see receivedRevisionOf), so it
+     * is unknown until the next receive.
+     */
+    @Query(
+        "UPDATE journal_entries SET nsUploadedAt = :nsUploadedAt, lvUploadedAt = NULL " +
+            "WHERE id = :id AND updatedAt = :updatedAt"
+    )
+    suspend fun settleWrittenNightscoutEdit(id: Long, updatedAt: Long, nsUploadedAt: Long): Int
+
+    // Rows received from Nightscout are left out: the documents they stand for are other apps',
+    // and an edit of one sets nsUploadedAt only to mark the edit (see nightscoutUploadedAtAfterWrite).
+    @Query(
+        "SELECT nsRemoteId FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL " +
+            "AND source != 'nightscout'"
+    )
     suspend fun getOwnUploadedNightscoutRemoteIds(): List<String>
 
     @Query("SELECT * FROM journal_entries WHERE entryType = :entryType AND source IN (:sources) AND sourceRecordId IS NOT NULL")
     suspend fun getImportedEntriesOfType(entryType: String, sources: List<String>): List<JournalEntryEntity>
+
+    /** The same rows as [getOwnUploadedNightscoutRemoteIds], by row id and time. */
+    @Query(
+        "SELECT id, timestamp FROM journal_entries WHERE nsUploadedAt IS NOT NULL AND nsRemoteId IS NOT NULL " +
+            "AND source != 'nightscout'"
+    )
+    suspend fun getOwnUploadedNightscoutRows(): List<JournalUploadedRow>
 
     @Query(
         """
@@ -245,6 +276,10 @@ interface JournalDao {
 
     @Query("UPDATE journal_entries SET lvUploadedAt = :uploadedAt WHERE id IN (:ids)")
     suspend fun markEntriesUploadedToLibreview(ids: List<Long>, uploadedAt: Long)
+
+    /** Rows other than [entryId] that still stand for this Nightscout document. */
+    @Query("SELECT COUNT(*) FROM journal_entries WHERE nsRemoteId = :nsRemoteId AND id != :entryId")
+    suspend fun countOtherEntriesWithNightscoutRemoteId(nsRemoteId: String, entryId: Long): Int
 
     @Query("SELECT * FROM journal_pending_deletes ORDER BY deletedAt ASC")
     suspend fun getPendingNightscoutDeletes(): List<JournalPendingDeleteEntity>
@@ -260,4 +295,11 @@ interface JournalDao {
             "WHERE entryId = :entryId"
     )
     suspend fun recordFailedNightscoutDelete(entryId: Long, attempts: Int, attemptedAt: Long)
+
+    /** When a tombstone whose delete is not sent last had its document looked up. */
+    @Query("UPDATE journal_pending_deletes SET lastAttemptAt = :lookedUpAt WHERE entryId = :entryId")
+    suspend fun recordNightscoutDeleteLookup(entryId: Long, lookedUpAt: Long)
 }
+
+/** A journal row by id and time, for matching it to the Nightscout document it was sent as. */
+data class JournalUploadedRow(val id: Long, val timestamp: Long)
