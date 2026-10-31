@@ -15,17 +15,14 @@ import androidx.core.view.WindowCompat
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
-import tk.glucodata.GlucosePoint
+import tk.glucodata.CurrentReadingHub
 import tk.glucodata.Log
 import tk.glucodata.MainActivity
-import tk.glucodata.Natives
 import tk.glucodata.Notify
-import tk.glucodata.SensorBluetooth
 import tk.glucodata.alerts.AlarmSilenceSync
 import tk.glucodata.alerts.AlertDisplayText
 import tk.glucodata.alerts.AlertRepository
 import tk.glucodata.alerts.AlertType
-import tk.glucodata.ui.util.GlucoseFormatter
 import tk.glucodata.logic.TrendEngine
 
 class AlarmActivity : ComponentActivity() {
@@ -147,22 +144,14 @@ class AlarmActivity : ComponentActivity() {
     private fun buildUiModel(intent: Intent): AlarmUiModel {
         val rawValue = intent.getStringExtra(EXTRA_GLUCOSE_VAL).orEmpty()
         val rawMessage = intent.getStringExtra(EXTRA_ALARM_MESSAGE).orEmpty()
-        val latestRate = try {
-            Natives.lastglucose()?.rate?.takeIf { it.isFinite() }
-        } catch (_: Throwable) {
-            null
-        }
-        // The rate the alert fired on, carried in the intent. An alarm has to point the way
-        // the movement it fired on was going: read again here it can describe the run-up
-        // instead, and a "high" arriving with a falling arrow argues against itself in the
-        // one moment it needs to be believed.
+        // The arrow the alert fired with, carried in the intent: the current reading's at
+        // that moment, which the banner draws too (Notify.alarmArrowRate). An alarm has to
+        // point the way the movement it fired on was going: read again here it can describe
+        // the run-up instead, and a "high" arriving with a falling arrow argues against
+        // itself in the one moment it needs to be believed.
         val firedRate = intent.getFloatExtra(EXTRA_RATE, Float.NaN).takeIf { it.isFinite() }
-        val trendResult = if (firedRate != null) {
-            alarmTrendResult(firedRate)
-        } else {
-            // No rate came with the alarm: read one, as before.
-            computeAlarmTrendResult(selectAlarmRate(null, latestRate))
-        }
+        // Without one, the current reading's arrow, as every surface draws it now.
+        val trendResult = alarmTrendResult(firedRate ?: currentArrowRate())
         val alertType = AlertType.fromId(intent.getIntExtra(EXTRA_ALERT_TYPE_ID, -1))
         val customAlertId = intent.getStringExtra(Notify.EXTRA_CUSTOM_ALERT_ID)
 
@@ -259,61 +248,11 @@ class AlarmActivity : ComponentActivity() {
 
     private fun decimalSeparator(): Char = DecimalFormatSymbols.getInstance(Locale.getDefault()).decimalSeparator
 
-    private fun selectAlarmRate(intentRate: Float?, latestRate: Float?): Float {
-        val latest = latestRate?.takeIf { it.isFinite() }
-        val intent = intentRate?.takeIf { it.isFinite() }
-        return latest ?: intent ?: Float.NaN
-    }
-
-    private fun computeAlarmTrendResult(fallbackRate: Float): TrendEngine.TrendResult {
-        val isMmol = tk.glucodata.Applic.unit == 1
-        return try {
-            val history = loadAlarmTrendHistory(isMmol)
-            if (history.size >= 2) {
-                val useRaw = resolveAlarmUseRawMode()
-                TrendEngine.calculateTrend(history, useRaw = useRaw, isMmol = isMmol)
-            } else {
-                fallbackAlarmTrendResult(fallbackRate)
-            }
-        } catch (_: Throwable) {
-            fallbackAlarmTrendResult(fallbackRate)
-        }
-    }
-
-    private fun loadAlarmTrendHistory(isMmol: Boolean): List<GlucosePoint> {
-        val recentStartSec = (System.currentTimeMillis() - 20 * 60 * 1000L) / 1000L
-        val historyRaw = Natives.getGlucoseHistory(recentStartSec) ?: return emptyList()
-        val nativePoints = ArrayList<GlucosePoint>(historyRaw.size / 3)
-        for (i in historyRaw.indices step 3) {
-            val timestampMs = historyRaw[i] * 1000L
-            var value = historyRaw[i + 1] / 10.0f
-            var rawValue = historyRaw[i + 2] / 10.0f
-            if (isMmol) {
-                value = GlucoseFormatter.mgToMmol(value)
-                rawValue = GlucoseFormatter.mgToMmol(rawValue)
-            }
-            nativePoints.add(GlucosePoint(timestampMs, value, rawValue))
-        }
-        return nativePoints
-    }
-
-    private fun resolveAlarmUseRawMode(): Boolean {
-        val activeSensorSerial = try {
-            Natives.lastsensorname()
-        } catch (_: Throwable) {
-            null
-        } ?: return false
-
-        return try {
-            SensorBluetooth.mygatts().firstOrNull { cb ->
-                cb.SerialNumber != null && cb.SerialNumber == activeSensorSerial
-            }?.let { cb ->
-                val viewMode = tk.glucodata.CurrentDisplaySource.resolveViewModeForSensor(cb.SerialNumber)
-                viewMode == 1 || viewMode == 3
-            } ?: false
-        } catch (_: Throwable) {
-            false
-        }
+    /** The current reading's arrow, NaN while it has none (a stale reading among them). */
+    private fun currentArrowRate(): Float = try {
+        CurrentReadingHub.current().shownRate
+    } catch (_: Throwable) {
+        Float.NaN
     }
 
     /**
@@ -327,8 +266,6 @@ class AlarmActivity : ComponentActivity() {
         }
         return TrendEngine.TrendResult(TrendEngine.stateFor(rate), rate, 0f, 1f, 0f)
     }
-
-    private fun fallbackAlarmTrendResult(rate: Float): TrendEngine.TrendResult = alarmTrendResult(rate)
 
     private fun cancelAlarmNotification() {
         (getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.cancel(81432)
