@@ -29,6 +29,8 @@ object UiRefreshBus {
     @JvmStatic
     fun requestDataRefresh() {
         bumpRevision()
+        // A newer reading there is published as one; anything else stored is a backfill.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.BACKFILL)
         _events.tryEmit(Event.DataChanged)
         Notify.scheduleDataChangedRefresh()
         GlucoseUpdateBroadcaster.send(Applic.app)
