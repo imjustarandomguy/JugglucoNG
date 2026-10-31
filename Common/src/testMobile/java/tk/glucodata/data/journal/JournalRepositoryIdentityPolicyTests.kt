@@ -178,6 +178,31 @@ class JournalRepositoryIdentityPolicyTests {
     }
 
     @Test
+    fun theUsersEditOfAnImportedRowKeepsItsNameAndBecomesTheirs() {
+        // The importer finds the row by that name and leaves the edit alone; without it, the
+        // record would be imported again beside the edit.
+        val identity = preserveMirroredJournalIdentity(
+            existingSource = JournalEntrySource.HEALTH_CONNECT.storageValue,
+            existingSourceRecordId = "health_connect:steps:a1",
+            incomingSource = JournalEntrySource.MANUAL,
+            incomingSourceRecordId = null,
+        )
+
+        assertEquals(JournalEntrySource.MANUAL, identity.source)
+        assertEquals("health_connect:steps:a1", identity.sourceRecordId)
+        // And a further edit keeps it too.
+        assertEquals(
+            "health_connect:steps:a1",
+            preserveMirroredJournalIdentity(
+                existingSource = JournalEntrySource.MANUAL.storageValue,
+                existingSourceRecordId = "health_connect:steps:a1",
+                incomingSource = JournalEntrySource.MANUAL,
+                incomingSourceRecordId = null,
+            ).sourceRecordId
+        )
+    }
+
+    @Test
     fun authoritativeOriginCanChangeWhileCloneTransportIdentityStaysStable() {
         assertEquals(
             JournalEntrySource.PEN.storageValue,
