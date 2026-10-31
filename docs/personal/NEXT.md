@@ -9,7 +9,12 @@ setup and branch model. Paths are relative to `Common/src/`.
 BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-10-30` (worktree
 /c/source/ng-wt-sync) on top of the never-adopted `rebuild/2026-10-29`; topic branches moved
 locally (old tips `backup/2026-10-30/*`). test.sh: 10112 tests, NEW: 0; both release builds
-signed with the owner's key. **Nothing pushed, nothing installed** until the owner says so.
+signed with the owner's key. **Switched and pushed** on the owner's go (10-30): `personal` =
+the rebuild; one atomic push of `main`, the 28 topic branches and `personal` (force-with-lease
+on the 10-22 tips), and `fix/nightscout-jwt-renew`, `feat/widget-rework`,
+`feat/widget-current-reading` deleted on origin. **Not installed yet** (APKs of the rebuild are
+in ng-wt-sync's `Common/build/outputs/apk/*/release/`; their docs commits came after the build,
+the code is the same). From now on: quick syncs for routine updates, rerere on (BUILD.md §6).
 The 10-29 device test below still applies, plus:
 
 0. The pill's details card shows "+ Insulin" / "+ Food" again (lost in the first 10-30
