@@ -8,9 +8,12 @@ setup and branch model. Paths are relative to `Common/src/`.
 **Synced on upstream** `main` dad71b093 (77 commits since 10-29; what each conflict became:
 BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-10-30` (worktree
 /c/source/ng-wt-sync) on top of the never-adopted `rebuild/2026-10-29`; topic branches moved
-locally (old tips `backup/2026-10-30/*`). **Nothing pushed, nothing installed** until the
-owner says so. The 10-29 device test below still applies, plus:
+locally (old tips `backup/2026-10-30/*`). test.sh: 10112 tests, NEW: 0; both release builds
+signed with the owner's key. **Nothing pushed, nothing installed** until the owner says so.
+The 10-29 device test below still applies, plus:
 
+0. The pill's details card shows "+ Insulin" / "+ Food" again (lost in the first 10-30
+   rebuild, restored; the cause is fixed in sync-upstream.sh).
 1. Two selected sensors, "Show secondary" on: the peer's value fills the pill's empty
    secondary slot (free pill and island), goes away ~330 s after the peer's last reading even
    while the main one is fresh, dims with a stale main reading, empty at "---"; selection or
