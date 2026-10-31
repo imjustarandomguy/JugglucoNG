@@ -637,11 +637,15 @@ internal class StoredReadingSource : ReadingHub.Source {
          * The rate the dashboard and the notification draw: the measured rows plus the live
          * reading, cut to the trend window at the newest point, regressed in the view
          * mode's lane. Not [CurrentDisplaySource.Snapshot.rate], the alert engine's, which is
-         * measured over the smoothed series.
+         * measured over the smoothed series. The rows end at the shown reading
+         * ([DisplayTrendSource.endingAtShown]): with Fewer readings on the current value it is
+         * older than the newest stored row, and the arrow beside it must not run past it.
          */
         fun dashboardRate(history: List<GlucosePoint>, snapshot: CurrentDisplaySource.Snapshot): Float =
             DisplayTrendSource.resolveArrowRate(
-                DisplayTrendSource.resolveTrendPoints(history, snapshot, snapshot.sensorId),
+                DisplayTrendSource.resolveTrendPoints(
+                    DisplayTrendSource.endingAtShown(history, snapshot), snapshot, snapshot.sensorId
+                ),
                 snapshot,
                 snapshot.viewMode,
                 snapshot.isMmol,
