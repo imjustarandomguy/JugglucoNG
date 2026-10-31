@@ -18,7 +18,7 @@ class ReadingVelocitiesTests {
     /** Oldest first, one reading every 5 minutes, rising 1 mg/dL each. */
     private val points = (0 until 8).map { GlucosePoint(1_700_000_000_000L + it * 5 * minute, 100f + it, 0f) }
 
-    private val store = WearGlucoseStore.Snapshot(points = points, loadedAtMs = 1L)
+    private val store = WearGlucoseStore.Snapshot(points = points, readings = points, loadedAtMs = 1L)
 
     /** The hub's reading, taken [offsetMs] after the newest stored row (live time vs stored time). */
     private fun current(rate: Float, offsetMs: Long = 0L) = DisplayedReading.NONE.copy(
