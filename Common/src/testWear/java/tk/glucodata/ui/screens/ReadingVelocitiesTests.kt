@@ -18,7 +18,7 @@ class ReadingVelocitiesTests {
     private val points = (0 until 8).map { GlucosePoint(1_700_000_000_000L + it * 5 * minute, 100f + it, 0f) }
 
     private fun store(trendRate: Float) =
-        WearGlucoseStore.Snapshot(points = points, loadedAtMs = 1L, trendRate = trendRate)
+        WearGlucoseStore.Snapshot(points = points, readings = points, loadedAtMs = 1L, trendRate = trendRate)
 
     @Test fun theNewestRowTakesTheStoresTrendRate() {
         val rows = points.takeLast(3).reversed()
