@@ -63,7 +63,8 @@ class ArrowDataSourceService: SuspendingComplicationDataSourceService()  {
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData {
-      val rate = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout)?.rate?:1.0f
+      val rate = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout)
+          ?.let { GlucoseComplicationData.displayRate(it) } ?: 1.0f
         return MonochromaticImageComplicationData.Builder(
             monochromaticImage = MonochromaticImage.Builder(arrowIcon(rate)).build(),
             contentDescription = PlainComplicationText.Builder(text = "Glucose Arrow").build() )
