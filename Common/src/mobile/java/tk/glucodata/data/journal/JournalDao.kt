@@ -73,6 +73,14 @@ interface JournalDao {
     @Query("SELECT COUNT(*) FROM journal_entries WHERE entryType = :entryType")
     suspend fun countEntriesByType(entryType: String): Int
 
+    /** Amounts of one entry type in a stretch of time, every source, for the entry sheet's recent values. */
+    @Query(
+        "SELECT amount, timestamp, insulinPresetId FROM journal_entries " +
+            "WHERE entryType = :entryType AND amount IS NOT NULL " +
+            "AND timestamp BETWEEN :startMillis AND :endMillis"
+    )
+    suspend fun getAmountsBetween(entryType: String, startMillis: Long, endMillis: Long): List<JournalAmountRow>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertEntry(entry: JournalEntryEntity): Long
 
