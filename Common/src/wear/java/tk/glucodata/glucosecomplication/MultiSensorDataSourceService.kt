@@ -14,36 +14,35 @@ import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageComplicationData
 import androidx.wear.watchface.complications.data.SmallImageType
-import androidx.wear.watchface.complications.data.TimeRange
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import tk.glucodata.Applic
-import tk.glucodata.Notify
+import tk.glucodata.DisplayedReading
 import tk.glucodata.R
 import tk.glucodata.SensorIdentity
 import tk.glucodata.ui.WearSensorSelection
-import java.time.Instant
 
 internal data class MultiSensorValue(
     val sensorId: String,
     val reading: GlucoseComplicationData.Reading?,
     val colorArgb: Int,
 ) {
-    val text: String get() = reading?.text ?: "—"
+    val text: String get() = reading?.text ?: DisplayedReading.NO_VALUE_TEXT
 }
 
-/** Keep every selected slot, even when stale, so a peer never impersonates the primary. */
+/**
+ * Keep every selected slot, even without a value, so a peer never impersonates the primary.
+ * [resolve] applies the current reading's rules (CurrentReadingHub): null once a sensor's
+ * value is taken down, its arrow gone once it is stale.
+ */
 internal fun multiSensorValues(
     selected: List<String>,
     colors: Map<String, Int>,
-    now: Long,
-    timeout: Long,
     resolve: (String) -> GlucoseComplicationData.Reading?,
 ): List<MultiSensorValue> = selected.map { sensor ->
     val reading = resolve(sensor)?.takeIf {
-        it.timeMillis in 1..now && now - it.timeMillis < timeout &&
-            it.value.isFinite() && it.value > 0f && it.text.isNotBlank() &&
+        it.timeMillis > 0L && it.value.isFinite() && it.value > 0f && it.text.isNotBlank() &&
             SensorIdentity.matches(it.sensorId, sensor)
     }
     MultiSensorValue(sensor, reading, colors[sensor] ?: 0xFFE3E2DE.toInt())
@@ -62,10 +61,13 @@ abstract class MultiSensorComplicationBase : SuspendingComplicationDataSourceSer
     override suspend fun onComplicationRequest(request: ComplicationRequest): ComplicationData? =
         build(request.complicationType, preview = false)
 
+    // No validity range or update period of its own: it is redrawn with every other
+    // complication whenever the current reading changes, its stale moment included, and
+    // so are the other selected sensors' stale moments (the hub's clock wakes for them).
     private fun build(type: ComplicationType, preview: Boolean): ComplicationData? {
         val now = System.currentTimeMillis()
         val selected = WearSensorSelection.selected()
-        val live = multiSensorValues(selected, WearSensorSelection.colors(), now, Notify.glucosetimeout) {
+        val live = multiSensorValues(selected, WearSensorSelection.colors()) {
             GlucoseComplicationData.currentReading(it)
         }
         // A useful two-sensor picker example even before selection/history arrives.
@@ -75,19 +77,17 @@ abstract class MultiSensorComplicationBase : SuspendingComplicationDataSourceSer
             values.joinToString("; ") { "${it.sensorId}: ${it.text}" }.ifBlank { text },
         ).build()
         val tap = GlucoseComplicationData.tapAction()
-        val expires = values.mapNotNull { it.reading?.timeMillis }.minOrNull()?.plus(Notify.glucosetimeout)
-        val range = if (preview || expires == null) TimeRange.ALWAYS else TimeRange.before(Instant.ofEpochMilli(expires))
         return when (type) {
             ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(
                 PlainComplicationText.Builder(text).build(), description,
-            ).setTapAction(tap).setValidTimeRange(range).build()
+            ).setTapAction(tap).build()
             ComplicationType.SMALL_IMAGE -> SmallImageComplicationData.Builder(
                 SmallImage.Builder(Icon.createWithBitmap(multiSensorBitmap(values, showArrows)), SmallImageType.PHOTO).build(),
                 description,
-            ).setTapAction(tap).setValidTimeRange(range).build()
+            ).setTapAction(tap).build()
             ComplicationType.PHOTO_IMAGE -> PhotoImageComplicationData.Builder(
                 Icon.createWithBitmap(multiSensorBitmap(values, showArrows)), description,
-            ).setTapAction(tap).setValidTimeRange(range).build()
+            ).setTapAction(tap).build()
             else -> null
         }
     }
@@ -129,7 +129,7 @@ internal fun multiSensorBitmap(values: List<MultiSensorValue>, arrows: Boolean):
         paint.color = tk.glucodata.SensorVisuals.blendArgb(
             0xFFE3E2DE.toInt(), value.colorArgb,
             if (index == 0) tk.glucodata.SensorVisuals.PRIMARY_TEXT_BLEND else tk.glucodata.SensorVisuals.PEER_TEXT_BLEND,
-        )
+        ).let { if (value.reading?.stale == true) ComplicationRenderer.dimmed(it) else it }
         canvas.drawText(value.text, x, baseline, paint)
         x += paint.measureText(value.text)
         if (arrows) {

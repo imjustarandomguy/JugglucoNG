@@ -36,9 +36,7 @@ import androidx.wear.watchface.complications.data.SmallImageType
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
-import tk.glucodata.CurrentDisplaySource
 import tk.glucodata.Log
-import tk.glucodata.Notify
 
 class ArrowDataSourceService: SuspendingComplicationDataSourceService()  {
     // Rendered through ComplicationRenderer, so the angle is the app's own
@@ -55,6 +53,14 @@ class ArrowDataSourceService: SuspendingComplicationDataSourceService()  {
     private fun arrowIcon(rate: Float): Icon =
         Icon.createWithBitmap(ComplicationRenderer.arrowBitmap(ICON_SIZE, rate, MONOCHROME))
 
+    /** The arrow of [reading]: none once it is stale, and the no-value mark without one. */
+    private fun arrowIcon(reading: GlucoseComplicationData.Reading?): Icon =
+        if (reading == null) {
+            Icon.createWithBitmap(ComplicationRenderer.noValueBitmap(ICON_SIZE, MONOCHROME, icon = true))
+        } else {
+            arrowIcon(reading.rate)
+        }
+
     override fun onComplicationActivated( complicationInstanceId: Int, type: ComplicationType) {
         Log.d(LOG_ID, "onComplicationActivated(): $complicationInstanceId")
     }
@@ -63,8 +69,7 @@ class ArrowDataSourceService: SuspendingComplicationDataSourceService()  {
     }
 
     override fun getPreviewData(type: ComplicationType): ComplicationData {
-      val rate = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout)
-          ?.let { GlucoseComplicationData.displayRate(it) } ?: 1.0f
+      val rate = GlucoseComplicationData.previewReading().rate.takeIf { it.isFinite() } ?: 1.0f
         return MonochromaticImageComplicationData.Builder(
             monochromaticImage = MonochromaticImage.Builder(arrowIcon(rate)).build(),
             contentDescription = PlainComplicationText.Builder(text = "Glucose Arrow").build() )
@@ -77,17 +82,17 @@ class ArrowDataSourceService: SuspendingComplicationDataSourceService()  {
         Log.d(LOG_ID, "onComplicationRequest() id: ${request.complicationInstanceId}")
 
         val complicationPendingIntent = GlucoseComplicationData.tapAction()
-        val rate = GlucoseComplicationData.currentReading()?.rate ?: Float.NaN
+        val icon = arrowIcon(GlucoseComplicationData.currentReading())
         return when (request.complicationType) {
             ComplicationType.MONOCHROMATIC_IMAGE -> {
                 MonochromaticImageComplicationData.Builder(
-                    MonochromaticImage.Builder(arrowIcon(rate)).build(),
+                    MonochromaticImage.Builder(icon).build(),
                     contentDescription = PlainComplicationText.Builder("Glucose Arrow").build(),
                 ).setTapAction(complicationPendingIntent).build()
                 }
             ComplicationType.SMALL_IMAGE-> {
                 SmallImageComplicationData.Builder(
-                    SmallImage.Builder(arrowIcon(rate), SmallImageType.ICON).build(),
+                    SmallImage.Builder(icon, SmallImageType.ICON).build(),
                     contentDescription = PlainComplicationText.Builder("Glucose Arrow").build(),
                 ).setTapAction(complicationPendingIntent).build()
             	}

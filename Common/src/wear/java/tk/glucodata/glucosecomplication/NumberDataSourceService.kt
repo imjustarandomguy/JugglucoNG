@@ -44,7 +44,7 @@ class NumberDataSourceService: SuspendingComplicationDataSourceService()  {
     private fun timeIcon(reading: GlucoseComplicationData.Reading?): android.graphics.drawable.Icon? {
         val at = reading?.timeMillis?.takeIf { it > 0L } ?: return null
         return android.graphics.drawable.Icon.createWithBitmap(
-            ComplicationRenderer.timeBitmap(TIME_ICON_PX, at, ComplicationRenderer.ICON_TINT),
+            ComplicationRenderer.timeBitmap(TIME_ICON_PX, at, ComplicationRenderer.iconTint(reading)),
         )
     }
 
@@ -119,7 +119,7 @@ private val glview= WearComplicationValue(100,100)
 		   // form that shows when the reading was taken.
 		   ComplicationRenderer.valueWithTimeBitmap(
 		       VALUE_PX, glucose.text, glucose.value, glucose.timeMillis,
-		       ComplicationRenderer.isMmol(),
+		       ComplicationRenderer.isMmol(), ComplicationRenderer.readingColor(glucose),
 		   )
 		  }
                 SmallImageComplicationData.Builder( SmallImage.Builder( Icon.createWithBitmap(image), SmallImageType.PHOTO).build(), contentDescription = PlainComplicationText.Builder("Glucose Number").build()).setTapAction(complicationPendingIntent).build()
