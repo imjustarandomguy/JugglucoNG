@@ -1,14 +1,16 @@
 package tk.glucodata.service
 
+import tk.glucodata.DisplayedReading
+
 /**
- * When the floating pill is on screen: only while the screen is on, only once its
- * readings have been loaded since the screen came on, and only once it has composed the
- * reading resolved from them.
+ * When the floating pill is on screen: only while the screen is on, only once the current
+ * reading has been handed to it since the screen came on, and only once it has composed
+ * that reading.
  *
  * A pill kept while the screen was off, hidden, went on recomposing for every reading
  * with no surface to draw on, and came back showing the value from before the screen
  * went off until a tap redrew it. Off screen it now has no window and does no work; back
- * on screen it gets a new window, and only after its readings are current again.
+ * on screen it gets a new window, and only after its reading is current again.
  *
  * Its composition outlives the window, and a new window's first frame draws what the
  * composition holds: the reading from before the screen went off, as long as the one
@@ -33,17 +35,17 @@ internal class FloatingPillPresence {
     var composedRevision: Long? = null
         private set
 
-    // The revision of the reading resolved from the readings loaded since the screen came
-    // on, or null until they are.
+    // The revision of the reading handed to the pill since the screen came on, or null
+    // until one is.
     private var handedRevision: Long? = null
 
-    /** Whether the readings are in but the pill waits for its composition of them. */
+    /** Whether the reading is handed but the pill waits for its composition of it. */
     val awaitingComposition: Boolean
         get() = screenOn && handedRevision != null && !shown
 
     /**
      * Records the screen state. Returns true when the screen has just come on, so the
-     * readings have to be loaded again; until they are, the pill stays off screen.
+     * current reading has to be handed again; until it is, the pill stays off screen.
      */
     fun onScreen(on: Boolean): Boolean {
         if (on == screenOn) return false
@@ -54,10 +56,10 @@ internal class FloatingPillPresence {
     }
 
     /**
-     * The readings were loaded, and the reading resolved from them, of [revision], handed
-     * to the pill. One that lands after the screen went off does not count.
+     * The current reading, of [revision], was handed to the pill. One handed after the
+     * screen went off does not count.
      */
-    fun onReadingsLoaded(revision: Long) {
+    fun onReadingHanded(revision: Long) {
         if (!screenOn) return
         handedRevision = revision
         update()
@@ -71,7 +73,7 @@ internal class FloatingPillPresence {
 
     /**
      * The pill did not compose the handed reading within [COMPOSE_TIMEOUT_MS]: it goes on
-     * screen as it is rather than stay off (the self-check then repairs it).
+     * screen as it is rather than stay off.
      */
     fun onComposeTimedOut() {
         if (awaitingComposition) shown = true
@@ -87,9 +89,26 @@ internal class FloatingPillPresence {
     companion object {
         /**
          * How long the pill waits at screen on for its composition of the handed reading,
-         * from the readings' loading: a frame or two at most; this is for one that never
-         * comes.
+         * and before that for the hub's publish of a current one: a frame or two at most;
+         * this is for one that never comes.
          */
         const val COMPOSE_TIMEOUT_MS = 1_000L
+
+        /**
+         * Whether, at screen on ([nowMillis]), the hub's [reading] is not yet the one to
+         * hand: the hub has not published at all, or a deadline of the reading (its stale
+         * moment, or the removal of its value) has passed without the hub's republish. Its
+         * clock may sleep with the phone (CurrentReadingHub.onClockChanged); the pill then
+         * waits for the republish rather than show for a moment a value already stale.
+         */
+        fun waitsForHub(reading: DisplayedReading, nowMillis: Long): Boolean {
+            if (reading.revision <= 0L) return true
+            val deadline = when (reading.freshness) {
+                DisplayedReading.Freshness.FRESH -> reading.staleAtMillis
+                DisplayedReading.Freshness.STALE -> reading.noValueAtMillis
+                else -> 0L
+            }
+            return deadline in 1L..nowMillis
+        }
     }
 }
