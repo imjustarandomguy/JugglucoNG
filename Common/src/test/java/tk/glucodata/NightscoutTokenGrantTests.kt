@@ -1,6 +1,7 @@
 package tk.glucodata
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -50,6 +51,14 @@ class NightscoutTokenGrantTests {
         val grant = NightscoutTokenGrant.parse("""{"token":"t","exp":5}""")!!
         assertEquals(emptyList<String>(), grant.permissions)
         assertEquals(5_000L, grant.expiresAtMillis)
+    }
+
+    @Test
+    fun theTraceLineOfAGrantLeavesTheTokenOut() {
+        val line = NightscoutTokenGrant.exchangeLogText(200, body)
+        assertEquals("token exchange code=200 len=${body.length}", line)
+        assertFalse(line.contains("eyJ"))
+        assertFalse(line.contains("aaps"))
     }
 
     @Test
