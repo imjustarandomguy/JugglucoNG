@@ -3,7 +3,26 @@
 Hand-off notes for the next session. Read [BUILD.md](BUILD.md) first for the
 setup and branch model. Paths are relative to `Common/src/`.
 
-## Where things stand (2026-10-29) — start here
+## Where things stand (2026-10-30) — start here
+
+**Synced on upstream** `main` dad71b093 (77 commits since 10-29; what each conflict became:
+BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-10-30` (worktree
+/c/source/ng-wt-sync) on top of the never-adopted `rebuild/2026-10-29`; topic branches moved
+locally (old tips `backup/2026-10-30/*`). **Nothing pushed, nothing installed** until the
+owner says so. The 10-29 device test below still applies, plus:
+
+1. Two selected sensors, "Show secondary" on: the peer's value fills the pill's empty
+   secondary slot (free pill and island), goes away ~330 s after the peer's last reading even
+   while the main one is fresh, dims with a stale main reading, empty at "---"; selection or
+   setting changes show at once; never the same sensor twice after a main sensor switch.
+2. Data smoothing → Fewer readings on the current value: the arrow and Δ of the notification,
+   dashboard header and AOD stop at the shown (older) reading, all the same arrow.
+3. Two sensors on the dashboard: with an overdue reading the paired hero dims the main value
+   and hides its arrow; the peer chip keeps its own.
+4. Watch: row arrows on the main screen and Recent readings follow the hero (upstream now
+   smooths the current reading apart from the chart).
+
+## Where things stood (2026-10-29)
 
 **Synced on upstream** `main` db1b9b4ac (62 commits since 10-22; list and what each conflict
 became: BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-10-29` (worktree
