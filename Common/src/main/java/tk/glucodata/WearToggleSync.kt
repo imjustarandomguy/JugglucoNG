@@ -188,6 +188,10 @@ object WearToggleSync {
         apply(toggles.filter { it.scope == SCOPE_ALERT || it.scope == SCOPE_PREF })
         received.value = toggles
         UiRefreshBus.requestStatusRefresh()
+        // Check the alerts under what just arrived while this message keeps the
+        // watch awake: the runtime's 15 s check does not run while it sleeps.
+        runCatching { tk.glucodata.alerts.AlertRuntimeManager.ensureMonitoring() }
+            .onFailure { Log.stack(LOG_ID, "evaluate", it) }
     }
 
     /**
