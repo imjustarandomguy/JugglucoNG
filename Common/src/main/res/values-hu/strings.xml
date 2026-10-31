@@ -3305,4 +3305,9 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="active_snoozes_title">Szundizott riasztások</string>
     <string name="snooze_time_left">%1$s van hátra</string>
     <string name="snoozed_time_left">Szundi · %1$s</string>
+    <string name="chart_readings_style_title">Mérések megjelenítése</string>
+    <string name="chart_readings_style_desc">Hogyan jelennek meg a mérések a grafikonokon: az alkalmazásban, az értesítésben, a widgeten és az órán</string>
+    <string name="chart_readings_style_line">Vonal</string>
+    <string name="chart_readings_style_dots">Pontok</string>
+    <string name="chart_readings_style_line_and_dots">Vonal és pontok</string>
 </resources>
