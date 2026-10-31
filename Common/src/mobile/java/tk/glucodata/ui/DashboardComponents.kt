@@ -290,8 +290,9 @@ fun DashboardCombinedHeader(
     // The arrow and Δ describe the shown value, so they end at its reading. With Fewer
     // readings on the current value, that is the last completed interval's reading, older
     // than the newest stored one; readings after it must not move the arrow or the Δ.
-    val movementHistory = remember(history, currentSnapshot?.timeMillis) {
-        val shownAt = currentSnapshot?.timeMillis
+    // The shown value is the current reading's when there is one.
+    val shownAt = currentReading?.timeMillis?.takeIf { it > 0L } ?: currentSnapshot?.timeMillis
+    val movementHistory = remember(history, shownAt) {
         if (shownAt == null || (history.lastOrNull()?.timestamp ?: Long.MIN_VALUE) <= shownAt) {
             history
         } else {

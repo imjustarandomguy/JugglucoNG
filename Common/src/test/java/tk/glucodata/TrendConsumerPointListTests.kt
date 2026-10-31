@@ -48,6 +48,15 @@ class TrendConsumerPointListTests {
         assertTrue(DisplayTrendSource.endingAtShown(history, null) === history)
     }
 
+    @Test fun aReadingShownByItsTimeCutsTheSameWay() {
+        val history = (0..13).map { GlucosePoint(it * 60_000L, 100f + it, 0f) }
+        val cut = DisplayTrendSource.endingAt(history, 9 * 60_000L)
+        assertEquals(9 * 60_000L, cut.last().timestamp)
+        assertEquals(10, cut.size)
+        assertTrue(DisplayTrendSource.endingAt(history, 13 * 60_000L) === history)
+        assertTrue("no reading shown: no cut", DisplayTrendSource.endingAt(history, 0L) === history)
+    }
+
     @Before
     fun registerProductionTrendProvider() {
         // Specific.start() performs this registration in the app. Local JVM

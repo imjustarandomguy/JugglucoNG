@@ -4071,9 +4071,11 @@ public class Notify {
 
         // The canonical trend list: derived from the same rows before the chart's own
         // augmentation, so the arrow regresses over byte-identical points with the
-        // dashboard hero and the computed-trend broadcast.
+        // dashboard hero and the computed-trend broadcast. It ends at the reading shown, the
+        // current reading when given, so the Δ beside it does too.
         java.util.List<GlucosePoint> nativePoints = DisplayTrendSource.resolveTrendPoints(
-                DisplayTrendSource.endingAtShown(chartPoints, resolvedDisplay), resolvedDisplay,
+                shown != null ? DisplayTrendSource.endingAt(chartPoints, shown.getTimeMillis())
+                        : DisplayTrendSource.endingAtShown(chartPoints, resolvedDisplay), resolvedDisplay,
                 activeSensorSerial);
 
         BatteryTrace.bump(

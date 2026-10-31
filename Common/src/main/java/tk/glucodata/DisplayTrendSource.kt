@@ -95,6 +95,17 @@ object DisplayTrendSource {
     }
 
     /**
+     * [endingAtShown] for a surface that shows a reading by its time alone: [historyPoints]
+     * cut at [shownAtMillis]; whole when that is 0 (no reading).
+     */
+    @JvmStatic
+    fun endingAt(historyPoints: List<GlucosePoint>?, shownAtMillis: Long): List<GlucosePoint> {
+        val history = historyPoints ?: return emptyList()
+        if (shownAtMillis <= 0L || (history.lastOrNull()?.timestamp ?: Long.MIN_VALUE) <= shownAtMillis) return history
+        return history.filter { it.timestamp <= shownAtMillis }
+    }
+
+    /**
      * The one point list every trend arrow regresses over: recent history plus
      * the live reading, cut to [TREND_WINDOW_MS] anchored at the newest point.
      *
