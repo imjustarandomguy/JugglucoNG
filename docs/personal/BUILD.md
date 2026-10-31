@@ -279,7 +279,34 @@ properties were not picked up; do not install. `apksigner.bat` needs `java` on
 
 ## 6. Updating from upstream
 
-`scripts/personal/sync-upstream.sh` runs the steps below one at a time, resumably, in the
+Two ways (owner, 2026-10-30): a **quick sync** for routine updates, often; a **full sync**
+(below) before sending pull requests, or every week or two. Run the script from the main
+checkout. git rerere is on in this repository (`rerere.enabled`, `rerere.autoupdate`, local
+config, not committed): a conflict resolved once is resolved the same way when it comes
+back, in either kind of sync, and the script lists it as a `RERERE` line and goes on. Look
+at those lines; `git rerere forget <file>` drops a resolution that turned out wrong. On a
+new machine: `git config rerere.enabled true && git config rerere.autoupdate true`.
+
+Quick sync: `personal` + one merge of the new upstream, no topic branch moved, so each
+conflict is resolved once (in the full sync it comes up in the branch and again in the
+rebuild).
+
+```bash
+S=scripts/personal/sync-upstream.sh
+bash $S quick        # quick/<date> = personal + merge of upstream main; at a STOP: resolve
+                     # in C:/source/ng-wt-sync, git add, then: bash $S continue
+bash $S check        # test.sh, both release builds, the signer
+bash scripts/personal/materialize-symlinks.sh --restore && git reset --keep quick/<date>
+bash scripts/personal/materialize-symlinks.sh
+git push origin main personal       # owner's go only; both fast-forward
+```
+
+A fix the merge needs beyond its conflicts (code that no longer compiles against upstream,
+a test) goes in its own commit on top, prefixed `Quick:`; the next full sync replays it as a
+personal commit, and moves it to its topic branch where it belongs. Between full syncs the
+topic branches stay on an older upstream: rebase one before working on it or sending it.
+
+Full sync: `scripts/personal/sync-upstream.sh` runs the steps below one at a time, resumably, in the
 worktree `C:/source/ng-wt-sync` (`WT=` to change it); the branches, their merge order and
 stacking are in `scripts/personal/branches.txt` (keep it in step with the table above).
 `OLD=` names the personal being replaced (default `personal`), `DATE=` the backup tag date.
