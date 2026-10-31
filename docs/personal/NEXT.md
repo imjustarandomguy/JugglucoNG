@@ -12,9 +12,12 @@ locally (old tips `backup/2026-10-30/*`). test.sh: 10112 tests, NEW: 0; both rel
 signed with the owner's key. **Switched and pushed** on the owner's go (10-30): `personal` =
 the rebuild; one atomic push of `main`, the 28 topic branches and `personal` (force-with-lease
 on the 10-22 tips), and `fix/nightscout-jwt-renew`, `feat/widget-rework`,
-`feat/widget-current-reading` deleted on origin. **Not installed yet** (APKs of the rebuild are
-in ng-wt-sync's `Common/build/outputs/apk/*/release/`; their docs commits came after the build,
-the code is the same). From now on: quick syncs for routine updates, rerere on (BUILD.md §6).
+`feat/widget-current-reading` deleted on origin. **Installed** 2026-10-31 00:15:04 phone /
+00:15:27 watch (1.2.7-Alpha, APKs built in ng-wt-sync from the rebuild's code, same as
+`personal`; phone over wireless debugging, listed only by its mDNS name). Neither app was
+opened: `keeprunning` was foreground again on both within seconds (phone also the floating
+glucose and its accessibility service). From now on: quick syncs for routine updates, rerere
+on (BUILD.md §6).
 The 10-29 device test below still applies, plus:
 
 0. The pill's details card shows "+ Insulin" / "+ Food" again (lost in the first 10-30
