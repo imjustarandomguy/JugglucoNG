@@ -290,6 +290,13 @@ private boolean connected=false;
     }
 
     @Override
+    protected boolean awaitingFirstReading(long nowMs) {
+        // Readings of another sensor reconnect this one once its warmup frame is
+        // two showtimes old, well before a 30-minute warmup ends.
+        return WarmupSilencePolicy.awaitingFirstReading(sensorstartmsec, DEXCOM_WARMUP_MSEC, charcha[0], nowMs);
+    }
+
+    @Override
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
                 || SensorOwnershipRuntime.blocksLocalConnection(this)) return false;
