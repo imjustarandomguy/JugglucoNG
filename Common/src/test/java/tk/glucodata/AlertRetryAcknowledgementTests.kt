@@ -199,6 +199,7 @@ class AlertRetryAcknowledgementTests {
                 "public static void cancelRetrySession(int kind, String reason)",
                 "public static void cancelCurrentRetrySession(String reason)",
                 "public static void testTrigger(int kind)",
+                "public static void testTriggerHere(int kind)",
                 "private static void runOnAlertThread(Runnable task)",
                 "private static void fireRetrySession(int expectedKind, long expectedGeneration)",
                 "private static void deliverRetrySession(int expectedKind, long expectedGeneration)",
@@ -301,7 +302,18 @@ class AlertRetryAcknowledgementTests {
                         static boolean snoozed;
                         boolean isSnoozed(AlertType type) { return snoozed; }
                     }
-                    static class tk { static class glucodata { static class Applic { static int unit; } } }
+                    static class tk { static class glucodata {
+                        static class Applic { static int unit; }
+                        static class alerts {
+                            static class AlarmTestSync { static boolean startTest(int kind) { return true; } }
+                            static class AlarmRouting { static boolean ringsHere(AlertType type) { return true; } }
+                            static class AlarmSilenceSync { static void onLossOver() {} }
+                        }
+                    } }
+                    static boolean isWearable;
+                    void postWearAlarmNotification(int kind, float glvalue, String glucoseValue, String message,
+                            float rate, int sensorgen2, String deliveryMode) {}
+                    public boolean sayLossAlarm(long at) { return lossalarm(at); }
                     static class Notify {
                         static RetryHarness onenot;
                         static long glucosetimeout = 60_000;
