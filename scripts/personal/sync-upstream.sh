@@ -18,8 +18,13 @@
 #   verify         diff against a plain merge of main into $OLD; duplicated strings
 #   check          test.sh, both release builds, the APK signer
 #
+#   quick          the quick sync: quick/$DATE = $OLD + a merge of the new upstream main, no
+#                  branch moved; stops at a conflict like the others (then `continue`), then
+#                  `check`. The full sync (start … check) is for before PRs or every week or two.
+#
 # $OLD is the personal being replaced (default: personal), $DATE the backup tag date
-# (default: today). Nothing is pushed.
+# (default: today). Nothing is pushed. Conflicts git rerere (rerere.enabled, autoupdate)
+# resolves as it did before are taken and listed as RERERE lines.
 set -u
 here=$(cd "$(dirname "$0")" && pwd)
 repo=${REPO:-$(git -C "$here" rev-parse --show-toplevel)}
@@ -66,12 +71,42 @@ start() {
 # Records sync/<b> once its rebase or recreation has finished.
 done_branch() { git -C "$WT" branch -f "sync/$1" HEAD; rm -f "$(state)"; echo "OK    $1 ($(git -C "$WT" rev-list --count --no-merges main..HEAD) commits on main)"; }
 
+stopped_at() {
+  git -C "$WT" log -1 --format='%h %s' REBASE_HEAD 2>/dev/null ||
+    git -C "$WT" log -1 --format='%h %s' CHERRY_PICK_HEAD 2>/dev/null || echo "the merge"
+}
+rerere_lines() { sed -n -E "s#^(Resolved|Staged) '(.*)' using previous resolution\.\$#RERERE $1: \2#p"; }
+
+# Goes on with what is in progress in $WT until it is done (0) or a conflict needs a hand (1).
+drive() {
+  local b=$1 g out n=0; g=$(git -C "$WT" rev-parse --git-dir)
+  while in_progress; do
+    if [ -n "$(unmerged)" ]; then echo "STOP  $b: $(stopped_at): $(unmerged | tr '\n' ' ')"; return 1; fi
+    n=$((n + 1)); [ $n -gt 1000 ] && { echo "STOP  $b: stuck in $WT, see git status there"; return 1; }
+    if git -C "$WT" diff --cached --quiet && git -C "$WT" diff --quiet; then
+      # the resolution left the commit empty (upstream already has it): drop it
+      if [ -d "$g/rebase-merge" ]; then out=$(git -C "$WT" rebase --skip 2>&1)
+      elif [ -f "$g/CHERRY_PICK_HEAD" ]; then out=$(git -C "$WT" cherry-pick --skip 2>&1)
+      else out=$(git -C "$WT" commit -q --no-edit 2>&1); fi
+    elif [ -d "$g/rebase-merge" ]; then out=$(GIT_EDITOR=true git -C "$WT" rebase --continue 2>&1)
+    elif [ -f "$g/CHERRY_PICK_HEAD" ] || [ -d "$g/sequencer" ]; then out=$(GIT_EDITOR=true git -C "$WT" cherry-pick --continue 2>&1)
+    else out=$(git -C "$WT" commit -q --no-edit 2>&1); fi
+    echo "$out" | rerere_lines "$b"
+  done
+}
+
+# One git command in $WT; when it stops, what rerere resolved is taken and it goes on (drive).
+step() {
+  local b=$1 out; shift
+  out=$(git -C "$WT" "$@" 2>&1) && return 0
+  echo "$out" | rerere_lines "$b"
+  in_progress || { echo "STOP  $b: git $1 failed: $(echo "$out" | tail -1)"; return 1; }
+  drive "$b"
+}
+
 old_hub_merge() { git -C "$WT" log --merges --first-parent --format=%H -1 "$B/main..$B/$1"; }
 # A hub branch's own commits, picked on top of its new hub merge.
-pick_own() {
-  git -C "$WT" cherry-pick "$(old_hub_merge "$1")..$B/$1" >/dev/null 2>&1 ||
-    { echo "STOP  $1: $(git -C "$WT" log -1 --format='%h %s' CHERRY_PICK_HEAD 2>/dev/null): $(unmerged | tr '\n' ' ')"; return 1; }
-}
+pick_own() { step "$1" cherry-pick "$(old_hub_merge "$1")..$B/$1"; }
 
 rebase_one() {
   local b=$1 p n op
@@ -80,13 +115,11 @@ rebase_one() {
   echo "$b" > "$(state)"
   if is_hub "$b"; then
     git -C "$WT" switch -q --detach "$n" || return 2
-    git -C "$WT" merge --no-ff -q -m "Merge branch 'feat/current-reading-hub' into $b" sync/feat/current-reading-hub >/dev/null 2>&1 ||
-      { echo "STOP  $b: the hub merge: $(unmerged | tr '\n' ' ')"; return 1; }
+    step "$b" merge --no-ff -q -m "Merge branch 'feat/current-reading-hub' into $b" sync/feat/current-reading-hub || return 1
     pick_own "$b" || return 1
   else
     git -C "$WT" switch -q --detach "$B/$b" || return 2
-    git -C "$WT" rebase -q --onto "$n" "$op" >/dev/null 2>&1 ||
-      { echo "STOP  $b: $(git -C "$WT" log -1 --format='%h %s' REBASE_HEAD 2>/dev/null): $(unmerged | tr '\n' ' ')"; return 1; }
+    step "$b" rebase -q --onto "$n" "$op" || return 1
   fi
   done_branch "$b"
 }
@@ -108,26 +141,40 @@ rebase_all() {
 }
 
 continue_() {
-  local b g; b=$(cat "$(state)" 2>/dev/null) || { echo "nothing in progress"; exit 1; }
-  g=$(git -C "$WT" rev-parse --git-dir)
+  local b; b=$(cat "$(state)" 2>/dev/null) || { echo "nothing in progress"; exit 1; }
   [ -n "$(unmerged)" ] && { echo "still unmerged: $(unmerged | tr '\n' ' ')"; exit 1; }
-  while in_progress; do
-    if git -C "$WT" diff --cached --quiet && git -C "$WT" diff --quiet; then
-      # the resolution left the commit empty (upstream already has it): drop it
-      if [ -d "$g/rebase-merge" ]; then git -C "$WT" rebase --skip >/dev/null 2>&1
-      elif [ -f "$g/CHERRY_PICK_HEAD" ]; then git -C "$WT" cherry-pick --skip >/dev/null 2>&1
-      else git -C "$WT" commit -q --no-edit; fi
-    elif [ -d "$g/rebase-merge" ]; then GIT_EDITOR=true git -C "$WT" rebase --continue >/dev/null 2>&1
-    elif [ -f "$g/CHERRY_PICK_HEAD" ] || [ -d "$g/sequencer" ]; then GIT_EDITOR=true git -C "$WT" cherry-pick --continue >/dev/null 2>&1
-    else git -C "$WT" commit -q --no-edit; fi
-    if [ -n "$(unmerged)" ]; then echo "STOP  $b again: $(unmerged | tr '\n' ' ')"; exit 1; fi
-  done
-  if [ "$b" != rebuild ]; then
-    # a hub merge that needed a hand: its own commits are still to come
-    if is_hub "$b" && [ "$(git -C "$WT" rev-list --parents -n1 HEAD | wc -w)" -eq 3 ]; then pick_own "$b" || exit 1; fi
-    done_branch "$b"
+  drive "$b" || exit 1
+  case "$b" in
+    rebuild) rebuild ;;
+    quick/*) quick ;;
+    *)
+      # a hub merge that needed a hand: its own commits are still to come
+      if is_hub "$b" && [ "$(git -C "$WT" rev-list --parents -n1 HEAD | wc -w)" -eq 3 ]; then pick_own "$b" || exit 1; fi
+      done_branch "$b"
+      rebase_all ;;
+  esac
+}
+
+# The quick sync: $OLD + a merge of the new upstream main as quick/$DATE; no branch moves.
+# A fix the merge needs beyond its conflicts goes in its own commit on top, prefixed "Quick:":
+# the next full sync replays it like any personal commit (and it can move to its branch).
+quick() {
+  local q=quick/$DATE
+  if ! git -C "$WT" rev-parse -q --verify "refs/heads/$q" >/dev/null; then
+    in_progress && { echo "resolve what is in progress in $WT first"; exit 1; }
+    git -C "$repo" fetch -q upstream || exit 2
+    for b in personal main; do git -C "$repo" tag -f "$B/$b" "$b" >/dev/null; done
+    git -C "$repo" branch -f main upstream/main
+    git -C "$WT" switch -q -c "$q" "$OLD" || exit 2
+    echo "upstream: $(git -C "$repo" rev-list --count "$B/main..main") new commits since $(git -C "$repo" rev-parse --short "$B/main")"
   fi
-  case "$b" in rebuild) rebuild ;; *) rebase_all ;; esac
+  echo "$q" > "$(state)"
+  if ! git -C "$WT" merge-base --is-ancestor main HEAD; then
+    step "$q" merge --no-ff -m "Merge upstream $(git -C "$repo" rev-parse --short main) into personal" main ||
+      { echo "      resolve in $WT, git add, then: $0 continue"; exit 1; }
+  fi
+  rm -f "$(state)"
+  echo "quick: $(git -C "$WT" log --oneline -1); next: $0 check, then switch personal to $q"
 }
 
 keepboth() {
@@ -229,5 +276,6 @@ case "$cmd" in
   rebuild) rebuild ;;
   verify) verify ;;
   check) check ;;
-  *) sed -n '2,24p' "$0"; exit 2 ;;
+  quick) quick ;;
+  *) sed -n '2,29p' "$0"; exit 2 ;;
 esac
