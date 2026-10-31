@@ -50,6 +50,8 @@ class MessageReceiver: WearableListenerService() {
             return
         }
         Log.i(LOG_ID,"onMessageReceived start $path"  )
+        // Any message proves the phone is in reach: alarm events the watch held can go.
+        if (isWearable) tk.glucodata.alerts.AlarmHistory.onPeerHeard()
         when(WearMessagePath.fromWire(path)) {
             WearMessagePath.ALERT_ACK -> WearAlertSync.onMessage(data)
             WearMessagePath.DEFAULTS ->  {
@@ -150,6 +152,9 @@ class MessageReceiver: WearableListenerService() {
             }
             WearMessagePath.SYNC2_JOURNAL_CMD -> {
                 if (!isWearable) WearJournalSync.onCommand(data)
+            }
+            WearMessagePath.SYNC2_ALARM_HISTORY -> {
+                if (!isWearable) tk.glucodata.alerts.AlarmHistory.onPeerEvents(data)
             }
             WearMessagePath.SENSOR_HANDOFF -> {
                 if (isWearable) {

@@ -308,6 +308,7 @@ class AlertRetryAcknowledgementTests {
                             static class AlarmTestSync { static boolean startTest(int kind) { return true; } }
                             static class AlarmRouting { static boolean ringsHere(AlertType type) { return true; } }
                             static class AlarmSilenceSync { static void onLossOver() {} }
+                            static class AlarmHistory { static void onFired(int kind, float value) {} }
                         }
                     } }
                     static boolean isWearable;
@@ -334,6 +335,7 @@ class AlertRetryAcknowledgementTests {
                         static void wakestreamsender() {}
                     }
                     static class SensorOwnershipRuntime { static boolean peerReadsAny() { return false; } }
+                    static class PhoneReadingClock { static void reconcileAwake() {} }
                     static boolean hasalarmloss() { return true; }
                     static long waitmmsec() { return 0; }
                     static class LossOfSensorAlarm { static void setalarm(Object app, long at) {} }
