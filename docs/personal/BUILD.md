@@ -328,6 +328,10 @@ git branch -f main upstream/main && git push origin main  # main is not checked 
 #    A file taken from $OLD (by hand or by the script) also carries what dropped branches
 #    did to it: after dropping a branch, reverse its own patch on such files (2026-10-29:
 #    SuperGattCallback.java and GlucoseAlarmsAsymmetryTests.kt kept widget changes).
+#    Take old resolutions from $OLD as it stood before its own commits (the commit before
+#    the first one), never from its tip: a file from the tip brings those commits' changes
+#    along, their replay shrinks to the rest, and the part that rode along is lost when that
+#    file is next merged by hand (10-30: the details card's + buttons). sync-upstream.sh does.
 # 4. git checkout $OLD -- docs/personal scripts/personal CLAUDE.md && commit "Personal: …"
 # 5. Verify: merge main into a copy of $OLD the plain way; its tree must equal the
 #    rebuilt one (strings.xml line order aside). Any difference is lost integration.

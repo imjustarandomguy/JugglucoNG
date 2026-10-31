@@ -154,8 +154,15 @@ rebuild() {
     git -C "$WT" switch -q "$r" || exit 2
   fi
   echo rebuild > "$(state)"
+  # Old resolutions come from $OLD as it stood before its own commits: taken from $OLD itself,
+  # a file brings those commits' changes along, their replay below shrinks to the rest, and
+  # the part that rode along is lost the next time that file is merged by hand.
+  local merged c1
+  c1=$(git -C "$repo" log --reverse --first-parent --no-merges --format=%H "$B/main..$OLD" -- . \
+    ':!docs/personal' ':!scripts/personal' ':!CLAUDE.md' | head -1)
+  merged=${c1:+$(git -C "$repo" rev-parse "$c1^")}; merged=${merged:-$OLD}
   local out rc
-  out=$(BACKUP=$B bash "$here/rebuild-personal.sh" "$WT" "$OLD" $(branches)); rc=$?
+  out=$(BACKUP=$B bash "$here/rebuild-personal.sh" "$WT" "$merged" $(branches)); rc=$?
   echo "$out" | grep -v '^have'
   [ $rc = 0 ] || { echo "      then run: $0 continue (it commits the merge and goes on)"; exit 1; }
   # $OLD's own commits on top of its merges, except the docs-only ones (carried below)
