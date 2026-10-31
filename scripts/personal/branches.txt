@@ -1,0 +1,32 @@
+# The topic branches in personal, in merge order (sync-upstream.sh reads this).
+# <branch> [parent=<branch it is stacked on>] [hub]
+#   parent  rebased with --onto the parent's new tip (default: main)
+#   hub     recreated as parent + a --no-ff merge of feat/current-reading-hub + its own commits
+fix/dexcom-g7-link
+feat/dexcom-g7-watch parent=fix/dexcom-g7-link
+feat/floating-glucose
+fix/wear-app
+feat/glucose-display
+fix/nightscout
+fix/nightscout-token-log
+fix/restart-after-update
+fix/health-connect
+feat/persistent-low-alarm
+fix/wear-alarm-settings-sync
+feat/alarm-routing parent=fix/wear-alarm-settings-sync
+feat/alarm-history
+feat/readings-as-dots
+fix/wear-remove-native-sensor
+fix/sensor-expiry-expected-end
+fix/glucose-display-conversion
+fix/trend-arrow-shared
+fix/floating-island-centre
+fix/connect-pending-latch
+fix/sensor-warmup-status
+fix/dexcom-warmup-signal-loss
+fix/sensor-handover-first-reading
+feat/current-reading-hub
+feat/wear-current-reading parent=fix/wear-app hub
+feat/floating-current-reading parent=feat/floating-glucose hub
+feat/quick-treatment-entry
+feat/phone-current-reading hub
