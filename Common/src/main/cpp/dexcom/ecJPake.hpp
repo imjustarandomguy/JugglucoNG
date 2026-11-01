@@ -72,6 +72,7 @@ struct KeyPair {
         }
    KeyPair();
    ~KeyPair();
+   void renew();
    const BIGNUM *getprivate() const;
    const EC_POINT *getpublic() const;
    };

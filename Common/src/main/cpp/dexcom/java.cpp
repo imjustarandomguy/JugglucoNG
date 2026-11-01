@@ -531,6 +531,19 @@ fromjava(makeRound12bytes)(JNIEnv *envin, jclass cl, jlong dataptr, int which) {
       envin, mkround12(key)); // TODO make mkround12 not copy unnecessarily
 }
 
+// New key pairs for a pairing run. The pairs used to be made once, with the sensor's
+// stream, and every run after a refused one sent the same rounds: a G7 that refused a run
+// refused all of them until the sensor was added again.
+extern "C" JNIEXPORT void JNICALL fromjava(dexNewKeys)(JNIEnv *envin, jclass cl,
+                                                       jlong dataptr) {
+  if (!dataptr) {
+    LOGAR("dexNewKeys dataptr==null");
+    return;
+  }
+  for (KeyPair &key : reinterpret_cast<dexcomstream *>(dataptr)->dexcontext.key)
+    key.renew();
+}
+
 extern std::array<uint8_t, 64> getchallenge(std::span<const uint8_t> input);
 extern "C" JNIEXPORT jbyteArray JNICALL
 fromjava(dexChallenger)(JNIEnv *envin, jclass cl, jbyteArray jdata) {
