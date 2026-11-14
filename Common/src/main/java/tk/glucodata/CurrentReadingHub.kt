@@ -45,6 +45,8 @@ class ReadingHub internal constructor(
         /** The display arrow's rate in mg/dL per minute, NaN without one. */
         val rate: Float,
         val index: Int,
+        /** The sensor generation, which bounds the values the status-bar icon spells out. */
+        val sensorGen: Int = 0,
     )
 
     /** What one recompute reads. */
@@ -326,6 +328,7 @@ class ReadingHub internal constructor(
                 origin = if (hasTime) originOf(lastReadingMillis) else Origin.STORED,
                 reason = Reason.STARTUP,
                 revision = 0L,
+                sensorGen = shown?.sensorGen ?: 0,
             )
         }
 
@@ -454,6 +457,22 @@ object CurrentReadingHub {
     fun setScheduler(scheduler: ReadingScheduler) = hub.setScheduler(scheduler)
 
     /**
+     * The arrow of an alarm that fired on [alerting], the reading taken at
+     * [alertingTimeMillis] as the alert engine resolved it. Worked out on the caller's
+     * thread, as an alarm fires while its reading is being accepted, before the hub
+     * publishes it: the current reading's arrow ([DisplayedReading.alarmRate]) once that
+     * has caught up with [alerting], else [alerting]'s own display arrow over the stored
+     * rows, as the hub draws it a moment later.
+     */
+    @JvmStatic
+    fun alarmRate(alerting: CurrentDisplaySource.Snapshot?, alertingTimeMillis: Long, firedRate: Float): Float {
+        val now = System.currentTimeMillis()
+        return ReadingHub.compose(source.read(now), now).alarmRate(alertingTimeMillis, firedRate) {
+            alerting?.let { source.rateFor(it, now) } ?: Float.NaN
+        }
+    }
+
+    /**
      * Another sensor of this device under the same rules, resolved on the caller's thread and
      * not published: for a surface that shows several sensors side by side.
      */
@@ -530,6 +549,7 @@ internal class StoredReadingSource : ReadingHub.Source {
                 viewMode = it.viewMode,
                 rate = runCatching { displayRate(history, it) }.getOrDefault(Float.NaN),
                 index = it.index,
+                sensorGen = it.sensorGen,
             )
         }
         val latest = if (reading != null) 0L else latestStoredTime(history, nowMillis, isMmol, sensor)
@@ -545,6 +565,17 @@ internal class StoredReadingSource : ReadingHub.Source {
             newestReadingMillis = newestReadingMillis(history, liveMillis, nowMillis),
             others = others,
         )
+    }
+
+    /**
+     * The display arrow's rate for [snapshot], a reading perhaps not stored yet, over its
+     * sensor's stored rows: the rate this source gives it once it is the current reading.
+     */
+    fun rateFor(snapshot: CurrentDisplaySource.Snapshot, nowMillis: Long): Float {
+        val history = runCatching {
+            NotificationHistorySource.getDisplayHistory(nowMillis - HISTORY_MS, snapshot.isMmol, snapshot.sensorId)
+        }.getOrDefault(emptyList()).let { notAhead(it, nowMillis) }
+        return runCatching { displayRate(history, snapshot) }.getOrDefault(Float.NaN)
     }
 
     /** What the clock needs of a sensor shown beside the first: its reading times, no value. */

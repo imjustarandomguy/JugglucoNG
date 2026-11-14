@@ -30,8 +30,8 @@ import org.junit.Test
  *   `wakestreamsender()`;
  * - the watch asks for a sync afterwards, the phone only while the watch reads a sensor too;
  * - the phone calls `ensureCurrentSensorSelection()` on reconnect, the watch does not;
- * - and the one that looks like a bug rather than a decision: with no loss alarm the phone
- *   sends an `oldnotification` and the watch sends nothing.
+ * - neither rewrites the notification with the stale value any more: on the phone the
+ *   stale look is the current reading's (CurrentReadingHub), which the check reconciles.
  */
 class GlucoseAlarmsAsymmetryTests {
     private fun source(relative: String): String = File(repoRoot(), relative).readText()
@@ -122,16 +122,17 @@ class GlucoseAlarmsAsymmetryTests {
 
     @Test
     fun neitherSideReportsALossOnceTheSensorWasRemoved() {
-        // Nothing can go silent with no sensor left: this path kept posting "No new value" and
-        // could sound the loss alarm for a sensor the user had just removed.
+        // Nothing can go silent with no sensor left: this path could sound the loss alarm for
+        // a sensor the user had just removed. (The phone no longer posts "No new value" from
+        // here at all; see withNoLossAlarmNeitherRewritesTheNotification.)
         val gate = "if(!SensorIdentity.hasMainSensor()) {"
         val phoneGate = phone.indexOf(gate)
         assertTrue("the phone must check for a sensor", phoneGate >= 0)
         assertTrue(
             "the check has to come before anything that reports the loss",
-            phoneGate < phone.indexOf("oldnotification(") && phoneGate < phone.indexOf("lossalarm("),
+            phoneGate < phone.indexOf("lossalarm("),
         )
-        val noSensorBranch = after(phone, gate).substringBefore("if(!haslossalarm)")
+        val noSensorBranch = after(phone, gate).substringBefore("long nexttime=tryagain;")
         assertTrue("the branch has to leave handlealarm", noSensorBranch.contains("return;"))
         assertFalse(noSensorBranch, noSensorBranch.contains("oldnotification("))
         assertTrue("a loss alarm still sounding has nothing left to report", noSensorBranch.contains("Notify.stoplossalarm()"))
@@ -145,15 +146,17 @@ class GlucoseAlarmsAsymmetryTests {
     }
 
     @Test
-    fun withNoLossAlarmThePhoneNotifiesAndTheWatchDoesNothing() {
-        // This is the one I would call a candidate bug rather than a decision. Both read
-        // hasalarmloss() and both skip the loss branch when it is false, but the phone then
-        // sends an oldnotification for the stale value and the watch falls out of the if.
-        // Pinned so that closing it is a deliberate change with the review it deserves.
-        val phoneNoLoss = after(phone, "if(!haslossalarm) {")
+    fun withNoLossAlarmNeitherRewritesTheNotification() {
+        // The phone used to send an oldnotification for the stale value here, with or
+        // without the loss alarm, and the watch nothing. That oldnotification raced the
+        // notification's own stale look and dropped the value. The stale look is now the
+        // current reading's: the phone's check only brings it up to date, loss alarm or not.
+        assertFalse(phone, phone.contains("oldnotification("))
+        val phoneCheck = after(phone, "void handlealarm() {")
+        val reconcile = phoneCheck.indexOf("PhoneReadingClock.reconcileAwake();")
         assertTrue(
-            "the phone is expected to notify about the stale value",
-            phoneNoLoss.contains("Notify.onenot.oldnotification(wastime)"),
+            "the phone's check reconciles the current reading before the loss decision",
+            reconcile >= 0 && reconcile < phoneCheck.indexOf("hasalarmloss()"),
         )
         val watchNoLoss = after(watch, "if(hasalarmloss() &&")
         assertFalse(
