@@ -71,3 +71,7 @@ wear tk.glucodata.arch.ArchitectureGateTests#calibrationProjectionCallersStayAll
 wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToApplic   # architecture gate: Windows path separators
 wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToNatives   # architecture gate: Windows path separators
 wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInDirectSharedPreferencesUse   # architecture gate: Windows path separators
+mobile tk.glucodata.alerts.SignalRestoredRestartTests#*   # JDK 25: Robolectric cannot read the classes (upstream #853, 2026-11-14)
+wear tk.glucodata.alerts.SignalRestoredRestartTests#*   # JDK 25: Robolectric cannot read the classes (upstream #853, 2026-11-14)
+mobile tk.glucodata.CloneFallbackServersTests#persistenceAndNativeCarryThePreference   # CRLF checkout: it looks for a \n in ICE.cpp (2026-11-14)
+wear tk.glucodata.CloneFallbackServersTests#persistenceAndNativeCarryThePreference   # CRLF checkout: it looks for a \n in ICE.cpp (2026-11-14)
