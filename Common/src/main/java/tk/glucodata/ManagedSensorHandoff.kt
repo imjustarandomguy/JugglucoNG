@@ -64,7 +64,7 @@ object ManagedSensorHandoff {
      *   handover needs. Older receivers ignore the key and behave as before.
      */
     fun createOutgoingPayload(context: Context?, refresh: Boolean): ByteArray =
-        buildPayload(context, refresh, SensorIdentity.resolveMainSensor())
+        buildPayload(context, refresh, switchOnDexcom()?.name)
 
     /** [dexcomSensor]: the G7 whose setup goes along ([DexcomWatchSetup]), if it is one. */
     private fun buildPayload(context: Context?, refresh: Boolean, dexcomSensor: String?): ByteArray {
@@ -214,14 +214,15 @@ object ManagedSensorHandoff {
     }
 
     /**
-     * What a watch handed the selected G7 remembers ([HANDED_DEXCOM_KEY_PREFIX]),
-     * as the switch's own handoff carries it; null when that carries no G7.
+     * The G7 switching a watch on hands it ([DexcomFollow.onSwitchOn]), the one
+     * [followNewestDexcom] would hand it; null for none. What the watch then
+     * remembers ([HANDED_DEXCOM_KEY_PREFIX]) is this record.
      */
-    @JvmStatic
-    fun selectedDexcomHanded(): String? =
-        dexcomRecord(SensorIdentity.resolveMainSensor())
-            ?.takeIf { it.setupReady }
-            ?.let(DexcomFollow::handedValue)
+    internal fun switchOnDexcom(
+        access: FollowAccess = SystemFollowAccess,
+        selected: String? = SensorIdentity.resolveMainSensor(),
+    ): DexcomFollow.Record? =
+        DexcomFollow.onSwitchOn(access.activeDexcomRecords()) { access.isDexcom(selected) }
 
     /** Per watch: the G7 it was last handed and that G7's start ("Direct sensor on watch" preferences). */
     const val HANDED_DEXCOM_KEY_PREFIX = "dexcom."
@@ -233,11 +234,11 @@ object ManagedSensorHandoff {
     private val followSkips = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
-     * "Direct sensor on watch" hands the watch the phone's selected G7 when it
-     * is switched on. A sensor started later has to follow: called from the
-     * phone's ownership tick, this hands every such watch the newest G7 once
-     * the phone can send its setup ([DexcomFollow]), and again only if its
-     * start moves.
+     * "Direct sensor on watch" hands the watch the newest G7 when it is
+     * switched on ([switchOnDexcom]). A sensor started later has to follow:
+     * called from the phone's ownership tick, this hands every such watch the
+     * newest G7 once the phone can send its setup ([DexcomFollow]), and again
+     * only if its start moves.
      */
     @JvmStatic
     fun followNewestDexcom() {
