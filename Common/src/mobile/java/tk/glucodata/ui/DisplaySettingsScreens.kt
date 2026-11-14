@@ -648,6 +648,7 @@ fun FloatingGlucoseSettingsScreen(
         ) {
             SettingsSwitchItem(
                 title = stringResource(R.string.floating_tap_details),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.floating_tap_details),
                 subtitle = stringResource(R.string.floating_tap_details_desc),
                 checked = tapShowsDetails,
                 onCheckedChange = {
@@ -670,6 +671,7 @@ fun FloatingGlucoseSettingsScreen(
             // Drawn over the status bar so the details can be opened from there.
             SettingsSwitchItem(
                 title = stringResource(R.string.floating_above_status_bar),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.floating_above_status_bar),
                 subtitle = stringResource(R.string.floating_above_status_bar_desc),
                 checked = aboveStatusBar && tapShowsDetails,
                 enabled = tapShowsDetails,
@@ -681,6 +683,7 @@ fun FloatingGlucoseSettingsScreen(
             )
             SettingsSwitchItem(
                 title = stringResource(R.string.floating_mirrored),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.floating_mirrored),
                 subtitle = stringResource(R.string.floating_mirrored_desc),
                 checked = isMirrored,
                 onCheckedChange = { repository.setMirrored(it) },
@@ -764,6 +767,7 @@ fun FloatingGlucoseSettingsScreen(
             )
             SettingsSwitchItem(
                 title = stringResource(R.string.floating_next_reading),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.floating_next_reading),
                 subtitle = stringResource(R.string.floating_next_reading_desc),
                 checked = showNextReading,
                 onCheckedChange = { repository.setShowNextReading(it) },
