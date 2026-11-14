@@ -14,7 +14,11 @@ key (APKs in ng-wt-sync, `Common/build/outputs/apk/{mobile,wear}/release`). **Sw
 pushed** on the owner's go (11-14): `personal` = the rebuild (the main checkout's `libjuice`
 submodule moved to upstream's 4625a1b5 with it); one atomic push of `main`, the 30 topic
 branches (`fix/dexcom-fresh-pairing-keys` and `feat/wear-read-toggle` new on origin,
-force-with-lease on the 10-30 tips) and `personal`. **Not installed yet.**
+force-with-lease on the 10-30 tips) and `personal`. **Installed** 2026-11-14 14:15:31 phone /
+14:16:07 watch (1.3.2-Alpha, the APKs above, adb over Wi-Fi). Neither app was opened:
+`keeprunning` was foreground again on both within seconds (`fix/restart-after-update`), the
+phone's floating glucose and its accessibility service too; the watch kept its G7 bond
+(DXCMCq, LE key known). The device test below has not been done yet.
 The owner's decisions are in the review below; all were applied.
 
 New branch `feat/wear-read-toggle` (owner's ask, 11-14; stacked on `feat/dexcom-g7-watch`):
