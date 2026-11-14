@@ -8,9 +8,13 @@ setup and branch model. Paths are relative to `Common/src/`.
 **Synced on upstream** `main` f5b29d636 (506 commits since 10-30; what each conflict became:
 BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-11-14` (worktree
 /c/source/ng-wt-sync); topic branches moved locally (old tips `backup/2026-11-14/*`).
-test.sh: 11855 tests, NEW: 0 (the baseline gained upstream's machine-only
+test.sh: 11861 tests, NEW: 0 (the baseline gained upstream's machine-only
 `SignalRestoredRestartTests` and one CRLF test); both release builds signed with the owner's
-key. **`personal` not switched, nothing pushed, nothing installed** until the owner says so.
+key (APKs in ng-wt-sync, `Common/build/outputs/apk/{mobile,wear}/release`). **Switched and
+pushed** on the owner's go (11-14): `personal` = the rebuild (the main checkout's `libjuice`
+submodule moved to upstream's 4625a1b5 with it); one atomic push of `main`, the 30 topic
+branches (`fix/dexcom-fresh-pairing-keys` and `feat/wear-read-toggle` new on origin,
+force-with-lease on the 10-30 tips) and `personal`. **Not installed yet.**
 The owner's decisions are in the review below; all were applied.
 
 New branch `feat/wear-read-toggle` (owner's ask, 11-14; stacked on `feat/dexcom-g7-watch`):
