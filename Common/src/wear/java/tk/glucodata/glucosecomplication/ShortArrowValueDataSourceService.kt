@@ -52,11 +52,11 @@ class ShortArrowValueDataSourceService: SuspendingComplicationDataSourceService(
      * Arrow plus the reading's time, drawn by ComplicationRenderer so the angle
      * and colour match the app rather than the legacy geometry.
      */
-    private fun arrowTimeBitmap(rate: Float, timeMillis: Long): android.graphics.Bitmap =
+    private fun arrowTimeBitmap(reading: GlucoseComplicationData.Reading): android.graphics.Bitmap =
         // Arrow over the reading's time. The time is the whole difference
         // between this complication and the plain Value + arrow.
         ComplicationRenderer.arrowWithTimeBitmap(
-            ICON_PX, rate, timeMillis, ComplicationRenderer.ICON_TINT,
+            ICON_PX, reading.rate, reading.timeMillis, ComplicationRenderer.iconTint(reading),
         )
 
     private val ICON_PX = 256
@@ -80,7 +80,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
     override fun getPreviewData(type: ComplicationType): ComplicationData {
       val reading = GlucoseComplicationData.previewReading()
       val tapAction = GlucoseComplicationData.tapAction()
-      val icon=Icon.createWithBitmap( arrowTimeBitmap(reading.rate, reading.timeMillis));
+      val icon=Icon.createWithBitmap( arrowTimeBitmap(reading));
        Log.i(LOG_ID,"getPreviewData $type")
          return when (type) {
              SHORT_TEXT -> GlucoseComplicationData.shortValueData(
@@ -127,7 +127,7 @@ fun getview(type: ComplicationType):WearComplicationValue {
          }
       else {
 
-            val bitmap=arrowTimeBitmap(glucose.rate, glucose.timeMillis);
+            val bitmap=arrowTimeBitmap(glucose);
             Log.i(LOG_ID," glucose==${glucose.text}")
                 val image=Icon.createWithBitmap(bitmap)
              return when (type) {

@@ -56,7 +56,6 @@ import android.os.Build;
 import tk.glucodata.Log;
 
 import tk.glucodata.Applic;
-import tk.glucodata.CurrentDisplaySource;
 import tk.glucodata.Natives;
 import tk.glucodata.Notify;
 import tk.glucodata.R;
@@ -221,17 +220,12 @@ Bitmap getArrowBitmap(Float rate) {
 	}
 	
 Bitmap getArrowBitmap() {
-   var glucose = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout);
+   var glucose = GlucoseComplicationData.INSTANCE.currentReading();
    if(glucose==null) {
-     {if(doLog) {Log.d(LOG_ID,"lastglucose()==null");};};
+     {if(doLog) {Log.d(LOG_ID,"no value shown");};};
       return getnovalue();
       }
-
-    if((System.currentTimeMillis()-glucose.getTimeMillis())>=tk.glucodata.Notify.glucosetimeout) {
-         {if(doLog) {Log.d(LOG_ID,"oldvalue "+glucose.getTimeMillis());};};
-         return getnovalue();
-         }
-    return getArrowBitmap(GlucoseComplicationData.INSTANCE.displayRate(glucose));
+    return getArrowBitmap(glucose.getRate());
    }
 static int getTextColor( ) {
    int col=Natives.getComplicationTextColor( );
@@ -300,24 +294,11 @@ Bitmap getArrowTimeBitmap(long time,float rate) {
 
 
 Bitmap previewbitmap() {
-        String value;
-        float rate;
-        int index;
-        final var glucose = CurrentDisplaySource.resolveCurrent(Notify.glucosetimeout);
-         var now = System.currentTimeMillis();
-        long  time;
-        if(glucose != null&&((time = glucose.getTimeMillis())!=0L&&(now-time)<tk.glucodata.Notify.glucosetimeout)) {
-            value = glucose.getPrimaryStr();
-            index = glucose.getIndex();
-            // The complications' arrow, not the alert engine's rate.
-            rate = GlucoseComplicationData.INSTANCE.displayRate(glucose);
-        } else {
-            value = (Applic.unit == 1)?"5.6": "101";
-            time = now;
-            rate = 1.0f;
-            index = 0;
-        }
-	return getArrowValueBitmap( value, time, index, rate);
+        // The complications' current reading, or a sample: this previews colours.
+        final var preview = GlucoseComplicationData.INSTANCE.previewReading();
+        final float rate = Float.isNaN(preview.getRate()) ? 1.0f : preview.getRate();
+        final long time = preview.getStale() ? System.currentTimeMillis() : preview.getTimeMillis();
+	return getArrowValueBitmap(preview.getText(), time, preview.getIndex(), rate);
 	}
 
 

@@ -110,6 +110,7 @@ class GlucoseTileService : TileService() {
         val reading = runCatching { GlucoseComplicationData.currentReading() }.getOrNull()
         val version = GlucoseTileFrame.version(
             size, reading?.text, reading?.timeMillis ?: 0L, reading?.rate ?: Float.NaN, isMmol, now,
+            stale = reading?.stale ?: false,
         )
         if (reading == null) return Frame(version, null, 0, 0)
         val bitmap = runCatching {
@@ -124,6 +125,7 @@ class GlucoseTileService : TileService() {
                 showArrow = true,
                 showTime = true,
                 inset = false,
+                stale = reading.stale,
             ) ?: ComplicationRenderer.valueWithArrowBitmap(
                 GlucoseTileFrame.valueSide(size), reading.text, reading.value, reading.rate, isMmol,
             )
@@ -139,7 +141,7 @@ class GlucoseTileService : TileService() {
             .build()
         val content: LayoutElementBuilders.LayoutElement = if (frame.png == null) {
             LayoutElementBuilders.Text.Builder()
-                .setText(getString(R.string.novalue))
+                .setText(tk.glucodata.DisplayedReading.NO_VALUE_TEXT)
                 .setFontStyle(
                     LayoutElementBuilders.FontStyle.Builder()
                         .setSize(sp(20f))
