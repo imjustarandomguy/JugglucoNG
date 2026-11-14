@@ -460,7 +460,9 @@ extern "C" JNIEXPORT void JNICALL fromjava(resetbackuphost)(JNIEnv *env,
   backup->resethost(pos);
 }
 extern void wakeaftermin(const int waitmin);
-extern void wakeuploader();
+// A new network can reach a Nightscout server the last one could not, so the uploader's
+// treatment backoff starts over.
+extern void wakeuploadernow();
 
 extern "C" JNIEXPORT void JNICALL fromjava(networkpresent)(JNIEnv *env,
                                                            jclass cl) {
@@ -475,7 +477,7 @@ extern "C" JNIEXPORT void JNICALL fromjava(networkpresent)(JNIEnv *env,
 
   wakeICEReceiversForNetworkChange(false);
 
-  wakeuploader();
+  wakeuploadernow();
 #if !defined(WEAROS) && !defined(TESTMENU)
   wakeaftermin(0);
 #endif
@@ -500,7 +502,7 @@ extern "C" JNIEXPORT void JNICALL fromjava(networkhandover)(JNIEnv *env,
   if (backup)
     backup->getupdatedata()->wakesender();
 
-  wakeuploader();
+  wakeuploadernow();
 #if !defined(WEAROS) && !defined(TESTMENU)
   wakeaftermin(0);
 #endif

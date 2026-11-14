@@ -474,6 +474,17 @@ object NightscoutFollowerRegistry {
     fun isFollowerSensorId(candidate: String?): Boolean =
         candidate?.trim()?.startsWith(SENSOR_PREFIX, ignoreCase = true) == true
 
+    /**
+     * The full follower id of native record [name], or null for any other sensor. Native lists
+     * a 16-character record without its first five characters, which hides the NSF- prefix, so
+     * a name that is not a follower id is looked up as a record's full name first.
+     */
+    internal fun followerRecordName(name: String?, fullName: (String) -> String?): String? {
+        val trimmed = name?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (isFollowerSensorId(trimmed)) return trimmed
+        return fullName(trimmed)?.trim()?.takeIf { isFollowerSensorId(it) }
+    }
+
     fun applyAuth(connection: HttpURLConnection, secret: String) {
         val trimmed = secret.trim()
         if (trimmed.isEmpty()) return

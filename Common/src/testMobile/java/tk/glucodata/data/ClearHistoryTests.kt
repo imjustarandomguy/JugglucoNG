@@ -270,7 +270,8 @@ class ClearHistoryTests {
         val dao = database.journalDao()
         dao.upsertEntry(entry(1, JournalEntrySource.MANUAL, nsRemoteId = "ns-1"))
         dao.upsertEntry(entry(2, JournalEntrySource.MANUAL))
-        // Came from Nightscout itself: nothing of ours is stored there to delete.
+        // Came from Nightscout itself: the user cleared what Nightscout holds, so it goes there
+        // too, as deleting the entry alone would.
         dao.upsertEntry(entry(3, JournalEntrySource.NIGHTSCOUT, nsRemoteId = "ns-3"))
 
         val deleted = database.deleteAllJournalEntries(now = 42L)
@@ -279,9 +280,34 @@ class ClearHistoryTests {
         assertTrue("a Clone peer is told about the manual entries", deleted.cloneTombstoned)
         assertEquals(setOf(1L, 2L), dao.getCloneJournalTombstones().map { it.entryId }.toSet())
         assertEquals(
-            "only an entry we sent to Nightscout is queued for deletion there",
-            listOf("ns-1"),
-            dao.getPendingNightscoutDeletes().map { it.nsRemoteId },
+            "an entry sent to Nightscout, or received from it, is queued for deletion there",
+            listOf("ns-1", "ns-3"),
+            dao.getPendingNightscoutDeletes().map { it.nsRemoteId }.sorted(),
+        )
+    }
+
+    @Test
+    fun clearingTheJournalQueuesEveryPartOfAReceivedTreatmentAndNoOtherSystems() = runBlocking {
+        val dao = database.journalDao()
+        // A meal bolus received from Nightscout: one document, two rows.
+        dao.upsertEntry(entry(1, JournalEntrySource.NIGHTSCOUT, nsRemoteId = "ns-meal"))
+        dao.upsertEntry(entry(2, JournalEntrySource.NIGHTSCOUT, JournalEntryType.CARBS, nsRemoteId = "ns-meal"))
+        // Mirrored from another system, which deletes them itself.
+        dao.upsertEntry(entry(3, JournalEntrySource.AAPS, nsRemoteId = "ns-aaps"))
+        dao.upsertEntry(entry(4, JournalEntrySource.API, nsRemoteId = "ns-api"))
+        dao.upsertEntry(entry(5, JournalEntrySource.CLONE, nsRemoteId = "ns-clone"))
+        // Received without a document id: nothing to name on the server.
+        dao.upsertEntry(entry(6, JournalEntrySource.NIGHTSCOUT))
+
+        database.deleteAllJournalEntries(now = 42L)
+
+        val queued = dao.getPendingNightscoutDeletes()
+        assertEquals(mapOf(1L to "ns-meal", 2L to "ns-meal"), queued.associate { it.entryId to it.nsRemoteId })
+        assertTrue("queued at the time of the clear", queued.all { it.deletedAt == 42L })
+        assertEquals(
+            "no row is left to hold back the delete of the document both parts stood for",
+            0,
+            dao.countOtherEntriesWithNightscoutRemoteId("ns-meal", 1L),
         )
     }
 

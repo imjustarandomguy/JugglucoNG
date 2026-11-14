@@ -91,6 +91,7 @@ import androidx.compose.material.icons.filled.SpaceDashboard
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.TipsAndUpdates
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.ui.graphics.vector.ImageVector
 import tk.glucodata.CloneIceNetworkConfigStore
 import tk.glucodata.Natives
@@ -680,6 +681,9 @@ internal object SettingsSearchIndex {
         SettingsSearchEntry(R.string.nightscout_upload_sensor_start, NIGHTSCOUT, Icons.Default.CloudUpload, T,
             route("settings/nightscout"), condition = SettingsSearchCondition.NIGHTSCOUT_UPLOAD,
             anchor = row(R.string.nightscout_upload_sensor_start)),
+        SettingsSearchEntry(R.string.nightscout_wifi_only, NIGHTSCOUT, Icons.Default.Wifi, T,
+            route("settings/nightscout"), terms = listOf("WiFi", "mobile data"), condition = SettingsSearchCondition.NIGHTSCOUT_UPLOAD,
+            anchor = row(R.string.nightscout_wifi_only)),
         SettingsSearchEntry(R.string.nightscout_use_v3_api, NIGHTSCOUT, Icons.Default.Api, T,
             route("settings/nightscout"), terms = listOf("API", "JWT"), condition = SettingsSearchCondition.NIGHTSCOUT_UPLOAD,
             anchor = SettingsSearchAnchors.NIGHTSCOUT_V3),

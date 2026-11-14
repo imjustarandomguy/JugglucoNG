@@ -8,9 +8,9 @@ import tk.glucodata.data.HistoryDatabase
  * rules hold whether one entry goes or all of them do.
  *
  *  - An entry a Clone peer would otherwise keep gets a tombstone, so the peer drops it too.
- *  - An entry already sent to Nightscout is queued for deletion there; the uploader carries
- *    that out. Entries that came from another system are never queued, since nothing of ours
- *    is stored remotely.
+ *  - An entry already sent to Nightscout, or received from it, is queued for deletion there
+ *    ([nightscoutDeleteRemoteId]); the uploader carries that out. Entries mirrored from AAPS,
+ *    the API or Clone are never queued: they are another system's to delete.
  *
  * Call inside the transaction that deletes the row.
  *
