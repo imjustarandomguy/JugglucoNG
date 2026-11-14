@@ -413,6 +413,8 @@ internal object SettingsSearchIndex {
             anchor = SettingsSearchAnchors.QUIET_WINDOW),
         SettingsSearchEntry(R.string.preemptive_snooze, ALERTS, Icons.Default.Snooze, E, route("settings/alerts"),
             anchor = row(R.string.preemptive_snooze)),
+        SettingsSearchEntry(R.string.alarm_history, ALERTS, Icons.Default.History, E, route("settings/alerts/history"),
+            keywords = listOf(R.string.alarm_history_desc)),
         SettingsSearchEntry(R.string.talker, ALERTS, Icons.AutoMirrored.Filled.VolumeUp, E, route("settings/alerts/talker"),
             keywords = listOf(R.string.speakglucose, R.string.voice_readings),
             terms = listOf("TTS")),
