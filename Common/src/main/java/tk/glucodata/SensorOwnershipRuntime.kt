@@ -843,8 +843,8 @@ object SensorOwnershipRuntime {
         announce()
         reconcile()
         if (!Applic.isWearable && MessageSender.outgoingAllowed()) {
-            runCatching { ManagedSensorHandoff.followSelectedDexcom() }
-                .onFailure { Log.stack(LOG_ID, "follow selected G7", it) }
+            runCatching { ManagedSensorHandoff.followNewestDexcom() }
+                .onFailure { Log.stack(LOG_ID, "follow newest G7", it) }
         }
     }
 

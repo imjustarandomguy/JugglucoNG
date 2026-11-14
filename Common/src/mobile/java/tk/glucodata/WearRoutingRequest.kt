@@ -51,8 +51,8 @@ object WearRoutingRequest {
                 ?.takeIf { it.isNotBlank() }
                 ?.let { editor.putString(KEY_SENSOR + nodeId, it) }
             // Switching on handed the watch the selected G7 already; later ones
-            // follow through ManagedSensorHandoff.followSelectedDexcom.
-            ManagedSensorHandoff.selectedDexcomName()
+            // follow through ManagedSensorHandoff.followNewestDexcom.
+            ManagedSensorHandoff.selectedDexcomHanded()
                 ?.let { editor.putString(KEY_HANDED_DEXCOM + nodeId, it) }
         } else {
             editor.remove(KEY_SENSOR + nodeId)

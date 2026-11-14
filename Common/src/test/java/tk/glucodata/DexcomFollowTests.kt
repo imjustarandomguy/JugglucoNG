@@ -1,0 +1,67 @@
+package tk.glucodata
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class DexcomFollowTests {
+    private val old = DexcomFollow.Record(name = "1111122222333331", start = 1_790_000_000L, setupReady = true)
+    private val new = DexcomFollow.Record(name = "4444455555666664", start = 1_790_864_000L, setupReady = true)
+
+    private fun decide(
+        handed: String?,
+        newest: DexcomFollow.Record,
+        assignedIsDexcom: Boolean = true,
+    ) = DexcomFollow.decide(handed, { assignedIsDexcom }, newest)
+
+    @Test
+    fun theNewestG7IsTheOneThatStartedLast() {
+        assertEquals(new, DexcomFollow.newest(listOf(old, new)))
+        assertEquals(new, DexcomFollow.newest(listOf(new, old)))
+        assertNull(DexcomFollow.newest(emptyList()))
+    }
+
+    @Test
+    fun atASensorChangeTheNewG7GoesOnceThePhoneHasAReadingOfIt() {
+        // The old one stays selected and was handed when direct mode went on.
+        val handedOld = DexcomFollow.handedValue(old)
+        val warmingUp = new.copy(setupReady = false)
+        assertEquals(DexcomFollow.Decision.NOT_READY, decide(handedOld, DexcomFollow.newest(listOf(old, warmingUp))!!))
+        assertEquals(DexcomFollow.Decision.HAND, decide(handedOld, DexcomFollow.newest(listOf(old, new))!!))
+        assertEquals(DexcomFollow.Decision.HANDED, decide(DexcomFollow.handedValue(new), new))
+    }
+
+    @Test
+    fun aG7HandedWithAnotherStartGoesAgain() {
+        val elsewhere = new.copy(start = new.start + 130L)
+        assertEquals(DexcomFollow.Decision.HAND, decide(DexcomFollow.handedValue(elsewhere), new))
+    }
+
+    @Test
+    fun aStartWorkedOutASecondApartIsNotHandedAgain() {
+        val handed = DexcomFollow.handedValue(new)
+        assertEquals(DexcomFollow.Decision.HANDED, decide(handed, new.copy(start = new.start + 1L)))
+        assertEquals(DexcomFollow.Decision.HANDED, decide(handed, new.copy(start = new.start - 1L)))
+        assertEquals(
+            DexcomFollow.Decision.HANDED,
+            decide(handed, new.copy(start = new.start + DexcomFollow.START_TOLERANCE_SEC)),
+        )
+    }
+
+    @Test
+    fun aNameRememberedWithoutItsStartCountsAsHanded() {
+        assertEquals(DexcomFollow.Decision.HANDED, decide(new.name, new))
+        assertEquals(DexcomFollow.Decision.HAND, decide(old.name, new))
+    }
+
+    @Test
+    fun aWatchToldToReadAnotherSensorIsNotHandedAG7() {
+        assertEquals(DexcomFollow.Decision.NOT_FOLLOWING, decide(null, new, assignedIsDexcom = false))
+        assertEquals(DexcomFollow.Decision.HAND, decide(null, new, assignedIsDexcom = true))
+        // Once handed one, a watch follows the next.
+        assertEquals(
+            DexcomFollow.Decision.HAND,
+            decide(DexcomFollow.handedValue(old), new, assignedIsDexcom = false),
+        )
+    }
+}
