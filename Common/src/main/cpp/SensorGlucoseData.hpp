@@ -2316,6 +2316,7 @@ uint32_t getlastpolltime() const {
       }
       const int slot = dexSlotFor(el.t);
       if (slot >= 0 && slot < i && !hasStreamID(slot)) {
+        healthConnectSlotFilled(slot, el.g);
         polls[slot] = {el.t, slot, el.g, el.tr, el.ch};
         rawpolls[slot] = rawpolls[i];
         temppolls[slot] = temppolls[i];

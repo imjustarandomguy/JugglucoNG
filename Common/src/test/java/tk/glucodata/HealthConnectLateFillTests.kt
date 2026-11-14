@@ -52,15 +52,17 @@ class HealthConnectLateFillTests {
             assertTrue("$from must call healthConnectSlotFilled", hook >= 0)
             assertTrue("$from must report the slot while it still holds what was there", hook < written)
         }
-        // Any other write of a reading into a poll slot has to go through the hook too: the
-        // only unhooked ones are the empty placeholders savepollallIDsonly lays down.
-        val writes = Regex("\\bpolls\\[(\\w+)\\] = \\{([^}]*)\\}").findAll(hpp).toList()
+        // Any other write of a reading into a poll slot has to go through the hook too. The
+        // only unhooked ones write an empty slot (no glucose: "..., 0, 0, 0"): the placeholders
+        // savepollallIDsonly lays down, and the slots repairDexcomMinuteSlots (#767) moves a
+        // reading out of.
+        val writes = Regex("""\bpolls\[(\w+)\] = \{(.*?)\};""").findAll(hpp).toList()
         assertTrue(writes.size >= 5)
         for (write in writes) {
             val (slot, value) = write.destructured
-            if (value.trim() == "timiter, count, 0, 0, 0") continue
+            if (value.trim().endsWith(", 0, 0, 0")) continue
             val before = hpp.substring(maxOf(0, write.range.first - 120), write.range.first)
-            assertTrue("polls[$slot] write without healthConnectSlotFilled", before.contains("healthConnectSlotFilled($slot, glu);"))
+            assertTrue("polls[$slot] write without healthConnectSlotFilled", before.contains("healthConnectSlotFilled($slot, "))
         }
     }
 
