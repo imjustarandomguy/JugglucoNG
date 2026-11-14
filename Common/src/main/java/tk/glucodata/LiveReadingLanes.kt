@@ -1,5 +1,7 @@
 package tk.glucodata
 
+import tk.glucodata.ui.util.GlucoseFormatter
+
 /**
  * What a live reading is made of, so [CurrentDisplaySource] never has to guess
  * whether the number it is handed was already calibrated.
@@ -28,6 +30,19 @@ class LiveReadingLanes private constructor(
     companion object {
         @JvmStatic
         fun stock(auto: Float, raw: Float): LiveReadingLanes = LiveReadingLanes(auto, raw, Float.NaN)
+
+        /**
+         * [stock] from the sensor's mg/dL lanes, converted exactly like the stored
+         * rows the reading becomes ([GlucoseFormatter.MGDL_TO_MMOL]), so a live
+         * value and its row show the same number: 127 mg/dL is 7.0, where
+         * mg/dL / 18 would give 7.1.
+         */
+        @JvmStatic
+        fun stockFromMgdl(autoMgdl: Float, rawMgdl: Float, isMmol: Boolean): LiveReadingLanes =
+            stock(displayFromMgdl(autoMgdl, isMmol), displayFromMgdl(rawMgdl, isMmol))
+
+        private fun displayFromMgdl(mgdl: Float, isMmol: Boolean): Float =
+            if (mgdl.isFinite() && mgdl > 0f) GlucoseFormatter.displayFromMgDl(mgdl, isMmol) else Float.NaN
 
         @JvmStatic
         fun resolved(value: Float): LiveReadingLanes = LiveReadingLanes(Float.NaN, Float.NaN, value)

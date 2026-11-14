@@ -102,11 +102,7 @@ class MQFollowerManager(
         if (abs(System.currentTimeMillis() - timestampMs) > maxAgeMillis) {
             return null
         }
-        val glucoseDisplay = if (Applic.unit == 1) {
-            (glucoseMgdl / MQConstants.MMOL_TO_MGDL).toFloat()
-        } else {
-            glucoseMgdl
-        }
+        val glucoseDisplay = tk.glucodata.ui.util.GlucoseFormatter.displayFromMgDl(glucoseMgdl, Applic.unit == 1)
         return MQCurrentSnapshot(
             timeMillis = timestampMs,
             glucoseValue = glucoseDisplay,

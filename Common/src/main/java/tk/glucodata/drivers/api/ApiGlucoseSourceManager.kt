@@ -22,6 +22,7 @@ import tk.glucodata.drivers.ManagedSensorUiFamily
 import tk.glucodata.drivers.ManagedSensorUiSnapshot
 import tk.glucodata.drivers.ManagedSensorViewModeStore
 import tk.glucodata.drivers.VirtualGlucoseSensorBridge
+import tk.glucodata.ui.util.GlucoseFormatter
 
 class ApiGlucoseSourceManager(
     serial: String,
@@ -112,14 +113,15 @@ class ApiGlucoseSourceManager(
         val rawMgdl = latestRawMgdl
         if (timestampMs <= 0L || !glucoseMgdl.isFinite() || glucoseMgdl <= 0f) return null
         if (kotlin.math.abs(System.currentTimeMillis() - timestampMs) > maxAgeMillis) return null
-        val glucoseDisplay = if (Applic.unit == 1) glucoseMgdl / MGDL_PER_MMOLL else glucoseMgdl
+        val isMmol = Applic.unit == 1
+        val glucoseDisplay = GlucoseFormatter.displayFromMgDl(glucoseMgdl, isMmol)
         val calibratedDisplay = if (latestCalibratedMgdl.isFinite() && latestCalibratedMgdl > 0f) {
-            if (Applic.unit == 1) latestCalibratedMgdl / MGDL_PER_MMOLL else latestCalibratedMgdl
+            GlucoseFormatter.displayFromMgDl(latestCalibratedMgdl, isMmol)
         } else {
             Float.NaN
         }
         val rawDisplay = if (rawMgdl.isFinite() && rawMgdl > 0f) {
-            if (Applic.unit == 1) rawMgdl / MGDL_PER_MMOLL else rawMgdl
+            GlucoseFormatter.displayFromMgDl(rawMgdl, isMmol)
         } else {
             Float.NaN
         }
