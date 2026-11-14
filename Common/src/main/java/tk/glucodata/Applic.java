@@ -222,6 +222,9 @@ public class Applic extends Application implements androidx.work.Configuration.P
         Natives.setunit(unit);
         Notify.mkunitstr(app, unit);
         CalibrationProfileAccess.onDisplayUnitChanged();
+        // Every unit change passes here: the current reading is resolved again in the new
+        // unit at once, not at the next reading.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS);
     }
 
     public void sendlabels() {
