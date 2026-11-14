@@ -26,6 +26,8 @@ object AlertTestSample {
         AlertType.RISING_FAST -> 2.6f
         // High for a long while: it stays up rather than climbing.
         AlertType.PERSISTENT_HIGH -> 0.2f
+        // Low for a long while: it stays down rather than falling.
+        AlertType.PERSISTENT_LOW -> -0.2f
         else -> null
     }
 

@@ -16,6 +16,9 @@ class AlertTestSampleTests {
             assertTrue("$it", AlertTestSample.rate(it)!! > 0.5f)
         }
         assertTrue(AlertTestSample.rate(AlertType.FALLING_FAST)!! < AlertTestSample.rate(AlertType.LOW)!!)
+        // The persistent ones hold where they are: barely moving, the right way.
+        assertTrue(AlertTestSample.rate(AlertType.PERSISTENT_LOW)!! in -0.5f..0f)
+        assertTrue(AlertTestSample.rate(AlertType.PERSISTENT_HIGH)!! in 0f..0.5f)
         assertTrue(AlertTestSample.customRate(isHigh = true) > 0f)
         assertTrue(AlertTestSample.customRate(isHigh = false) < 0f)
     }
