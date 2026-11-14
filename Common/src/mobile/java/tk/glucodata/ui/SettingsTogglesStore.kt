@@ -26,7 +26,7 @@ internal object PhoneAppsSettings {
         Natives.sethealthConnect(enabled)
         if (enabled) {
             MainActivity.tryHealth = 5
-            (activity as? MainActivity)?.let(HealthConnection::init)
+            (activity as? MainActivity)?.let(HealthConnection::glucoseSwitchedOn)
         } else {
             MainActivity.tryHealth = 0
             HealthConnection.stop()
