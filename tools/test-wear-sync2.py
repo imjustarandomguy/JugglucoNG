@@ -7,7 +7,8 @@ scenarios run the production request encoding and the phone's choice between a
 full serve and the tail, including a watch that must have the full horizon (#862).
 The managed handover replay runs the production history reader, chunk encoder
 and ingestion in both directions, switching deterministic phone/watch fakes.
-It is not a BLE/Data Layer test or two live Android runtimes.
+It is not a BLE/Data Layer test or two live Android runtimes. A device that reads
+a sensor alongside the other (a G7) takes only the slots it lacks.
 Requires kotlinc and java on PATH.
 """
 from pathlib import Path
@@ -31,6 +32,11 @@ def method(signature, source=source):
     return source[start:end]
 
 
+def expression(signature):
+    start = source.index(signature)
+    return source[start:source.index('\n\n', start)]
+
+
 kotlin = r'''
 package tk.glucodata
 import java.nio.ByteBuffer
@@ -46,11 +52,21 @@ object SensorIdentity {
     fun resolveMainSensor(): String? = null
     fun shouldUseNativeHistorySync(serial: String) = true
     fun resolveNativeHistorySensorNames(serial: String) = listOf(serial)
+    fun invalidateCaches() {}
 }
 object SensorOwnershipRuntime {
     var local = false
+    var alongside = false
+    var syncedNewestMs = 0L
     fun readsLocally(serial: String) = local
+    fun readsAlongside(serial: String) = alongside
+    fun noteSyncedReading(serial: String, newestMs: Long) { syncedNewestMs = newestMs }
+    fun peerDirectReading(serial: String) = DirectReadingFact()
 }
+class DirectReadingFact(val known: Boolean = false, val lastMs: Long = 0L)
+object DirectReadingStatus { fun phonePushesWhileBothRead(watch: DirectReadingFact, newestMs: Long) = true }
+object WearPushGate { fun withReading(points: List<GlucosePoint>, reading: Any?, fromMs: Long) = points }
+object Notify { const val glucosetimeout = Long.MAX_VALUE }
 object Natives {
     val start = 1_780_000_000L
     var snapshot: LongArray? = longArrayOf(2, 0, start * 1000, 0, 0, 0)
@@ -69,12 +85,17 @@ object Natives {
     fun getGlucoseHistoryForSensor(serial: String, start: Long): LongArray = watchHistory
         .filterKeys { it > start }.flatMap { (t, v) -> listOf(t, (v.first * 10).toLong(), (v.second * 10).toLong()) }
         .toLongArray()
+    var filledSlots = 0
+    var lastglucose = 0L
+    fun streamSlotsFilled(times: LongArray, serial: String): BooleanArray? =
+        BooleanArray(times.size) { it < filledSlots }
+    fun lastglucosetime() = lastglucose
+    fun getSensorIndex(serial: String) = 0
     fun getSensorUiSnapshot(serial: String): LongArray? {
         snapshotReads++
         check(serial == "3038HVEAD0D")
         return snapshot
     }
-    fun lastglucosetime() = 0L
     fun ensureSensorShell(serial: String, start: Long) { shellWrites++ }
     fun addGlucoseStreamBatchWithRawTemp(
         times: LongArray, values: FloatArray, raws: FloatArray,
@@ -184,6 +205,7 @@ object WearSync2 {
     private val lastServedChunkCount = AtomicLong(0L)
     private val lastServedMs = AtomicLong(0L)
     private fun sendCalibration(serial: String) {}
+    private fun takenReading(serial: String): Any? = null
     val served = ArrayList<Long>()
     private fun serveSince(fromSec: Long) { served.add(fromSec) }
     private fun tailStartSec(): Long = TAIL
@@ -195,11 +217,13 @@ object WearSync2 {
     private fun existingSensorNameFor(serial: String) =
         if (serial == "full-alias") "3038HVEAD0D" else serial
     private fun shouldIgnoreRemovedSensor(serial: String) = removed
-    private fun emitExchangeOutputsForSyncedReading(serial: String, time: Long, value: Float) {
+    // processPeerReading publishes the reading, exchange outputs included.
+    private fun handlePeerReading(serial: String, time: Long, value: Float, raw: Float) {
         exchangedAt = time
     }
 '''
 kotlin += method('private fun isLibre2NativeSensor(') + '\n'
+kotlin += expression('internal fun isCurrentPeerReading(') + '\n'
 kotlin += method('fun onChunk(') + '\n'
 kotlin += method('fun onRequest(') + '\n'
 kotlin += method('private fun sanitizeFrom(') + '\n'
@@ -265,6 +289,29 @@ fun main(args: Array<String>) {
             if (Applic.isWearable) {
                 check(Natives.snapshotReads == 0 && HistorySyncAccess.historyTimes.isEmpty())
             } else assertPhoneImport()
+        }
+        "phone-local-g7", "watch-alongside-g7" -> {
+            // A device reading a G7 alongside the other, itself or not yet,
+            // takes only the slots it lacks and keeps its own readings.
+            Natives.snapshot!![0] = 0x40
+            Natives.filledSlots = 5
+            Natives.lastglucose = (Natives.start + 2922 * 60L) * 1000
+            SensorOwnershipRuntime.alongside = true
+            if (scenario == "phone-local-g7") {
+                SensorOwnershipRuntime.local = true
+            } else {
+                Applic.isWearable = true
+            }
+            WearSync2.onChunk(chunk())
+            check(Natives.batches == 1 && Natives.nativeTimes.size == 3)
+            check(Natives.nativeTimes.first() == Natives.start + 2923 * 60L)
+            val newest = (Natives.start + 2925 * 60L) * 1000
+            check(WearSync2.exchangedAt == newest && SensorOwnershipRuntime.syncedNewestMs == newest)
+            if (Applic.isWearable) {
+                check(HistorySyncAccess.historyTimes.isEmpty())
+            } else {
+                check(HistorySyncAccess.historyTimes.size == 3 && HistorySyncAccess.currentTime == newest)
+            }
         }
         "local-owner", "phone-managed-owner", "watch-native-owner", "removed", "companion-disabled" -> {
             when (scenario) {
@@ -386,6 +433,7 @@ scenarios = [
     'phone-libre2', 'phone-alias', 'watch-libre2', 'phone-libre3',
     'phone-sibionics', 'phone-managed', 'phone-managed-family', 'phone-unknown',
     'phone-short-snapshot', 'local-owner', 'phone-managed-owner', 'watch-native-owner',
+    'phone-local-g7', 'watch-alongside-g7',
     'managed-watch-handover', 'managed-watch-disconnect', 'managed-watch-stale', 'removed', 'companion-disabled',
     'request-encoding', 'request-serving',
 ]

@@ -1744,6 +1744,44 @@ extern "C" JNIEXPORT jint JNICALL fromjava(addGlucoseStreamBatchWithTemp)(
   return stored;
 }
 
+// Which of these times already have a reading in the sensor's record, so a
+// device reading the sensor itself takes only what it missed from the other.
+extern "C" JNIEXPORT jbooleanArray JNICALL fromjava(streamSlotsFilled)(
+    JNIEnv *env, jclass cl, jlongArray jtimes, jstring jsensor) {
+  if (!jtimes || !jsensor)
+    return nullptr;
+  const jsize count = env->GetArrayLength(jtimes);
+  jbooleanArray out = env->NewBooleanArray(count);
+  if (!out || !sensors)
+    return out;
+  const char *name = env->GetStringUTFChars(jsensor, nullptr);
+  if (!name)
+    return out;
+  const int ind = sensors->sensorindexshort(name);
+  env->ReleaseStringUTFChars(jsensor, name);
+  const SensorGlucoseData *hist = ind >= 0 ? sensors->getSensorData(ind) : nullptr;
+  if (!hist || hist->error())
+    return out;
+  const uint32_t start = hist->getinfo()->starttime;
+  const ScanData *polls = hist->getPollsData();
+  jlong *times = env->GetLongArrayElements(jtimes, nullptr);
+  if (!times)
+    return out;
+  std::vector<jboolean> filled(count, JNI_FALSE);
+  for (jsize i = 0; i < count; ++i) {
+    if (!start || times[i] < start || !polls)
+      continue;
+    // The slot and the test storeGlucoseStreamSample stores by.
+    const int slot = hist->isDexcom() ? hist->dexSlotFor(times[i])
+                                      : (times[i] - start) / 60;
+    if (hist->validPollIndex(slot) && polls[slot].g > 0)
+      filled[i] = JNI_TRUE;
+  }
+  env->ReleaseLongArrayElements(jtimes, times, JNI_ABORT);
+  env->SetBooleanArrayRegion(out, 0, count, filled.data());
+  return out;
+}
+
 // Raw-carrying sibling of addGlucoseStreamBatchWithTemp, for drivers whose
 // history mirror is minute-index-addressed and idempotent (Sibionics, Anytime).
 // The point of the batch form is what happens *around* the loop, not the loop:

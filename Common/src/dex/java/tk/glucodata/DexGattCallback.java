@@ -78,6 +78,10 @@ private static final long DEXCOM_SHORT_RECONNECT_LOCK_SLACK_MS = 2_000L;
 private PowerManager.WakeLock reconnectlock;
 private long shortReconnectSeq;
 private boolean shortReconnectPending;
+// When the wakeup alarm is due. Well past that it has fired, and a connect it
+// was refused then is not queued any more.
+private long alarmDueMs;
+private static final long DEXCOM_ALARM_GRACE_MS = 60_000L;
 // Asked a moment before its next measurement, a G7 answers with the reading
 // before (age about 300 s). It keeps the link for a few seconds: ask again.
 private static final long DEXCOM_PREVIOUS_READING_AGE_MS = 240_000L;
@@ -295,7 +299,7 @@ private boolean connected=false;
     @Override
     public synchronized boolean connectDevice(long delayMillis) {
         if (stop || dataptr == 0L || CloneSensorRegistry.isCloneSensor(SerialNumber)
-                || SensorOwnershipRuntime.blocksLocalConnection(SerialNumber)) return false;
+                || SensorOwnershipRuntime.blocksLocalConnection(this)) return false;
         if (delayMillis > 0L && delayMillis <= DEXCOM_SHORT_RECONNECT_MAX_MS) {
             waitShortReconnect(delayMillis);
             return true;
@@ -305,7 +309,10 @@ private boolean connected=false;
             // An executor timer cannot wake a suspended CPU, and its pending latch
             // would prevent an alarm/scan from requesting an immediate connection.
             onalarm = setalarm(System.currentTimeMillis() + delayMillis, onalarm, SerialNumber);
-            if (onalarm != null) return true;
+            if (onalarm != null) {
+                alarmDueMs = System.currentTimeMillis() + delayMillis;
+                return true;
+            }
             // Keep recovery queued if the OS refuses the wakeup alarm.
             return connectNow();
         }
@@ -326,6 +333,13 @@ private boolean connected=false;
         if (!bondedHere() && (foundtime == 0L || mActiveBluetoothDevice != scannedDevice))
             mActiveBluetoothDevice = null;
         return super.connectDevice(0L);
+    }
+
+    /** A connect waiting on the wakeup alarm or the short wait is one scheduled (WatchSensorRadio). */
+    @Override
+    protected boolean connectQueued() {
+        return shortReconnectPending
+                || (onalarm != null && System.currentTimeMillis() < alarmDueMs + DEXCOM_ALARM_GRACE_MS);
     }
 
     /**
@@ -427,6 +441,8 @@ private boolean connected=false;
     public synchronized void onConnectionStateChange(BluetoothGatt bluetoothGatt, int status, int newState) {
         noteFirstGattCallback("onConnectionStateChange", bluetoothGatt);
         if (bluetoothGatt != mBluetoothGatt) return;
+        // Tracks the local GATT that ownership and the watch claim rely on.
+        super.onConnectionStateChange(bluetoothGatt, status, newState);
         if (stop) {
             {if(doLog) {Log.i(LOG_ID, "onConnectionStateChange stop==true");};};
             // Nothing reconnects a stopped callback: close its GATT (close() also
@@ -1215,6 +1231,15 @@ public synchronized boolean changeAuthSlot(int slot) {
         super.free();
     }
 
+    /** Bluetooth use stopping is not the sensor going: keep the pairing, so starting again needs no new one. */
+    @Override
+    public void stopTransport() {
+        releaselock();
+        cancelalarm();
+        cancelShortReconnect();
+        super.free();
+    }
+
     /** The address this callback dials: its device's, else the stored one. */
     private String dialledAddress() {
         final var device = mActiveBluetoothDevice;
@@ -1236,6 +1261,17 @@ public synchronized boolean changeAuthSlot(int slot) {
                 return true;
         }
         return false;
+    }
+
+    @Override
+    public boolean supportsWatchClaim() {
+        return true;
+    }
+
+    /** A G7 has its own channel for the phone app, a smartwatch and a receiver. */
+    @Override
+    public boolean readsAlongside() {
+        return true;
     }
 
     static private final UUID ScanServiceUUID = UUID.fromString("0000febc-0000-1000-8000-00805f9b34fb");

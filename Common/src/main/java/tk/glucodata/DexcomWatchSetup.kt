@@ -105,7 +105,9 @@ object DexcomWatchSetup {
         // Before the driver exists: its constructor reads the slot.
         DexcomBluetoothSlot.pin(name, slot)
         if (serial.isNotEmpty() && serial != name) DexcomBluetoothSlot.pin(serial, slot)
-        if (runCatching { Natives.getusebluetooth() }.getOrDefault(false)) {
+        // Not native's flag alone: the phone's netinfo clears it on a watch told
+        // to read a sensor (WatchSensorRadio), which would leave this one undialled.
+        if (runCatching { WatchSensorRadio.bluetoothWanted() }.getOrDefault(false)) {
             Applic.updateDevices()
         } else {
             runCatching { Natives.updateUsedSensors() }

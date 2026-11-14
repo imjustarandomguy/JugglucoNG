@@ -114,9 +114,21 @@ static jstring addScanGetName(JNIEnv *env, jstring jgegs, jintArray jindexptr,
   std::string_view scangegs{gegs, gegslen};
   // A peer's setup is only ever a Dexcom one; anything else must not reach the
   // generic factory, which would set up whatever sensor the text names.
-  if (anchor && !dexcom::parseScan(scangegs)) {
-    LOGAR("addDexcomScanFromPeer: not a Dexcom scan");
-    return nullptr;
+  if (anchor) {
+    const auto scan = dexcom::parseScan(scangegs);
+    if (!scan) {
+      LOGAR("addDexcomScanFromPeer: not a Dexcom scan");
+      return nullptr;
+    }
+    // A sensor the user removed here stays removed: setting it up again would
+    // rebuild its driver, which pairs it again, an ended one included.
+    const std::string_view name(scan->name.data(), scan->name.size());
+    if (const sensor *known = sensors->findsensorm(name);
+        known && known->wasRemovedByUser()) {
+      LOGGER("addDexcomScanFromPeer %.16s: removed by the user, not set up\n",
+             scan->name.data());
+      return nullptr;
+    }
   }
   auto [sensindex, sens] = sensors->makeSIsensorindex(
       scangegs, time(nullptr), anchor ? anchor->start : 0);

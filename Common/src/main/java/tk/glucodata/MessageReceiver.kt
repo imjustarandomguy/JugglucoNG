@@ -117,6 +117,9 @@ class MessageReceiver: WearableListenerService() {
                     AutoSensorSwitch.provisionIfNeeded(messageEvent.sourceNodeId)
                     // Answer the handshake with this build's protocol version.
                     MessageSender.sendProtocol(messageEvent.sourceNodeId)
+                } else {
+                    // The phone asks for a reading it missed of a sensor both read.
+                    WearSync2.onRequest(data)
                 }
             }
             WearMessagePath.SYNC2_CHUNK -> {
@@ -223,6 +226,10 @@ class MessageReceiver: WearableListenerService() {
                     // phone says it reads the sensor; automatic switching needs
                     // it on. See AutoSensorSwitch.keepWatchRadioArmed.
                     if (isWearable) AutoSensorSwitch.keepWatchRadioArmed("netinfo handshake")
+                    // The phone's netinfo still says "the phone has the sensor", and
+                    // native answers that by clearing the watch's Bluetooth flag. A
+                    // watch told to read a sensor puts it back at once.
+                    if (isWearable) WatchSensorRadio.bluetoothWanted()
                     if(applied) {
                         sendnetinfo(sourceId)
                         if (isWearable) {

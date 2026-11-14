@@ -187,6 +187,7 @@ class Log {
   static void showbytes(String tag, byte[] bytes) {}
 }
 class WearSensorClaim { static int disconnects; static void onLocalGattDisconnected(String s) { ++disconnects; } }
+class SensorOwnershipRuntime { static boolean readsLocally(String s) { return false; } }
 class Applic {
   static final Scheduler scheduler = new Scheduler();
   static void postDelayed(Runnable r, long delay) { scheduler.jobs.add(r); }

@@ -67,6 +67,16 @@ class CalibrationPayloadSelectionTests {
     }
 
     @Test
+    fun aSensorHeldUnderItsShortAliasFindsThePayloadNamedInFull() {
+        val candidates = listOf(payload("1234567890123456", 1), payload("B", 9))
+
+        assertEquals(
+            "1234567890123456",
+            SyncedWearCalibrationProvider.selectPayload(candidates, "67890123456", null)?.sensorId,
+        )
+    }
+
+    @Test
     fun noPayloadsIsNoCalibration() {
         assertNull(SyncedWearCalibrationProvider.selectPayload(emptyList(), "A", "A"))
     }

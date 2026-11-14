@@ -260,6 +260,8 @@ fun SettingsItem(
     modifier: Modifier = Modifier,
     subtitleStyle: TextStyle? = null,
     searchAnchor: String? = null,
+    /** Below the subtitle, for lines that need their own colour. */
+    supportingContent: (@Composable () -> Unit)? = null,
 ) = SettingsItem(
     title = AnnotatedString(title),
     subtitle = subtitle?.let(::AnnotatedString),
@@ -272,6 +274,7 @@ fun SettingsItem(
     modifier = modifier,
     subtitleStyle = subtitleStyle,
     searchAnchor = searchAnchor,
+    supportingContent = supportingContent,
 )
 
 /** The same row with styled text, for a search result that marks the words it matched. */
@@ -288,6 +291,8 @@ fun SettingsItem(
     modifier: Modifier = Modifier,
     subtitleStyle: TextStyle? = null,
     searchAnchor: String? = null,
+    /** Below the subtitle, for lines that need their own colour. */
+    supportingContent: (@Composable () -> Unit)? = null,
 ) {
     val shape = if (animatePosition) animatedCardShape(position) else cardShape(position)
     Surface(
@@ -331,6 +336,7 @@ fun SettingsItem(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    supportingContent?.invoke()
                 }
             }
         }

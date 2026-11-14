@@ -782,6 +782,9 @@ public class Natives {
         /** Stores an upstream final primary with persisted per-reading provenance. */
         public static native int addResolvedGlucoseStreamBatchWithRawTemp(long[] times, float[] glucoses, float[] raws, float[] temperatures, String sensorId);
 
+        /** Per time (seconds): whether the sensor's record already has a reading in that slot. */
+        public static native boolean[] streamSlotsFilled(long[] times, String sensorId);
+
         public static native long ensureSensorShell(String sensorId, long startTimeSec);
 
         public static native long ensureSensorShellWithCapacity(String sensorId, long startTimeSec, int minimumRecords);
@@ -1429,6 +1432,9 @@ public class Natives {
         public static native int[] searchIngredient(String label);
 
         public static native boolean dexKnownSensor(long dataptr);
+
+        /** Whether the record named {@code sensor} is a Dexcom one, before any driver was built for it. */
+        public static native boolean isDexcomRecord(String sensor);
 
         public static native long[] activeSensorPtrs();
 
