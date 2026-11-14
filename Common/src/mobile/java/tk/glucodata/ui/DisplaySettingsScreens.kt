@@ -660,7 +660,8 @@ fun FloatingGlucoseSettingsScreen(
             if (tapShowsDetails) {
                 SettingsControlsCard(position = CardPosition.MIDDLE) {
                     SettingsSlider(
-                        title = stringResource(R.string.floating_details_opacity_percent, (detailsOpacity * 100).roundToInt()),
+                        title = stringResource(R.string.floating_details_opacity),
+                        valueText = stringResource(R.string.percentage_format, (detailsOpacity * 100).roundToInt()),
                         value = detailsOpacity,
                         onValueChange = { repository.setDetailsOpacity(it) },
                         range = 0.1f..1.0f,

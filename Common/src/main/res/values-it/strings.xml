@@ -3359,7 +3359,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_move_down">Sposta in basso</string>
     <string name="floating_tap_details">Dettagli al tocco</string>
     <string name="floating_tap_details_desc">Un tocco mostra il grafico e i dettagli</string>
-    <string name="floating_details_opacity_percent">Opacità dello sfondo dei dettagli: %1$d%%</string>
+    <string name="floating_details_opacity">Opacità dello sfondo dei dettagli</string>
     <string name="floating_next_reading">Tempo alla prossima lettura</string>
     <string name="floating_next_reading_desc">Un anello attorno alla freccia di tendenza si riempie fino alla prossima lettura</string>
     <string name="floating_above_status_bar">Sopra la barra di stato</string>

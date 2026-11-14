@@ -60,7 +60,7 @@ class SettingsSearchCoverageTests {
             "font_size_label", "gap_width_label",
             "opacity_label", "size_label",
             "status_bar_icon_size_label", "text_size_label",
-            "offset", "floating_details_opacity_percent",
+            "offset", "floating_details_opacity",
         )
         because(
             "part of a control that is indexed itself (times of the voice schedule, colours of the range card, …)",
