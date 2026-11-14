@@ -1738,7 +1738,7 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="wear_direct_sensor_phone_desc">Társalkalmazás-mód: a telefon szkenneli a szenzort, és küldi a méréseket.</string>
     <string name="wear_claim_state_phone_owns">A telefon kezeli a szenzort</string>
     <string name="wear_claim_state_requesting">Az óra kéri a szenzor átvételét</string>
-    <string name="wear_stop_reading_on_watch">Olvasás leállítása az órán</string>
+    <string name="wear_read_on_watch">Olvasás az órán</string>
     <string name="direct_status_phone_and_watch">Telefon + óra</string>
     <string name="direct_status_phone">Telefon</string>
     <string name="direct_status_watch">Óra</string>

@@ -344,15 +344,18 @@ companion object {
         lastNetInfoExchangeMs.set(System.currentTimeMillis())
     }
 
-    /** [stoppedOnWatch]: the watch's own button just turned direct mode off ([WearSensorClaimWire]). */
+    /**
+     * [stoppedOnWatch] / [startedOnWatch]: the watch's own switch just turned
+     * direct mode off or on ([WearSensorClaimWire]).
+     */
     @JvmStatic
     @JvmOverloads
-    fun sendSensorClaimStatus(stoppedOnWatch: Boolean = false) {
+    fun sendSensorClaimStatus(stoppedOnWatch: Boolean = false, startedOnWatch: Boolean = false) {
         if (!isWearable) return
         val sender = messagesender ?: return
         sender.sendmessage(
             WearMessagePath.SENSOR_CLAIM_STATUS,
-            WearSensorClaimWire.encode(WearSensorClaim.currentState(), stoppedOnWatch),
+            WearSensorClaimWire.encode(WearSensorClaim.currentState(), stoppedOnWatch, startedOnWatch),
         )
     }
 
