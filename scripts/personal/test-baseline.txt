@@ -1,0 +1,73 @@
+# Unit tests that fail on this Windows machine only. One per line:
+#   <mobile|wear> <class>#<test>   # reason
+# '<class>#*' covers a whole class. Rewritten by: scripts/personal/test.sh --update-baseline
+mobile tk.glucodata.CloneRecoveryStagingTests#clearingAnAliasedJobCannotDeleteAnotherJob   # no symlink privilege (Developer Mode off)
+mobile tk.glucodata.CustomGlucoseNotificationTests#arrowAndSensorGapsScaleWithTheReadoutAndPreserveVectorSize   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#arrowAndSensorGapsScaleWithTheReadoutAndPreserveVectorSize[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#compactPlotUsesItsHeightInsteadOfFittingAScreenWidthRaster   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#compactPlotUsesItsHeightInsteadOfFittingAScreenWidthRaster[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#directionAndDoubleHeadThresholdUseTheSharedRateConvention   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#directionAndDoubleHeadThresholdUseTheSharedRateConvention[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#expandedChartFitsEntireImageAndHidesCleanly   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#expandedChartFitsEntireImageAndHidesCleanly[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#familySwitchReappliesBothDirectionsAndClearsHiddenBitmap   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#familySwitchReappliesBothDirectionsAndClearsHiddenBitmap[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#ibmPlexHasAccessibleBoundedPrimaryAndPeerImagesAndKeepsVectorArrows   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#ibmPlexHasAccessibleBoundedPrimaryAndPeerImagesAndKeepsVectorArrows[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#nativeReadoutSurvivesParcelAndRestrictedHostWithoutBitmapValues   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#nativeReadoutSurvivesParcelAndRestrictedHostWithoutBitmapValues[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#notificationKeepsCustomContentAndActualTimestampWithUnitlessFallback   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#notificationKeepsCustomContentAndActualTimestampWithUnitlessFallback[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#preferenceSizeScalesNativeTextAndCompactFitsHeightBudget   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#preferenceSizeScalesNativeTextAndCompactFitsHeightBudget[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#systemTextUsesTheConfiguredHeadlineFamilyRatherThanGenericSans   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#systemTextUsesTheConfiguredHeadlineFamilyRatherThanGenericSans[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#unknownPrimaryDoesNotSuppressPeerTrendAndReapplyRemovesOldPeers   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.CustomGlucoseNotificationTests#unknownPrimaryDoesNotSuppressPeerTrendAndReapplyRemovesOldPeers[26]   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.Libre3RecoveryTests#nfcResponseParsingIsDeterministicAndBounded   # no Python
+mobile tk.glucodata.Libre3RecoveryTests#silentConnectionRecoversWithoutResurrectingStoppedSensors   # no Python
+mobile tk.glucodata.RendezvousTlsSafetyTests#certificateVerificationDefaultsOnAndCanBeExplicitlyDisabled   # reads source text expecting LF line endings; this checkout has CRLF
+mobile tk.glucodata.WearPrefsVersionTests#theEncodedPayloadCarriesTheVersionFirst   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.WearPrefsVersionTests#theVersionLineAloneWritesNothing   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.arch.ArchMetricsReportScriptTest#theScriptRunsAndPrintsAReport   # no WSL for arch-metrics.sh
+mobile tk.glucodata.arch.ArchitectureGateTests#calibrationProjectionCallersStayAllowListed   # architecture gate: Windows path separators
+mobile tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToApplic   # architecture gate: Windows path separators
+mobile tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToNatives   # architecture gate: Windows path separators
+mobile tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInDirectSharedPreferencesUse   # architecture gate: Windows path separators
+mobile tk.glucodata.data.CloneBuildMigrationTests#populatedCloneV23KeepsItsRecoveryState   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneBuildMigrationTests#populatedCloneV29KeepsItsRecoveryState   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneBuildMigrationTests#testBuildV30AndV31ArriveWithoutRecoveryTablesAndGetThem   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#cloneV20HistoryGainsIdentitiesAndKeepsTombstones   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#cloneV21HistoryKeepsItsIdentities   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#cloneV23HistoryKeepsRecoveryTables   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#duplicateJournalRecoveryIdentityIsRejected   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#migrationDoesNotChangeSeededHistory   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#receiptTableRejectsDuplicateJobIds   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#recoverySchemaIsCreatedAndRowsSurviveFromV11   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.CloneRecoveryMigrationTests#recoveryTombstoneRejectsDuplicateRecoveryIdentity   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#everyCommittedSchemaVersionMigratesToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#insulinPresetsGetWholeUnitStepsAndNoDefaultsThroughV32ToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#keepsJournalRowsThroughV11ToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#keepsJournalRowsThroughV12ToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#keepsReadingsAndTombstonesThroughV11ToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#keepsReadingsThroughV12ToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.HistoryMigrationTest#onlyLocalJournalSourcesAreBackfilledAsOrigin   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.RecordedMainValueTests#aRecordedValueIsOnlyAttachedToItsOwnSensorsLine   # reads source text expecting LF line endings; this checkout has CRLF
+mobile tk.glucodata.data.calibration.CalibrationMigrationTest#keepsACalibrationRowAndFillsTheNewColumns   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.calibration.CalibrationMigrationTest#migratesFromTheReleasedV3SchemaToCurrent   # Room migration test: Windows path in the database name
+mobile tk.glucodata.data.journal.JournalEntrySourceRecordIdTests#anEntryWithNoIdentityDoesNotCollideWithAnyOther   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.data.journal.JournalEntrySourceRecordIdTests#anIdentityThatIsNotThereIsNotFound   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.data.journal.JournalEntrySourceRecordIdTests#differentIdentitiesAreDifferentRows   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.data.journal.JournalEntrySourceRecordIdTests#theSameIdentityIsOneRow   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.settings.SettingsRegistryPrefsTest#aStoredValueIsRead   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.settings.SettingsRegistryPrefsTest#aValueStoredAsAnotherTypeFallsBackToTheDefault   # JDK 25: Robolectric cannot read the classes
+mobile tk.glucodata.settings.SettingsRegistryPrefsTest#theDeclaredRangeIsApplied   # JDK 25: Robolectric cannot read the classes
+wear tk.glucodata.CloneRecoveryStagingTests#clearingAnAliasedJobCannotDeleteAnotherJob   # no symlink privilege (Developer Mode off)
+wear tk.glucodata.Libre3RecoveryTests#nfcResponseParsingIsDeterministicAndBounded   # no Python
+wear tk.glucodata.Libre3RecoveryTests#silentConnectionRecoversWithoutResurrectingStoppedSensors   # no Python
+wear tk.glucodata.RendezvousTlsSafetyTests#certificateVerificationDefaultsOnAndCanBeExplicitlyDisabled   # reads source text expecting LF line endings; this checkout has CRLF
+wear tk.glucodata.arch.ArchMetricsReportScriptTest#theScriptRunsAndPrintsAReport   # no WSL for arch-metrics.sh
+wear tk.glucodata.arch.ArchitectureGateTests#calibrationProjectionCallersStayAllowListed   # architecture gate: Windows path separators
+wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToApplic   # architecture gate: Windows path separators
+wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInCallsToNatives   # architecture gate: Windows path separators
+wear tk.glucodata.arch.ArchitectureGateTests#composablesDoNotGrowInDirectSharedPreferencesUse   # architecture gate: Windows path separators
