@@ -810,27 +810,30 @@ object CurrentDisplaySource {
             return false
         }
         tk.glucodata.drivers.ManagedSensorViewModeStore.write(Applic.app, sensorName, normalized)
-        tk.glucodata.drivers.ManagedSensorRuntime.resolveDriver(sensorName)?.let { driver ->
+        val driver = tk.glucodata.drivers.ManagedSensorRuntime.resolveDriver(sensorName)
+        if (driver != null) {
             driver.viewMode = normalized
             val ptr = driver.getManagedUiSnapshot()?.dataptr ?: 0L
             if (ptr != 0L) {
                 runCatching { Natives.setViewMode(ptr, normalized) }
             }
-            return true
-        }
-        // A managed driver's native mirror may survive while its BLE callback
-        // is absent. Updating by identity needs no callback pointer or new shell.
-        runCatching {
-            Natives.setSensorViewMode(SensorIdentity.resolveNativeSensorName(sensorName), normalized)
-        }
-        if (SensorIdentity.hasNativeSensorBacking(sensorName)) {
+        } else {
+            // A managed driver's native mirror may survive while its BLE callback
+            // is absent. Updating by identity needs no callback pointer or new shell.
             runCatching {
-                val dataptr = Natives.getdataptr(sensorName)
-                if (dataptr != 0L) {
-                    Natives.setViewMode(dataptr, normalized)
+                Natives.setSensorViewMode(SensorIdentity.resolveNativeSensorName(sensorName), normalized)
+            }
+            if (SensorIdentity.hasNativeSensorBacking(sensorName)) {
+                runCatching {
+                    val dataptr = Natives.getdataptr(sensorName)
+                    if (dataptr != 0L) {
+                        Natives.setViewMode(dataptr, normalized)
+                    }
                 }
             }
         }
+        // The mode chooses the lanes every surface shows: resolved again now, every copy set.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS)
         return true
     }
 

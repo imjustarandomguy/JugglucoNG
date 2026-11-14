@@ -138,6 +138,9 @@ object WearPrefsSync {
             // the watch face resolve through; keep it on the phone's primary.
             if (Applic.isWearable) WearSensorSelectionSync.alignCurrentSensor()
         }
+        // Smoothing and the shown sensors change what every surface draws: a setting, shown
+        // at once rather than folded with the data changes around it.
+        CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS)
         UiRefreshBus.requestDataRefresh()
         return written
     }
