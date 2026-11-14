@@ -4,6 +4,7 @@
 #   hub     recreated as parent + a --no-ff merge of feat/current-reading-hub + its own commits
 fix/dexcom-g7-link
 feat/dexcom-g7-watch parent=fix/dexcom-g7-link
+feat/wear-read-toggle parent=feat/dexcom-g7-watch
 feat/floating-glucose
 fix/wear-app
 feat/glucose-display

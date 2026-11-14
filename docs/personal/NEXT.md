@@ -3,7 +3,49 @@
 Hand-off notes for the next session. Read [BUILD.md](BUILD.md) first for the
 setup and branch model. Paths are relative to `Common/src/`.
 
-## Upstream review of 2026-11-14 (before the next full sync) — start here
+## Where things stand (2026-11-14) — start here
+
+**Synced on upstream** `main` f5b29d636 (506 commits since 10-30; what each conflict became:
+BUILD.md "Last full sync"). `personal` rebuilt as `rebuild/2026-11-14` (worktree
+/c/source/ng-wt-sync); topic branches moved locally (old tips `backup/2026-11-14/*`).
+test.sh: 11855 tests, NEW: 0 (the baseline gained upstream's machine-only
+`SignalRestoredRestartTests` and one CRLF test); both release builds signed with the owner's
+key. **`personal` not switched, nothing pushed, nothing installed** until the owner says so.
+The owner's decisions are in the review below; all were applied.
+
+New branch `feat/wear-read-toggle` (owner's ask, 11-14; stacked on `feat/dexcom-g7-watch`):
+the watch's Sensor screen has a "Read on the watch" switch. Off stops the watch reading the G7
+at once and keeps the pairing; on reads it again and the phone's "Direct sensor on watch"
+follows. Default unchanged (both read). The owner reads it rarely: about 1–3 % of the watch
+battery a day (BATTERY.md run 2: NG's whole background 0.3 mAh/h while reading the G7 all
+night), part of it spent again on the phone pushing readings instead.
+
+Device test after install (phone and watch from the same build):
+1. Persistent low keeps its settings (moved from alert id 14 to 15 at first start, on both
+   devices); "Signal restored" (upstream's new id 14) starts off.
+2. Watch: the G7 already paired there (slot 3) keeps reading, with no new pairing. "Read on
+   the watch" off: no watch G7 session within 10 min (`dumpsys bluetooth_manager`), the bond
+   still listed; on again: a session at the next 5-minute reading, no pairing prompt; the
+   phone's Wear OS switch follows both ways.
+3. Next sensor change with direct mode on: the newest G7 reaches the watch after the phone's
+   first reading (no longer during warmup, #870's setup needs it), both read, nothing stands
+   down; a G7 forgotten on the watch stays forgotten; the watch lists it as "DXCM…".
+4. Phone notification: a new reading with an unchanged value still updates its time.
+5. Nightscout: Follow off or a new URL during a first history import; "Upload only on Wi-Fi"
+   with Resend; a received treatment read back on a reading and on app open; Clear history
+   with "Send amounts" on deletes the received treatments on the server too.
+6. Quick entry: the insulin presets kept their explicit 0.5 U step (the old migration set
+   it): pick "Auto" per insulin to use upstream's learned step. Default dose against the
+   dashboard's dose hint (the hint wins). Restricted mode: no Undo after a save, tiles shown
+   unavailable, the notification buttons change at the next reading.
+7. Do Not Disturb with "Watch when connected": an alert with "Override silent mode" off is
+   silent on both devices (#917, owner's choice): turn the override on for alerts that must
+   wake.
+
+Known gaps: "Signal restored" fires once and is not held by "Where alarms ring": it rings on
+the device that saw the signal come back.
+
+## Upstream review of 2026-11-14 (before the sync)
 
 `upstream/main` f5b29d636 is 506 commits past `main` dad71b093. Nothing moved: `sync-upstream.sh
 forecast`, then four read-only agents compared every branch with upstream; the claims behind
