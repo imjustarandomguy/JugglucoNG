@@ -32,7 +32,7 @@ object AlertRepository {
     private var cachedNativeLossWaitMinutes: Int? = null
     
     private val storedPrefs: SharedPreferences by lazy {
-        Applic.app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        PersonalPersistentLowIdMove.moveOnce(Applic.app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE))
     }
 
     // What every reader below reads: this device's store, except on the thread
