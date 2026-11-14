@@ -19,16 +19,21 @@ enum class WearSensorClaimState(val wireValue: Int) {
 
 /**
  * The /sensorclaimstatus payload: the claim state's wire value, then a
- * [STOPPED_ON_WATCH] byte only when the watch's own button has just turned
- * "Direct sensor on watch" off. A phone reads the first byte alone, so an
- * older phone reads the longer payload as before.
+ * [STOPPED_ON_WATCH] or [STARTED_ON_WATCH] byte only when the watch's own
+ * switch has just turned "Direct sensor on watch" off or on. A phone reads the
+ * first byte alone, so an older phone reads the longer payload as before.
  */
 internal object WearSensorClaimWire {
     const val STOPPED_ON_WATCH: Byte = 1
+    const val STARTED_ON_WATCH: Byte = 2
 
-    fun encode(state: WearSensorClaimState, stoppedOnWatch: Boolean): ByteArray {
+    fun encode(state: WearSensorClaimState, stoppedOnWatch: Boolean, startedOnWatch: Boolean = false): ByteArray {
         val value = state.wireValue.toByte()
-        return if (stoppedOnWatch) byteArrayOf(value, STOPPED_ON_WATCH) else byteArrayOf(value)
+        return when {
+            stoppedOnWatch -> byteArrayOf(value, STOPPED_ON_WATCH)
+            startedOnWatch -> byteArrayOf(value, STARTED_ON_WATCH)
+            else -> byteArrayOf(value)
+        }
     }
 
     /** The watch's user stopped direct mode on the watch: the phone's switch follows. */
@@ -36,6 +41,17 @@ internal object WearSensorClaimWire {
         data != null && data.size >= 2 &&
             data[0].toInt() == WearSensorClaimState.PHONE_OWNS.wireValue &&
             data[1] == STOPPED_ON_WATCH
+
+    /** The watch's user started direct mode on the watch: the phone's switch follows. */
+    fun startedOnWatch(data: ByteArray?): Boolean =
+        data != null && data.size >= 2 &&
+            data[0].toInt() != WearSensorClaimState.PHONE_OWNS.wireValue &&
+            data[1] == STARTED_ON_WATCH
+}
+
+/** Phone: what to do when a watch's user turned "Direct sensor on watch" on there. */
+fun interface WearStartedOnWatchHandler {
+    fun onStartedOnWatch(nodeId: String)
 }
 
 /** Last process-visible claim state reported by each remote watch. */
@@ -54,6 +70,14 @@ object WearSensorClaimStatus {
     private val _revision = MutableStateFlow(0L)
     val revision = _revision.asStateFlow()
 
+    // Set by the phone's own code (WatchInterop), which this shared code cannot see.
+    @Volatile private var startedOnWatchHandler: WearStartedOnWatchHandler? = null
+
+    @JvmStatic
+    fun setStartedOnWatchHandler(handler: WearStartedOnWatchHandler?) {
+        startedOnWatchHandler = handler
+    }
+
     @JvmStatic
     fun onRemoteStatus(nodeId: String?, data: ByteArray?) {
         if (Applic.isWearable || nodeId.isNullOrBlank() || data == null || data.isEmpty()) return
@@ -63,6 +87,11 @@ object WearSensorClaimStatus {
         }
         val previous = remoteByNode.put(nodeId, RemoteStatus(state, System.currentTimeMillis()))?.state
         val routeDropped = WearSensorClaimWire.stoppedOnWatch(data) && dropDirectRoute(nodeId)
+        if (WearSensorClaimWire.startedOnWatch(data)) {
+            Log.i(LOG_ID, "watch $nodeId started direct sensor itself")
+            runCatching { startedOnWatchHandler?.onStartedOnWatch(nodeId) }
+                .onFailure { Log.stack(LOG_ID, "started on watch $nodeId", it) }
+        }
         if (previous != state || routeDropped) {
             Log.i(LOG_ID, "watch claim state node=$nodeId ${previous ?: "unknown"} -> $state")
             _revision.value = _revision.value + 1L
@@ -185,10 +214,13 @@ object WearSensorClaim {
     }
 
     /**
-     * The watch's own button ("Return sensor to phone" / "Stop reading on the
-     * watch"): direct mode off here, and the phone told that this watch's user
-     * did it, so its "Direct sensor on watch" switch goes off too. A stop the
-     * phone sent (/bluetooth) goes through [setDirectRequested] and is not
+     * The watch's own "Read on the watch" switch, turned off: direct mode off
+     * here, and the phone told that this watch's user did it, so its "Direct
+     * sensor on watch" switch goes off too. The sensor's Bluetooth stops here at
+     * once, as a stop the phone sends does (/bluetooth): a G7 is read by both
+     * devices, so nothing else would stop this watch dialling it. Stopping keeps
+     * the sensor's pairing (stopTransport), so switching on again needs no new
+     * one. A stop the phone sent goes through [setDirectRequested] and is not
      * echoed back.
      */
     @JvmStatic
@@ -196,6 +228,32 @@ object WearSensorClaim {
         if (!Applic.isWearable) return
         applyDirectRequested(false)
         publishState(stoppedOnWatch = true)
+        setSensorBluetooth(false)
+    }
+
+    /**
+     * The watch's own "Read on the watch" switch, turned on: direct mode on here
+     * and the sensor's Bluetooth started, as the phone's /bluetooth does, then
+     * the phone told, so its "Direct sensor on watch" switch goes on too and it
+     * hands this watch the sensor if the watch does not have it yet. A sensor
+     * still paired here is dialled again with that pairing.
+     */
+    @JvmStatic
+    fun startOnWatch() {
+        if (!Applic.isWearable) return
+        applyDirectRequested(true)
+        publishState(startedOnWatch = true)
+        setSensorBluetooth(true)
+    }
+
+    /** Off is skipped under automatic switching, which keeps the radio (MessageReceiver, /bluetooth). */
+    private fun setSensorBluetooth(on: Boolean) {
+        if (!on && runCatching { AutoSensorSwitch.isEnabled() }.getOrDefault(false)) return
+        executor.execute {
+            val context = MainActivity.thisone ?: Applic.app ?: return@execute
+            runCatching { Applic.setbluetooth(context, on) }
+                .onFailure { Log.stack(LOG_ID, "setbluetooth($on) from the watch's switch", it) }
+        }
     }
 
     private fun applyDirectRequested(enabled: Boolean) {
@@ -471,8 +529,8 @@ object WearSensorClaim {
             .onFailure { Log.stack(LOG_ID, "restoreOnStart setbluetooth", it) }
     }
 
-    private fun publishState(stoppedOnWatch: Boolean = false) {
-        MessageSender.sendSensorClaimStatus(stoppedOnWatch)
+    private fun publishState(stoppedOnWatch: Boolean = false, startedOnWatch: Boolean = false) {
+        MessageSender.sendSensorClaimStatus(stoppedOnWatch, startedOnWatch)
         MessageSender.sendnetinfo()
         syncHeartbeat()
     }

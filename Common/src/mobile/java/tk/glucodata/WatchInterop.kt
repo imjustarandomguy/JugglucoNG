@@ -14,6 +14,8 @@ import com.google.android.gms.wearable.Wearable
 import tk.glucodata.nums.AllData
 import tk.glucodata.nums.AllDataAccess
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object WatchInterop {
     data class WearSyncStatus(
@@ -246,6 +248,27 @@ object WatchInterop {
             }
         }
         return applyWearNodeRouting(nodeId, isGalaxy, directOnWatch, enterOnWatch)
+    }
+
+    /**
+     * A watch's user turned "Direct sensor on watch" on there
+     * ([WearSensorClaim.startOnWatch]): what this phone's own switch does
+     * ([applyStandaloneSensorMode]), so the switch follows, later sensors are
+     * handed on as they are for a switch turned on here, and the watch gets the
+     * sensor's setup (a G7 the watch already has is left as it is there). A
+     * request already recorded needs nothing.
+     */
+    @JvmStatic
+    fun onWatchStartedDirect(nodeId: String) {
+        if (WearRoutingRequest.directRequested(nodeId)) return
+        MessageSender.scope.launch(Dispatchers.IO) {
+            val node = getWearMessageSender()?.nodes?.firstOrNull { it.id == nodeId }
+            val isGalaxy = node?.let { MessageSender.isGalaxy(it) } ?: false
+            val enter = WearRoutingRequest.enterRequested(nodeId)
+            if (!applyStandaloneSensorMode(nodeId, isGalaxy, directOnWatch = true, enterOnWatch = enter)) {
+                Log.w("WatchInterop", "watch $nodeId started direct sensor; the phone could not follow")
+            }
+        }
     }
 
     /** Revoke this sensor's watch route and reconnect it on the phone. */

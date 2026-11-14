@@ -46,6 +46,8 @@ public class Specific {
 		CalibrationProfileAccess.register(tk.glucodata.data.calibration.MobileCalibrationProfileBridge.INSTANCE);
 		CalibrationAccess.register(tk.glucodata.data.calibration.MobileCalibrationProvider.INSTANCE);
 		tk.glucodata.ui.AlarmActivityAccess.register(tk.glucodata.ui.MobileAlarmActivityHost.INSTANCE);
+		// A watch's own "Read on the watch" turns the phone's "Direct sensor on watch" on too.
+		WearSensorClaimStatus.setStartedOnWatchHandler(WatchInterop::onWatchStartedDirect);
 		if (!SetColorsScreenAccess.isRegistered())
 			SetColorsScreenAccess.register(new tk.glucodata.settings.MobileSetColors());
 		GlucoseAlarmsAccess.register(new tk.glucodata.GlucoseAlarmsAccess.Factory() {
