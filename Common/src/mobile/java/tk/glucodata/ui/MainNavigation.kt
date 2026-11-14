@@ -1245,6 +1245,7 @@ private fun NavGraphBuilder.appDestinations(
     gatedComposable("settings/cgm-readiness") { CgmReadinessScreen(navController) }
     gatedComposable("settings/app-updates") { AppUpdatesScreen(navController) }
     gatedComposable("settings/alerts") { tk.glucodata.ui.alerts.AlertSettingsScreen(navController) }
+    gatedComposable("settings/alerts/history") { tk.glucodata.ui.alerts.AlarmHistoryScreen(navController) }
     gatedComposable("settings/alerts/talker") { tk.glucodata.ui.alerts.TalkerSettingsScreen(navController) }
     gatedComposable("settings/journal") { JournalSettingsScreen(navController, dashboardViewModel) }
     gatedComposable("settings/journal/calculations") { JournalCalculationsSettingsScreen(navController, dashboardViewModel) }

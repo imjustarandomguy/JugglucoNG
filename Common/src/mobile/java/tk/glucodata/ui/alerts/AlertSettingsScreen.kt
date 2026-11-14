@@ -313,6 +313,11 @@ fun AlertSettingsScreen(
                 )
             }
 
+            // This phone's snoozes with their time left; empty, the card takes no space.
+            item(key = "active-snoozes") {
+                ActiveSnoozesCard(refreshKey = showPreemptiveSnooze)
+            }
+
             // The quiet window: one card, collapsed unless a window runs. It has
             // nothing to silence unless some enabled alert makes a sound or vibrates,
             // so it only appears then - or while a window runs, so it can be ended.
@@ -586,8 +591,19 @@ fun AlertSettingsScreen(
                     subtitle = stringResource(R.string.preemptive_snooze_desc),
                     icon = Icons.Default.Snooze,
                     iconTint = MaterialTheme.colorScheme.primary,
-                    position = if (voiceOpen) SettingsItemPosition.TOP else SettingsItemPosition.SINGLE,
+                    position = SettingsItemPosition.TOP,
                     onClick = { showPreemptiveSnooze = true }
+                )
+            }
+
+            item(key = "alarm-history") {
+                SettingsItem(
+                    title = stringResource(R.string.alarm_history),
+                    subtitle = stringResource(R.string.alarm_history_desc),
+                    icon = Icons.Default.History,
+                    iconTint = MaterialTheme.colorScheme.tertiary,
+                    position = if (voiceOpen) SettingsItemPosition.MIDDLE else SettingsItemPosition.BOTTOM,
+                    onClick = { navController.navigate("settings/alerts/history") }
                 )
             }
 
