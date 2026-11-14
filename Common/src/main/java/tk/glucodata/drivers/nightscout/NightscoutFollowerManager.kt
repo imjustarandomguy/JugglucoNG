@@ -793,8 +793,11 @@ class NightscoutFollowerManager(
     private fun importRemoteTreatments(): Int {
         fun importBatch(label: String, body: () -> String): Int =
             runCatching {
+                // A follower stopped mid-poll (switched off, or to another server) stores
+                // nothing more from the server it was following.
+                if (stop) return@runCatching 0
                 val json = body()
-                if (json.isBlank() || json == "[]") 0
+                if (stop || json.isBlank() || json == "[]") 0
                 else tk.glucodata.NightscoutTreatmentImportAccess.importTreatments(SerialNumber, json)
             }.getOrElse { error ->
                 Log.w(TAG, "Nightscout $label import ignored: ${error.message}")
