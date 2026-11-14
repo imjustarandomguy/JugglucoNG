@@ -192,6 +192,7 @@ fun NotificationSettingsScreen(
         Spacer(Modifier.height(2.dp))
         SettingsSwitchItem(
             title = stringResource(R.string.status_bar_icon_colored_title),
+            searchAnchor = SettingsSearchAnchors.forRow(R.string.status_bar_icon_colored_title),
             subtitle = stringResource(R.string.status_bar_icon_colored_desc),
             checked = statusIconColored,
             onCheckedChange = { statusIconColored = it; save() },
