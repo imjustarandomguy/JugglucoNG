@@ -29,12 +29,53 @@ class GlucoseColorSyncTests {
         overrides: List<Int?> = List(Band.values().size) { null },
         targetBackground: Int? = null,
         valueRangeColors: Boolean = false,
-    ) = GlucoseColorSync.Scheme(palette, overrides, targetBackground, valueRangeColors)
+        ranges: GlucoseRanges.Ranges? = null,
+    ) = GlucoseColorSync.Scheme(palette, overrides, targetBackground, valueRangeColors, ranges)
 
     @Test
     fun roundTripsAPlainPreset() {
         val decoded = GlucoseColorSync.decodeScheme(GlucoseColorSync.encodeScheme(scheme()))
         assertEquals(scheme(), decoded)
+    }
+
+    @Test
+    fun roundTripsTheRangesBitForBit() {
+        // A threshold the watch reads even a float step off would put a reading
+        // that sits on it in another band than on the phone. 550/180 is the
+        // native very-low default as mmol/L, which has no short decimal form.
+        for (ranges in listOf(
+            GlucoseRanges.Ranges(true, 3.9f, 10.0f, 550f / 180f, 13.9f),
+            GlucoseRanges.Ranges(false, 70f, 180f, 54f, 250f),
+        )) {
+            val original = scheme(ranges = ranges)
+            assertEquals(original, GlucoseColorSync.decodeScheme(GlucoseColorSync.encodeScheme(original)))
+        }
+    }
+
+    @Test
+    fun aPayloadWithoutRangesLeavesThemUnset() {
+        // An older phone sends none; the watch then keeps its own settings.
+        val legacy = "palette=${Palette.VIBRANT.name}\nvalue_range_colors=true\n".toByteArray()
+        val decoded = GlucoseColorSync.decodeScheme(legacy)!!
+        assertNull(decoded.ranges)
+        assertTrue(decoded.valueRangeColors)
+    }
+
+    @Test
+    fun incompleteOrUnusableRangesAreDroppedNotTheColours() {
+        val colours = GlucoseColorSync.encodeScheme(scheme(valueRangeColors = true)).toString(Charsets.UTF_8)
+        listOf(
+            "range_unit=mmol\nrange_target_low=3.9\nrange_target_high=10.0\nrange_very_low=3.0\n",
+            "range_unit=furlong\nrange_target_low=3.9\nrange_target_high=10.0\nrange_very_low=3.0\nrange_very_high=13.9\n",
+            "range_unit=mmol\nrange_target_low=NaN\nrange_target_high=10.0\nrange_very_low=3.0\nrange_very_high=13.9\n",
+            "range_unit=mmol\nrange_target_low=3.9\nrange_target_high=10.0\nrange_very_low=0\nrange_very_high=13.9\n",
+            "range_unit=mmol\nrange_target_low=3,9\nrange_target_high=10.0\nrange_very_low=3.0\nrange_very_high=13.9\n",
+        ).forEach { ranges ->
+            val decoded = GlucoseColorSync.decodeScheme((colours + ranges).toByteArray())!!
+            assertNull(ranges, decoded.ranges)
+            assertEquals(Palette.VIBRANT.name, decoded.palette)
+            assertTrue(decoded.valueRangeColors)
+        }
     }
 
     @Test

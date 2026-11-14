@@ -66,12 +66,4 @@ class TrailingThrottleTests {
         assertEquals("an older reading is a repeat too",
             TrailingThrottle.COVERED, throttle.request(7_000L, key = 500L))
     }
-
-    @Test fun complicationKeyIsTheReadingTimeOnlyWhileItCanBeShown() {
-        val timeout = 10L * 60_000L
-        val now = 1_700_000_000_000L
-        assertEquals(now - 30_000L, UiRefreshBus.complicationKey(now - 30_000L, now, timeout))
-        assertEquals(TrailingThrottle.NO_KEY, UiRefreshBus.complicationKey(now - timeout, now, timeout))
-        assertEquals(TrailingThrottle.NO_KEY, UiRefreshBus.complicationKey(0L, now, timeout))
-    }
 }

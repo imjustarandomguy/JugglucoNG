@@ -307,27 +307,24 @@ public final class GlucoseRangeColors {
         return isMmol ? DEFAULT_VERY_HIGH_MMOL : DEFAULT_VERY_HIGH_MGDL;
     }
 
-    // Traffic-light palette for colouring the current value (and trend arrow,
-    // and the notification value): green inside the target range, yellow between
-    // target and alarm bounds, red beyond the alarms. This is a 3-tier system,
-    // distinct from the 5 AGP bands above, but it follows the active preset too
-    // so switching to Vibrant / GDH-like visibly recolours the value and arrow.
-    // The MUTED constants are the historical tones, kept bit-identical.
-    public static final int VALUE_IN_RANGE = 0xFF2E7D32;
-    public static final int VALUE_IN_RANGE_DARK = 0xFF81C784;
+    // Warning tones for a risk that has no side: the forecast-coloured trend
+    // arrow and the IOB/COB line. Yellow when heading out of the target range,
+    // red beyond very low/high. A value itself is coloured by its band instead
+    // (see trafficColorForValue). They follow the active preset too; the MUTED
+    // constants are the historical tones, kept bit-identical.
     public static final int VALUE_BORDERLINE = 0xFFF9A825;
     public static final int VALUE_BORDERLINE_DARK = 0xFFFFD54F;
     public static final int VALUE_OUT = 0xFFC62828;
     public static final int VALUE_OUT_DARK = 0xFFE57373;
 
-    // Per-preset traffic tiers: [in-range, borderline, out].
-    private static final int[] MUTED_TRAFFIC_LIGHT = { VALUE_IN_RANGE, VALUE_BORDERLINE, VALUE_OUT };
-    private static final int[] MUTED_TRAFFIC_DARK = { VALUE_IN_RANGE_DARK, VALUE_BORDERLINE_DARK, VALUE_OUT_DARK };
-    private static final int[] VIBRANT_TRAFFIC_LIGHT = { 0xFF00A651, 0xFFFFB300, 0xFFD50000 };
-    private static final int[] VIBRANT_TRAFFIC_DARK = { 0xFF69F0AE, 0xFFFFD24D, 0xFFFF5252 };
-    private static final int[] AURORA_TRAFFIC_LIGHT = { 0xFF00897B, 0xFFF9A825, 0xFFAD1457 };
-    private static final int[] AURORA_TRAFFIC_DARK = { 0xFF4DB6AC, 0xFFFFD54F, 0xFFF06292 };
-    private static final int[] GDH_TRAFFIC_LIGHT = { 0xFF00FF00, 0xFFFFDC00, 0xFFFF0000 };
+    // Per-preset warning tiers: [borderline, out].
+    private static final int[] MUTED_TRAFFIC_LIGHT = { VALUE_BORDERLINE, VALUE_OUT };
+    private static final int[] MUTED_TRAFFIC_DARK = { VALUE_BORDERLINE_DARK, VALUE_OUT_DARK };
+    private static final int[] VIBRANT_TRAFFIC_LIGHT = { 0xFFFFB300, 0xFFD50000 };
+    private static final int[] VIBRANT_TRAFFIC_DARK = { 0xFFFFD24D, 0xFFFF5252 };
+    private static final int[] AURORA_TRAFFIC_LIGHT = { 0xFFF9A825, 0xFFAD1457 };
+    private static final int[] AURORA_TRAFFIC_DARK = { 0xFFFFD54F, 0xFFF06292 };
+    private static final int[] GDH_TRAFFIC_LIGHT = { 0xFFFFDC00, 0xFFFF0000 };
     private static final int[] GDH_TRAFFIC_DARK = GDH_TRAFFIC_LIGHT;
 
     private static int[] trafficFor(Palette palette, boolean darkTheme) {
@@ -345,21 +342,65 @@ public final class GlucoseRangeColors {
         }
     }
 
-    public static int valueInRange(boolean darkTheme) {
-        // The in-range tier honours an explicit IN_RANGE override so the user's
-        // chosen in-range colour applies to the value too, not just the bands.
-        final Integer override = overrides[Band.IN_RANGE.ordinal()];
-        return override != null ? override : trafficFor(activePalette, darkTheme)[0];
-    }
-
     public static int valueBorderline(boolean darkTheme) {
-        return trafficFor(activePalette, darkTheme)[1];
+        return trafficFor(activePalette, darkTheme)[0];
     }
 
     public static int valueOut(boolean darkTheme) {
-        return trafficFor(activePalette, darkTheme)[2];
+        return trafficFor(activePalette, darkTheme)[1];
     }
 
+    /**
+     * The band {@code value} falls in, or null when it is not a reading. Target
+     * bounds count as in range; a very low/high bound belongs to its band. Unset
+     * or inconsistent thresholds fall back to the defaults, as everywhere else
+     * the bands are cut.
+     */
+    public static Band bandForValue(
+            float value,
+            float targetLow,
+            float targetHigh,
+            float veryLowThreshold,
+            float veryHighThreshold,
+            boolean isMmol) {
+        if (!Float.isFinite(value) || value <= 0.0f) {
+            return null;
+        }
+
+        float low = Float.isFinite(targetLow) && targetLow > 0.0f ? targetLow : defaultLow(isMmol);
+        float highCandidate = Float.isFinite(targetHigh) && targetHigh > low ? targetHigh : defaultHigh(isMmol);
+        float high = Math.max(highCandidate, low + 0.1f);
+        float veryLow = Float.isFinite(veryLowThreshold) && veryLowThreshold > 0.0f
+                ? veryLowThreshold
+                : defaultVeryLow(isMmol);
+        veryLow = Math.min(veryLow, low - 0.1f);
+        float veryHigh = Float.isFinite(veryHighThreshold) && veryHighThreshold > 0.0f
+                ? veryHighThreshold
+                : defaultVeryHigh(isMmol);
+        veryHigh = Math.max(veryHigh, high + 0.1f);
+
+        if (value <= veryLow) {
+            return Band.VERY_LOW;
+        }
+        if (value < low) {
+            return Band.LOW;
+        }
+        if (value >= veryHigh) {
+            return Band.VERY_HIGH;
+        }
+        if (value > high) {
+            return Band.HIGH;
+        }
+        return Band.IN_RANGE;
+    }
+
+    /**
+     * Colour for the current value (dashboard, notification, status icon,
+     * floating value, watch) and for range-coloured chart lines: the colour the
+     * range settings show for the band it is in, override included. It used a
+     * separate three-tier palette that ignored those settings, so a low came out
+     * yellow beside a light-red "Low".
+     */
     public static int trafficColorForValue(
             float value,
             float targetLow,
@@ -369,25 +410,8 @@ public final class GlucoseRangeColors {
             boolean darkTheme,
             boolean isMmol,
             int fallbackColor) {
-        if (!Float.isFinite(value) || value <= 0.0f) {
-            return fallbackColor;
-        }
-
-        float low = Float.isFinite(targetLow) && targetLow > 0.0f ? targetLow : defaultLow(isMmol);
-        float highCandidate = Float.isFinite(targetHigh) && targetHigh > low ? targetHigh : defaultHigh(isMmol);
-        float high = Math.max(highCandidate, low + 0.1f);
-        float redLow = Float.isFinite(alarmLow) && alarmLow > 0.0f ? alarmLow : defaultVeryLow(isMmol);
-        redLow = Math.min(redLow, low - 0.1f);
-        float redHigh = Float.isFinite(alarmHigh) && alarmHigh > 0.0f ? alarmHigh : defaultVeryHigh(isMmol);
-        redHigh = Math.max(redHigh, high + 0.1f);
-
-        if (value <= redLow || value >= redHigh) {
-            return valueOut(darkTheme);
-        }
-        if (value < low || value > high) {
-            return valueBorderline(darkTheme);
-        }
-        return valueInRange(darkTheme);
+        final Band band = bandForValue(value, targetLow, targetHigh, alarmLow, alarmHigh, isMmol);
+        return band != null ? resolve(band, darkTheme) : fallbackColor;
     }
 
     public static int blend(int startColor, int endColor, float fraction) {
