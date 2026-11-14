@@ -219,6 +219,9 @@ object AlertRuntimeManager {
             lastRate = Float.NaN
             lastDisplaySnapshot = null
             persistentHighStartedAtMs = 0L
+            persistentLowState = PersistentLowState()
+            persistentLowLastReason = null
+            persistentLowConfig = null
             lastLoggedExpiryEndMs = Long.MIN_VALUE
             warnedForecastRateUntrusted = false
             preLowSuppressionReason = null
