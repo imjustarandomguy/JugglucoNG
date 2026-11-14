@@ -784,6 +784,7 @@ public class bluediag {
                                 // would leave this choice invisible to them.
                                 tk.glucodata.drivers.ManagedSensorViewModeStore.INSTANCE.write(
                                         Applic.app, gatt.SerialNumber, pos);
+                                CurrentReadingHub.onDisplayInputsChanged(DisplayedReading.Reason.SETTINGS);
                                 act.requestRender();
                             }
                         }
