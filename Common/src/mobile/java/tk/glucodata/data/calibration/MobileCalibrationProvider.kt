@@ -68,6 +68,9 @@ object MobileCalibrationProvider : CalibrationProvider {
         return true
     }
 
+    override fun isEnabledForMode(isRawMode: Boolean, sensorId: String?): Boolean =
+        CalibrationManager.isEnabledForMode(isRawMode, sensorId)
+
     override fun clearAllBlocking(): Boolean {
         CalibrationManager.clearAllBlocking()
         return true

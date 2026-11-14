@@ -6,10 +6,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -20,10 +18,8 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
-import kotlinx.coroutines.launch
 import tk.glucodata.ExchangeToggles
 import tk.glucodata.R
-import tk.glucodata.UiRefreshBus
 import tk.glucodata.WearToggleSync
 import tk.glucodata.ui.WearSectionTitle
 
@@ -41,11 +37,11 @@ import tk.glucodata.ui.WearSectionTitle
  */
 @Composable
 fun ExchangeScreen() {
-    var revision by remember { mutableIntStateOf(0) }
+    // The phone's last report; switches redraw when it changes.
+    val toggles by WearToggleSync.state.collectAsState()
 
     LaunchedEffect(Unit) {
         WearToggleSync.requestState()
-        launch { UiRefreshBus.revision.collect { revision++ } }
     }
 
     ScreenScaffold(timeText = { TimeText() }) {
@@ -55,9 +51,7 @@ fun ExchangeScreen() {
         ) {
             item { WearSectionTitle(stringResource(R.string.wear_exchange_title)) }
             items(ExchangeToggles.all) { toggle ->
-                val known = remember(revision, toggle.id) {
-                    WearToggleSync.knownEnabled(WearToggleSync.SCOPE_EXCHANGE, toggle.id)
-                }
+                val known = WearToggleSync.knownEnabled(toggles, WearToggleSync.SCOPE_EXCHANGE, toggle.id)
                 SwitchButton(
                     checked = known == true,
                     // Until the phone has answered there is nothing truthful to
