@@ -182,7 +182,9 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         } else if (newState == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED
                 && locallyConnectedGatt == gatt) {
             locallyConnectedGatt = null;
-            WearSensorClaim.onLocalGattDisconnected(SerialNumber);
+            // A sensor that connects per reading still counts as held between them.
+            if (!SensorOwnershipRuntime.readsLocally(SerialNumber))
+                WearSensorClaim.onLocalGattDisconnected(SerialNumber);
         }
     }
 
@@ -193,6 +195,31 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
     public final boolean hasLocallyConnectedGatt() {
         final BluetoothGatt current = mBluetoothGatt;
         return current != null && locallyConnectedGatt == current;
+    }
+
+    /** Whether the watch may take this sensor over from the phone. */
+    public boolean supportsWatchClaim() {
+        return this instanceof tk.glucodata.drivers.ManagedBluetoothSensorDriver;
+    }
+
+    /**
+     * Whether the sensor pairs anew with every device that reads it. Such a
+     * sensor is only dialled by a device it was handed to: the attempt alone
+     * can take it from the device holding it.
+     */
+    public boolean pairsPerDevice() {
+        return false;
+    }
+
+    /** How long handing the sensor to the other device may take; 0 for the default. */
+    public long handoverWindowMs() {
+        return 0L;
+    }
+
+    /** Stands down so the other device can connect. */
+    public void releaseToPeer() {
+        setPause(true);
+        disconnect();
     }
 
     /**
@@ -1386,7 +1413,8 @@ public abstract class SuperGattCallback extends BluetoothGattCallback {
         if (tmpgatt != null) {
             if (locallyConnectedGatt == tmpgatt) {
                 locallyConnectedGatt = null;
-                WearSensorClaim.onLocalGattDisconnected(SerialNumber);
+                if (!SensorOwnershipRuntime.readsLocally(SerialNumber))
+                    WearSensorClaim.onLocalGattDisconnected(SerialNumber);
             }
             try {
                 try { tmpgatt.disconnect(); }

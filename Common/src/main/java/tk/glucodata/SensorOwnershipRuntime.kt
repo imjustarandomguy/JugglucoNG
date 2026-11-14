@@ -405,11 +405,17 @@ object SensorOwnershipRuntime {
         return releaseState.isReleased(target)
     }
 
-    /** Hard gate consulted at every route to connectGatt while the peer owns it. */
+    /**
+     * Hard gate consulted at every route to connectGatt: while the peer owns the
+     * sensor, and on a watch for a sensor that pairs with each device until it
+     * was handed this one ("Direct sensor on watch").
+     */
     @JvmStatic
     fun blocksLocalConnection(serial: String?): Boolean {
         val target = serial?.trim()?.takeIf { SensorIdentity.isUsableSensorId(it) } ?: return false
-        return releaseState.isReleased(target)
+        if (releaseState.isReleased(target)) return true
+        return Applic.isWearable && !WearSensorClaim.isDirectRequested() &&
+            findGatt(target)?.pairsPerDevice() == true
     }
 
     /** Phone UI state for the deliberate gap and the subsequent watch-owned stream. */
@@ -739,7 +745,7 @@ object SensorOwnershipRuntime {
                 peer = peer,
                 nowMs = now,
                 peerSilentAfterMs = peerSilentAfterMs,
-                yieldUntilMs = yieldDeadline(id, intent, peer, now, peerGone),
+                yieldUntilMs = yieldDeadline(id, intent, peer, now, peerGone, handoverWindowFor(serial)),
             )
             val released = releaseState.isReleased(serial)
             when {
@@ -783,7 +789,8 @@ object SensorOwnershipRuntime {
         intent: SensorOwnershipPolicy.Intent,
         peer: SensorOwnershipPolicy.PeerReport?,
         now: Long,
-        peerGone: Boolean = false,
+        peerGone: Boolean,
+        windowMs: Long,
     ): Long {
         val window = resolveYieldWindow(
             intent = intent,
@@ -791,8 +798,10 @@ object SensorOwnershipRuntime {
             peerGone = peerGone,
             startedAtMs = yieldStartedAt[id],
             nowMs = now,
-            windowMs = YIELD_WINDOW_MS,
-            retryIntervalMs = YIELD_RETRY_INTERVAL_MS,
+            windowMs = windowMs,
+            // A longer window must still leave this device reading most of the time
+            // when the peer cannot take the sensor.
+            retryIntervalMs = maxOf(YIELD_RETRY_INTERVAL_MS, 4L * windowMs),
         )
         if (window.startedAtMs == null) yieldStartedAt.remove(id) else yieldStartedAt[id] = window.startedAtMs
         window.logMessage?.let { Log.i(LOG_ID, it.replace("%s", id)) }
@@ -882,7 +891,7 @@ object SensorOwnershipRuntime {
         // disconnected: a paused callback never reconnects or closes it itself.
         releasedGatts(serial).forEach { gatt ->
             runCatching {
-                gatt.setPause(true)
+                gatt.releaseToPeer()
                 gatt.closeGattTransport()
             }.onFailure { Log.stack(LOG_ID, "release($serial)", it) }
         }
@@ -998,6 +1007,10 @@ object SensorOwnershipRuntime {
     private fun findGatt(serial: String): SuperGattCallback? = runCatching {
         SensorBluetooth.mygatts()?.firstOrNull { SensorIdentity.matches(it.SerialNumber, serial) }
     }.getOrNull()
+
+    /** How long the peer gets to take [serial] over; longer for a sensor it has to pair with. */
+    private fun handoverWindowFor(serial: String): Long =
+        findGatt(serial)?.handoverWindowMs()?.takeIf { it > 0L } ?: YIELD_WINDOW_MS
 
     /** Whether the peer currently says it is reading [serial]. */
     @JvmStatic
