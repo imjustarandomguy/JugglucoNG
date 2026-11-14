@@ -436,6 +436,7 @@ fun DisplayAndColorSettingsScreen(
             )
             SettingsItem(
                 title = stringResource(R.string.chart_readings_style_title),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.chart_readings_style_title),
                 subtitle = chartReadingsStyleLabel,
                 icon = Icons.Default.ScatterPlot,
                 iconTint = MaterialTheme.colorScheme.primary,
