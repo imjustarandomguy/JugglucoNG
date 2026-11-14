@@ -71,17 +71,17 @@ class SuperGattCallback {
     static class Scheduler extends ScheduledThreadPoolExecutor {
         long now; List<Job> jobs=new ArrayList<>();
         Scheduler(){super(1);}
-        public ScheduledFuture<?> schedule(Runnable r,long delay,TimeUnit unit){Job j=new Job(r,now+unit.toMillis(delay));jobs.add(j);return j;}
+        public ScheduledFuture<?> schedule(Runnable r,long delay,TimeUnit unit){Job j=new Job(r,now+unit.toMillis(delay),this);jobs.add(j);return j;}
         void advance(long delta){long target=now+delta; while(true){Job j=jobs.stream().filter(x->!x.done&&x.at<=target).min(Comparator.comparingLong(x->x.at)).orElse(null);if(j==null)break;now=j.at;j.fire();}now=target;}
     }
     static class Job implements ScheduledFuture<Object> {
-        Runnable task;long at;boolean done,cancelled;
-        Job(Runnable r,long a){task=r;at=a;}
+        Runnable task;long at;boolean done,cancelled;Scheduler owner;
+        Job(Runnable r,long a,Scheduler s){task=r;at=a;owner=s;}
         void fire(){done=true;if(!cancelled)task.run();}
         public boolean cancel(boolean ignored){cancelled=true;done=true;return true;}
         public boolean isCancelled(){return cancelled;}public boolean isDone(){return done;}
         public Object get(){return null;}public Object get(long t,TimeUnit u){return null;}
-        public long getDelay(TimeUnit u){return 0;}public int compareTo(Delayed d){return 0;}
+        public long getDelay(TimeUnit u){return u.convert(at-owner.now,TimeUnit.MILLISECONDS);}public int compareTo(Delayed d){return 0;}
     }
     boolean useAutoConnect(){return autoconnect;}
     void onConnectionAttemptTimeout(){timeoutPolicyUpdates++;}
@@ -120,6 +120,10 @@ body += r'''
 '''
 if ng:
     body += r'''
+        cb=fresh();cb.close();cb.connectDevice(1680000);cb.connectDevice(0);Applic.scheduler.advance(0);check(cb.mActiveBluetoothDevice.calls==2,"sooner connect waited behind a pending one");
+        cb.result(cb.mBluetoothGatt,2);Applic.scheduler.advance(1680000);check(cb.mActiveBluetoothDevice.calls==2,"replaced connect still ran");
+        cb=fresh();cb.close();cb.connectDevice(500);cb.connectDevice(60000);Applic.scheduler.advance(500);check(cb.mActiveBluetoothDevice.calls==2,"later request delayed the pending connect");
+        cb.result(cb.mBluetoothGatt,2);Applic.scheduler.advance(60000);check(cb.mActiveBluetoothDevice.calls==2,"later request queued a second connect");
         cb=fresh();cb.setPause(true);cb.setPause(false);Applic.scheduler.advance(120000);check(cb.mActiveBluetoothDevice.calls==1,"pause cancellation resurrected by resume");
         cb=fresh();CloneSensorRegistry.clone=true;Applic.scheduler.advance(120000);check(cb.mActiveBluetoothDevice.calls==1,"clone ownership ignored");
         check(cb.timeoutPolicyUpdates==0,"clone timeout mutated driver policy");
@@ -130,5 +134,5 @@ body += '\n System.out.println("PASS: production connect/deadline/close lifecycl
 with tempfile.TemporaryDirectory(prefix='libre3-connect-') as d:
     d=Path(d);(d/'SuperGattCallback.java').write_text(body)
     (d/'BluetoothProfile.java').write_text('package android.bluetooth; public class BluetoothProfile {public static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}')
-    subprocess.run(['javac','-d',str(d),str(d/'SuperGattCallback.java'),str(d/'BluetoothProfile.java'),str(root/'Common/src/main/java/tk/glucodata/GattConnectDeadline.java')],check=True)
+    subprocess.run(['javac','-d',str(d),str(d/'SuperGattCallback.java'),str(d/'BluetoothProfile.java'),str(root/'Common/src/main/java/tk/glucodata/GattConnectDeadline.java'),str(root/'Common/src/main/java/tk/glucodata/PendingConnectPolicy.java')],check=True)
     subprocess.run(['java','-cp',str(d),'tk.glucodata.SuperGattCallback'],check=True)
