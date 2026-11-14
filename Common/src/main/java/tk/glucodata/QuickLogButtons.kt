@@ -7,9 +7,9 @@ import android.content.Context
 /*
  * "Quick log buttons" (notification settings): "Log insulin" and "Log food" on the ongoing
  * glucose notification, "+ Insulin" and "+ Food" on the floating glucose's details. On unless
- * turned off, and only while the journal is on. The quick-settings tiles and the app icon's
- * shortcuts do not follow it. Here rather than with the phone's journal code because the
- * notification (Notify, in src/main) asks too.
+ * turned off, and only while the journal is on and restricted mode lets it be edited. The
+ * quick-settings tiles and the app icon's shortcuts do not follow the switch. Here rather than
+ * with the phone's journal code because the notification (Notify, in src/main) asks too.
  */
 
 private const val PREFS_NAME = "tk.glucodata_preferences"
@@ -31,11 +31,13 @@ const val QUICK_LOG_TYPE_FOOD = "carbs"
 
 /**
  * Whether the quick log buttons are offered: the journal is on (journalQuickEntryEnabled) and
- * so is the setting. The notification's actions and the floating glucose's buttons ask this.
+ * so is the setting, and restricted mode, if on, allows journal entries. The notification's
+ * actions and the floating glucose's buttons ask this.
  */
 fun quickLogButtonsEnabled(context: Context): Boolean {
     val prefs = prefs(context)
-    return prefs.getBoolean(JOURNAL_ENABLED_KEY, true) && prefs.getBoolean(QUICK_LOG_BUTTONS_KEY, true)
+    return prefs.getBoolean(JOURNAL_ENABLED_KEY, true) && prefs.getBoolean(QUICK_LOG_BUTTONS_KEY, true) &&
+        RestrictedMode.current().canEditJournal
 }
 
 /** The setting alone, whatever the journal: what its switch shows. */

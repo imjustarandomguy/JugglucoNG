@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
@@ -39,10 +40,12 @@ import kotlinx.coroutines.launch
 import tk.glucodata.Log
 import tk.glucodata.QUICK_ENTRY_EXTRA_TYPE
 import tk.glucodata.R
+import tk.glucodata.RestrictedMode
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalSave
 import tk.glucodata.ui.JugglucoTheme
+import tk.glucodata.ui.restricted.rememberRestrictedJournalGuard
 
 /**
  * The entry sheet on its own, over whatever is on screen: what the floating glucose's buttons,
@@ -63,6 +66,7 @@ class JournalQuickEntryActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (refusedWhileRestricted()) return
         WindowCompat.setDecorFitsSystemWindows(window, false)
         request = QuickEntryRequest.from(intent)
         setContent {
@@ -95,9 +99,23 @@ class JournalQuickEntryActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (refusedWhileRestricted()) return
         // Opened again from somewhere else while open: start over on what was asked this time.
         holdScreen()
         request = QuickEntryRequest.from(intent)
+    }
+
+    /**
+     * Restricted mode without journal entries: says that full mode is in Settings, and closes.
+     * The ways in are hidden then where they can be (the notification's and the floating
+     * glucose's buttons, the tiles, the reminder's Log); a shortcut or a notification posted
+     * before still comes here.
+     */
+    private fun refusedWhileRestricted(): Boolean {
+        if (RestrictedMode.current().canEditJournal) return false
+        Toast.makeText(this, R.string.restricted_needs_full_mode, Toast.LENGTH_LONG).show()
+        finish()
+        return true
     }
 
     /**
@@ -214,12 +232,12 @@ private fun QuickEntryContent(
     var saving by remember(request) { mutableStateOf(false) }
     var saveFailed by remember(request) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val journalGuard = rememberRestrictedJournalGuard()
     val loaded = data ?: return
 
     // The sheet stays, Save disabled, until the entries are stored: only then "Saved" and its
     // undo. A failed save keeps the sheet and what was typed, with a line saying so.
-    fun save(inputs: List<JournalEntryInput>) {
-        if (inputs.isEmpty() || saving) return
+    fun store(inputs: List<JournalEntryInput>) {
         val message = context.getString(
             R.string.journal_saved_entry,
             journalSavedSummary(context, inputs, loaded.presetsById, loaded.unit)
@@ -230,13 +248,19 @@ private fun QuickEntryContent(
         scope.launch {
             when (val outcome = pending.await()) {
                 is JournalSave.Outcome.Saved -> {
-                    saved = SavedEntries(message, outcome.ids)
+                    saved = SavedEntries(message, outcome.ids, inputs.map { it.type })
                     onSaved()
                 }
                 is JournalSave.Outcome.Failed -> saveFailed = true
             }
             saving = false
         }
+    }
+
+    // Restricted mode: as in the app, a save that would move a calibration point needs full mode.
+    fun save(inputs: List<JournalEntryInput>) {
+        if (inputs.isEmpty() || saving) return
+        journalGuard.save(null, inputs.map { it.type }) { store(inputs) }
     }
 
     val result = saved
@@ -262,22 +286,32 @@ private fun QuickEntryContent(
             saveError = if (saveFailed) stringResource(R.string.journal_save_failed_kept) else null
         )
     } else {
+        // Undo deletes what was added, which a restricted phone leaves to full mode: no Undo then.
         QuickEntryUndoBar(
             saved = result,
-            onUndo = {
-                QuickEntryWrites.undo(result.ids)
-                onFinish()
+            onUndo = if (journalGuard.canUndo(null, result.types)) {
+                {
+                    journalGuard.undo(null, result.types) {
+                        QuickEntryWrites.undo(result.ids)
+                        onFinish()
+                    }
+                }
+            } else {
+                null
             },
             onTimeout = onFinish
         )
     }
 }
 
-/** "Saved 6 U Fiasp", Undo: the dashboard's undo bar, alone at the bottom of the screen. */
+/**
+ * "Saved 6 U Fiasp", Undo: the dashboard's undo bar, alone at the bottom of the screen. Without
+ * [onUndo], only the confirmation.
+ */
 @Composable
 private fun QuickEntryUndoBar(
     saved: SavedEntries,
-    onUndo: () -> Unit,
+    onUndo: (() -> Unit)?,
     onTimeout: () -> Unit
 ) {
     val accessibility = LocalAccessibilityManager.current
@@ -287,7 +321,7 @@ private fun QuickEntryUndoBar(
                 UNDO_SHOWN_MS,
                 containsIcons = false,
                 containsText = true,
-                containsControls = true
+                containsControls = onUndo != null
             ) ?: UNDO_SHOWN_MS
         )
         onTimeout()
@@ -299,13 +333,15 @@ private fun QuickEntryUndoBar(
             .padding(12.dp)
     ) {
         Snackbar(
-            action = {
-                TextButton(
-                    onClick = onUndo,
-                    shapes = ButtonDefaults.shapes(),
-                    contentPadding = ButtonDefaults.TextButtonContentPadding
-                ) {
-                    Text(stringResource(R.string.undo))
+            action = onUndo?.let { undo ->
+                {
+                    TextButton(
+                        onClick = undo,
+                        shapes = ButtonDefaults.shapes(),
+                        contentPadding = ButtonDefaults.TextButtonContentPadding
+                    ) {
+                        Text(stringResource(R.string.undo))
+                    }
                 }
             }
         ) {

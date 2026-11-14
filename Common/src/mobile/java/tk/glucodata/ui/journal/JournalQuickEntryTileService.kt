@@ -10,6 +10,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import tk.glucodata.Log
 import tk.glucodata.R
+import tk.glucodata.RestrictedMode
 import tk.glucodata.data.journal.JournalEntryType
 
 /**
@@ -31,7 +32,8 @@ class JournalQuickEntryFoodTileService : JournalQuickEntryTile(
 
 /**
  * A quick-settings tile that opens the entry sheet on [type]: one tap closes the shade and opens
- * the sheet over whatever is on screen. An action, not a toggle, so it has no state to show.
+ * the sheet over whatever is on screen. An action, not a toggle, so it has no state to show;
+ * unavailable while restricted mode keeps the journal from being edited.
  * From the lock screen the user unlocks first (unlockAndRun): the sheet writes to the journal.
  * Each tile is its own service (one per tile in the manifest), with this as their code.
  */
@@ -44,7 +46,7 @@ abstract class JournalQuickEntryTile(
     override fun onStartListening() {
         super.onStartListening()
         val tile = qsTile ?: return
-        tile.state = Tile.STATE_INACTIVE
+        tile.state = if (RestrictedMode.current().canEditJournal) Tile.STATE_INACTIVE else Tile.STATE_UNAVAILABLE
         tile.icon = Icon.createWithResource(this, iconRes)
         tile.label = getString(labelRes)
         tile.updateTile()

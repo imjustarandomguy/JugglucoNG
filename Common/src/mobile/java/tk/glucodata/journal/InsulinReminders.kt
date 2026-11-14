@@ -28,6 +28,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import tk.glucodata.Log
 import tk.glucodata.R
+import tk.glucodata.RestrictedMode
 import tk.glucodata.SensorIdentity
 import tk.glucodata.data.journal.InsulinReminderPolicy
 import tk.glucodata.data.journal.InsulinReminderPolicy.Slot
@@ -236,9 +237,15 @@ object InsulinReminders {
      * "Log 25 U": the dose the button showed, now, through the repository like any entry (so it
      * uploads). If the insulin is no longer the one the reminder named, nothing is logged: the
      * reminder turns into one that opens the entry sheet to check ([InsulinReminderPolicy.logDecision]).
+     * Nothing either while restricted mode keeps the journal from being edited: a reminder
+     * posted then has no Log, and one posted before stays as it is.
      */
     private suspend fun onLog(context: Context, intent: Intent) {
         val slot = slotOf(intent) ?: return
+        if (!RestrictedMode.current().canEditJournal) {
+            Log.i(LOG_ID, "reminder ${slot.key}: restricted mode, not logged")
+            return
+        }
         val repository = JournalRepository()
         val preset = repository.getInsulinPresetsSnapshot().firstOrNull { it.id == slot.presetId }
         val labelledName = intent.getStringExtra(EXTRA_LABELLED_NAME)
@@ -315,6 +322,9 @@ object InsulinReminders {
                 .setData(uri("open", slot)),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        // Restricted mode without journal entries: the reminder still says the dose is due,
+        // with nothing to log it by.
+        val canLog = RestrictedMode.current().canEditJournal
         val publicVersion = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.novalue)
             .setContentTitle(context.getString(R.string.insulin_reminder_public_title))
@@ -323,7 +333,7 @@ object InsulinReminders {
             .setSmallIcon(R.drawable.novalue)
             .setContentTitle(title)
             .setContentText(text)
-            .setContentIntent(openSheet)
+            .setContentIntent(openSheet.takeIf { canLog })
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setWhen(dueAt)
@@ -350,7 +360,7 @@ object InsulinReminders {
             NotificationCompat.Action.Builder(0, context.getString(R.string.journal_log_action), openSheet)
         }
         // A dose is written to the journal (and uploaded): from the lock screen, unlock first.
-        builder.addAction(logAction.setAuthenticationRequired(true).build())
+        if (canLog) builder.addAction(logAction.setAuthenticationRequired(true).build())
         builder.addAction(
             NotificationCompat.Action.Builder(
                 0,

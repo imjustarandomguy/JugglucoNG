@@ -102,8 +102,8 @@ internal class QuickEntryData(
     val presetsById: Map<Long, JournalInsulinPreset> = insulinPresets.associateBy { it.id }
 }
 
-/** A stored save: "Saved 6 U Fiasp", and the rows an undo deletes. */
-internal class SavedEntries(val message: String, val ids: List<Long>)
+/** A stored save: "Saved 6 U Fiasp", the rows an undo deletes and their types. */
+internal class SavedEntries(val message: String, val ids: List<Long>, val types: List<JournalEntryType>)
 
 // The dashboard's settings (DashboardViewModel keeps its keys private).
 private const val JOURNAL_ENABLED_KEY = "dashboard_journal_enabled"

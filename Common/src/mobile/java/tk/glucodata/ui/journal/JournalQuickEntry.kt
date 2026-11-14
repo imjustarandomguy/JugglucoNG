@@ -46,6 +46,7 @@ import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalQuickEntryPolicy
 import tk.glucodata.data.journal.JournalRepository
 import tk.glucodata.data.journal.JournalSave
+import tk.glucodata.ui.restricted.rememberRestrictedJournalGuard
 import tk.glucodata.ui.util.GlucoseFormatter
 import tk.glucodata.ui.viewmodel.DashboardViewModel
 
@@ -207,6 +208,10 @@ internal fun journalSavedSummary(
  * again with the same entries. The dashboard, the journal and the history save this way; the
  * sheet opened from outside the app stays open until its save is stored
  * (JournalQuickEntryActivity).
+ *
+ * The caller has let the save through restricted mode (RestrictedJournalGuard.save); Try
+ * again and Undo ask it again, and a restricted phone that would refuse the Undo (a delete,
+ * which needs full mode) is not offered one.
  */
 @Composable
 internal fun rememberJournalSaveWithUndo(
@@ -217,14 +222,16 @@ internal fun rememberJournalSaveWithUndo(
 ): (inputs: List<JournalEntryInput>, previous: JournalEntry?) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val journalGuard = rememberRestrictedJournalGuard()
     val undoLabel = stringResource(R.string.undo)
     val retryLabel = stringResource(R.string.journal_save_try_again)
     val currentPresetsById by rememberUpdatedState(presetsById)
     val currentUnit by rememberUpdatedState(unit)
-    return remember(viewModel, snackbarHostState, context, scope, undoLabel, retryLabel) {
+    return remember(viewModel, snackbarHostState, context, scope, journalGuard, undoLabel, retryLabel) {
         object : (List<JournalEntryInput>, JournalEntry?) -> Unit {
             override fun invoke(inputs: List<JournalEntryInput>, previous: JournalEntry?) {
                 val summary = journalSavedSummary(context, inputs, currentPresetsById, currentUnit)
+                val savedTypes = inputs.map { it.type }
                 viewModel.saveJournalEntries(inputs) { outcome ->
                     scope.launch {
                         snackbarHostState.currentSnackbarData?.dismiss()
@@ -232,11 +239,13 @@ internal fun rememberJournalSaveWithUndo(
                             is JournalSave.Outcome.Saved -> {
                                 val result = snackbarHostState.showSnackbar(
                                     message = context.getString(R.string.journal_saved_entry, summary),
-                                    actionLabel = undoLabel,
+                                    actionLabel = undoLabel.takeIf { journalGuard.canUndo(previous, savedTypes) },
                                     duration = SnackbarDuration.Short
                                 )
                                 if (result == SnackbarResult.ActionPerformed) {
-                                    viewModel.undoJournalSave(outcome.ids, previous)
+                                    journalGuard.undo(previous, savedTypes) {
+                                        viewModel.undoJournalSave(outcome.ids, previous)
+                                    }
                                 }
                             }
                             is JournalSave.Outcome.Failed -> {
@@ -245,7 +254,9 @@ internal fun rememberJournalSaveWithUndo(
                                     actionLabel = retryLabel,
                                     duration = SnackbarDuration.Long
                                 )
-                                if (result == SnackbarResult.ActionPerformed) invoke(inputs, previous)
+                                if (result == SnackbarResult.ActionPerformed) {
+                                    journalGuard.save(previous, savedTypes) { invoke(inputs, previous) }
+                                }
                             }
                         }
                     }
