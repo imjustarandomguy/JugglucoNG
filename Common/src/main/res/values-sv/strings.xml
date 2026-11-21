@@ -3428,7 +3428,7 @@ Pressing OK will generate a connection on this phone and display a QR code that 
     <string name="food_move_down">Flytta ner</string>
     <string name="floating_tap_details">Detaljer vid tryck</string>
     <string name="floating_tap_details_desc">Tryck visar diagram och detaljer</string>
-    <string name="floating_details_opacity_percent">Bakgrundsopacitet för detaljer: %1$d%%</string>
+    <string name="floating_details_opacity">Bakgrundsopacitet för detaljer</string>
     <string name="floating_next_reading">Tid till nästa avläsning</string>
     <string name="floating_next_reading_desc">En ring runt trendpilen fylls fram till nästa avläsning</string>
     <string name="floating_above_status_bar">Över statusfältet</string>
