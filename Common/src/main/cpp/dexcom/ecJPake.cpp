@@ -599,7 +599,14 @@ KeyPair::~KeyPair() {
 KeyPair::KeyPair() {
   LOGGER("%p->KeyPair()\n",this);
   keyptr = EC_KEY_new_by_curve_name(curveNID);; //Als BIGNUM en EC_POINT apart opgeslagen worden moeten ze gekopieerd worden
-  EC_KEY_generate_key(keyptr); 
+  EC_KEY_generate_key(keyptr);
+  }
+// A new key pair in place of the old one, for the next pairing run.
+void KeyPair::renew() {
+  LOGGER("%p->renew()\n",this);
+  EC_KEY_free(keyptr);
+  keyptr = EC_KEY_new_by_curve_name(curveNID);
+  EC_KEY_generate_key(keyptr);
   }
 
 std::array<uchar,160>  mkround12(const KeyPair &keys) {

@@ -158,6 +158,9 @@ private void docmd0(BluetoothGatt bluetoothGatt) {
      DexcomBluetoothSlot.pinIfUnset(SerialNumber, authSlot);
      certinbufiter = 0;
      certinbuf=new byte[160];
+     // Every run with new key pairs: a G7 that refused one run (0A 03 after round 2)
+     // refused every later run with the same pairs, 49 in a row on a new sensor.
+     Natives.dexNewKeys(dataptr);
      phase = Round1;
      cmd(bluetoothGatt,0x0);
    }

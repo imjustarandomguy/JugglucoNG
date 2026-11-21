@@ -1402,6 +1402,9 @@ public class Natives {
 
         public static native byte[] makeRound3bytes(long dataptr);
 
+        /** New key pairs for the next pairing run (EC-JPAKE). */
+        public static native void dexNewKeys(long dataptr);
+
         public static native byte[] dexChallenger(byte[] data);
 
         public static native boolean isAuthenticated(long dataptr);
