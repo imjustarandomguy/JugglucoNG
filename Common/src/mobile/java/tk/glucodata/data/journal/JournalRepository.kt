@@ -83,18 +83,32 @@ class JournalRepository {
      * Saves an entry. The foods a meal was built from go to the food library first, so they
      * are there to pick the next time; a meal of one food keeps the link to it.
      */
-    suspend fun upsertEntry(input: JournalEntryInput): Long {
-        if (input.foodUses.isEmpty()) return upsertEntryRow(input)
+    suspend fun upsertEntry(input: JournalEntryInput): Long = upsertEntries(listOf(input)).single()
+
+    /**
+     * Writes [inputs] in one transaction: a dose and the meal saved with it are stored together,
+     * or neither is. Their row ids, in order. The uploads are woken once all are committed.
+     */
+    suspend fun upsertEntries(inputs: List<JournalEntryInput>): List<Long> {
+        if (inputs.isEmpty()) return emptyList()
+        // The food library is a database of its own: its part comes first, outside the transaction.
+        val rows = inputs.map { withRememberedFoods(it) }
+        val written = database.withTransaction { rows.map { upsertEntryRow(it) } }
+        rows.zip(written).forEach { (input, row) -> afterEntryWritten(input, row.second, row.third) }
+        return written.map { it.first }
+    }
+
+    private suspend fun withRememberedFoods(input: JournalEntryInput): JournalEntryInput {
+        if (input.foodUses.isEmpty()) return input
         val foodIds = runCatching { foodLibrary.noteUses(input.foodUses) }
             .onFailure { tk.glucodata.Log.stack("JournalRepository", "noteUses", it) }
             .getOrDefault(emptyList())
-        return upsertEntryRow(
-            input.withRememberedFoodIds(foodIds)
-        )
+        return input.withRememberedFoodIds(foodIds)
     }
 
-    private suspend fun upsertEntryRow(input: JournalEntryInput): Long =
-        checkNotNull(writeEntry(input, received = null)) { "only a received copy is ever held back" }
+    /** One entry's write, joining the caller's transaction: its row id, its row, the row it replaced. */
+    private suspend fun upsertEntryRow(input: JournalEntryInput): Triple<Long, JournalEntryEntity, JournalEntryEntity?> =
+        checkNotNull(writeEntryRow(input, received = null)) { "only a received copy is ever held back" }
 
     /**
      * Writes a treatment as Nightscout serves it, unless the row it lands on holds an edit of the
@@ -106,13 +120,20 @@ class JournalRepository {
      *        ([JournalTreatmentTransfer.serverModifiedMillis]); kept with the row
      * @return the row id, or null when the row's pending edit was kept
      */
-    suspend fun upsertReceivedNightscoutEntry(input: JournalEntryInput, serverRevision: Long?): Long? =
-        writeEntry(input, ReceivedCopy(serverRevision))
+    suspend fun upsertReceivedNightscoutEntry(input: JournalEntryInput, serverRevision: Long?): Long? {
+        val (id, entity, existing) = writeEntryRow(input, ReceivedCopy(serverRevision)) ?: return null
+        afterEntryWritten(input, entity, existing)
+        return id
+    }
 
     private class ReceivedCopy(val serverRevision: Long?)
 
-    private suspend fun writeEntry(input: JournalEntryInput, received: ReceivedCopy?): Long? {
-        val written = database.withTransaction {
+    /** [upsertEntryRow], or null when [received] gave way to the row's pending edit. */
+    private suspend fun writeEntryRow(
+        input: JournalEntryInput,
+        received: ReceivedCopy?,
+    ): Triple<Long, JournalEntryEntity, JournalEntryEntity?>? {
+        return database.withTransaction {
             val sourceRecordId = input.sourceRecordId?.takeIf { it.isNotBlank() }
             val recoveryId = CloneJournalIdentity.normalizeRecoveryId(input.recoveryId)
             val nsRemoteId = input.nsRemoteId?.takeIf { it.isNotBlank() }
@@ -288,8 +309,10 @@ class JournalRepository {
             // redundant local copy. This must never create a remote delete tombstone.
             redundantOverlap.forEach { dao.deleteEntryById(it.id) }
             Triple(rowId, entity, existing)
-        } ?: return null
-        val (id, entity, existing) = written
+        }
+    }
+
+    private fun afterEntryWritten(input: JournalEntryInput, entity: JournalEntryEntity, existing: JournalEntryEntity?) {
         val mirroredWrite = isExternalJournalMirrorSource(JournalEntrySource.fromStorage(entity.source))
         if (affectsIob(entity.entryType) || affectsIob(existing?.entryType)) {
             if (mirroredWrite) {
@@ -313,7 +336,6 @@ class JournalRepository {
             // The user's edit of a treatment received from Nightscout goes back to that document.
             tk.glucodata.NightscoutUploadWake.afterJournalChange()
         }
-        return id
     }
 
     /** Lets an importer skip a record it already wrote instead of overwriting later edits. */
@@ -660,7 +682,12 @@ class JournalRepository {
                 storedEvidence.supportsPerDoseCalculation,
             curveProfileId = storedProfile?.storageValue,
             curveModelVersion = if (storedProfile == null) 0 else JournalInsulinCurveCatalogue.MODEL_VERSION,
-            curveEvidence = storedEvidence.storageValue
+            curveEvidence = storedEvidence.storageValue,
+            doseStep = JournalInsulinDosing.storedStep(input.doseStep),
+            defaultDose = JournalInsulinDosing.sanitizeDefaultDose(input.defaultDose),
+            reminderTimes = JournalInsulinDosing.encodeReminderTimes(
+                JournalInsulinDosing.reminderTimesFor(input.countsTowardIob, input.reminderTimes)
+            )
         )
         val id = dao.upsertInsulinPreset(entity)
         // Entries snapshot their resolved curve, so edits affect future doses only.
@@ -1225,7 +1252,10 @@ private fun JournalInsulinPresetEntity.toModel(): JournalInsulinPreset {
         curveEvidence = JournalCurveEvidence.fromStorage(curveEvidence),
         scientificName = curveProfileId
             ?.let(JournalBuiltInCurveProfile::fromStorage)
-            ?.let(JournalInsulinCurveCatalogue::scientificName)
+            ?.let(JournalInsulinCurveCatalogue::scientificName),
+        doseStep = JournalInsulinDosing.sanitizeStep(doseStep),
+        defaultDose = JournalInsulinDosing.sanitizeDefaultDose(defaultDose),
+        reminderTimes = JournalInsulinDosing.decodeReminderTimes(reminderTimes)
     )
 }
 

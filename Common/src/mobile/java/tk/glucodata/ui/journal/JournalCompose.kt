@@ -122,8 +122,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -153,6 +155,7 @@ import tk.glucodata.data.journal.JournalEntry
 import tk.glucodata.data.journal.JournalEntryInput
 import tk.glucodata.data.journal.JournalEntryType
 import tk.glucodata.data.journal.JournalFood
+import tk.glucodata.data.journal.JournalInsulinDosing
 import tk.glucodata.data.journal.JournalInsulinPreset
 import tk.glucodata.data.journal.JournalIntensity
 import tk.glucodata.data.prediction.PredictionModelProfile
@@ -398,7 +401,15 @@ fun JournalEntrySheet(
     onSave: (JournalEntryInput) -> Unit,
     onSaveEntries: ((List<JournalEntryInput>) -> Unit)? = null,
     onDelete: ((Long) -> Unit)? = null,
-    sensorSerialProvider: () -> String?
+    sensorSerialProvider: () -> String?,
+    // The insulin a new insulin entry starts on (a reminder's "Log"), instead of the preferred one.
+    initialInsulinPresetId: Long? = null,
+    // The dose a new insulin entry is filled in with (a reminder's review dose).
+    initialInsulinAmount: Float? = null,
+    // For a host that keeps the sheet open until the save is stored: Save waits meanwhile, and
+    // a failed save is said above it, the entry kept.
+    saving: Boolean = false,
+    saveError: String? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
@@ -417,6 +428,7 @@ fun JournalEntrySheet(
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
@@ -428,7 +440,12 @@ fun JournalEntrySheet(
             suggestedGlucoseMgDl = suggestedGlucoseMgDl,
             suggestedChartAnchorGlucoseMgDl = suggestedChartAnchorGlucoseMgDl,
             suggestedAmountFraction = suggestedAmountFraction
-        )
+        ).let { draft ->
+            JournalInsulinDosing.sanitizeDefaultDose(initialInsulinAmount)
+                ?.takeIf { existingEntry == null && draft.type == JournalEntryType.INSULIN }
+                ?.let { draft.copy(amountText = formatFloatForEditor(it)) }
+                ?: draft
+        }
     }
     var draft by remember(
         existingEntry?.id,
@@ -437,6 +454,7 @@ fun JournalEntrySheet(
         suggestedGlucoseMgDl,
         suggestedChartAnchorGlucoseMgDl,
         suggestedAmountFraction,
+        initialInsulinAmount,
         unit,
         insulinPresets
     ) {
@@ -534,7 +552,7 @@ fun JournalEntrySheet(
             draft = draft.withSuggestedAmount(suggestedAmount?.let(::formatFloatForEditor))
         }
     }
-    LaunchedEffect(existingEntry?.id, draft.type, draft.pairWithDose, calculationInsulinPresets) {
+    LaunchedEffect(existingEntry?.id, draft.type, draft.pairWithDose, calculationInsulinPresets, initialInsulinPresetId) {
         if (
             existingEntry != null ||
             draft.insulinPresetId != null ||
@@ -542,7 +560,10 @@ fun JournalEntrySheet(
         ) {
             return@LaunchedEffect
         }
-        JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets)?.let { preset ->
+        val requestedPreset = initialInsulinPresetId
+            ?.takeIf { draft.type == JournalEntryType.INSULIN }
+            ?.let { id -> activeInsulinPresets.firstOrNull { it.id == id } }
+        (requestedPreset ?: JournalDosePresetPolicy.preferredPreset(calculationInsulinPresets))?.let { preset ->
             draft = draft.copy(
                 insulinPresetId = preset.id,
                 title = preset.displayName
@@ -947,23 +968,38 @@ fun JournalEntrySheet(
                 )
             }
 
+            if (saveError != null) {
+                journalSheetItem(formFocus, key = "save_error") {
+                    Text(
+                        text = saveError,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                    )
+                }
+            }
+
             journalSheetItem(formFocus, key = "save_button") {
+                val saveEnabled = canSave && !saving
                 // Switching type often flips Save between enabled and disabled; fade the fill
                 // instead of letting it blink.
                 val defaultSaveColors = ButtonDefaults.buttonColors()
                 val saveContainerColor by animateColorAsState(
-                    targetValue = if (canSave) defaultSaveColors.containerColor else defaultSaveColors.disabledContainerColor,
+                    targetValue = if (saveEnabled) defaultSaveColors.containerColor else defaultSaveColors.disabledContainerColor,
                     animationSpec = ExpressiveMotion.defaultEffects(),
                     label = "journalSaveContainer"
                 )
                 val saveContentColor by animateColorAsState(
-                    targetValue = if (canSave) defaultSaveColors.contentColor else defaultSaveColors.disabledContentColor,
+                    targetValue = if (saveEnabled) defaultSaveColors.contentColor else defaultSaveColors.disabledContentColor,
                     animationSpec = ExpressiveMotion.defaultEffects(),
                     label = "journalSaveContent"
                 )
                 Button(
                     onClick = {
-                        if (canSave) {
+                        if (saveEnabled) {
                             if (saveInputs.size > 1) {
                                 onSaveEntries?.invoke(saveInputs) ?: saveInputs.forEach(onSave)
                             } else {
@@ -971,7 +1007,7 @@ fun JournalEntrySheet(
                             }
                         }
                     },
-                    enabled = canSave,
+                    enabled = saveEnabled,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp),
@@ -3274,7 +3310,7 @@ private fun parseGlucoseToMgDl(value: String, unit: String): Float? {
     return if (GlucoseFormatter.isMmol(unit)) GlucoseFormatter.mmolToMg(parsed) else parsed
 }
 
-private fun formatFloatForEditor(value: Float): String {
+internal fun formatFloatForEditor(value: Float): String {
     return if (abs(value - value.roundToInt()) < 0.001f) {
         value.roundToInt().toString()
     } else {

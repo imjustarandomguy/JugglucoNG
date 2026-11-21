@@ -34,6 +34,8 @@ public class MobileVariantBootstrap implements VariantBootstrap {
         } catch (Throwable th) {
             Log.stack("MobileVariantBootstrap", "floating accessibility", th);
         }
+        // The basal reminders' alarms, set again from the presets, and kept so as they change.
+        tk.glucodata.journal.InsulinReminders.start(application);
     }
 
     @Override
