@@ -2149,6 +2149,7 @@ class DashboardViewModel(
     fun saveJournalEntry(input: JournalEntryInput) {
         viewModelScope.launch {
             journalRepository.upsertEntry(input)
+            tk.glucodata.journal.InsulinReminders.onEntriesSaved(tk.glucodata.Applic.app, listOf(input))
         }
     }
 
