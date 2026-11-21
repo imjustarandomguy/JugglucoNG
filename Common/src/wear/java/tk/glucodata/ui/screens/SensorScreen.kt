@@ -37,6 +37,7 @@ import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SwitchButton
 import androidx.wear.compose.material3.Text
 import androidx.wear.compose.material3.TimeText
 import java.util.Date
@@ -379,34 +380,28 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
                 )
             }
-            if (tk.glucodata.WearSensorClaim.currentState() != tk.glucodata.WearSensorClaimState.PHONE_OWNS) {
+            if (currentSensor != null) {
                 item {
-                    val alongside = remember(currentSensor, revision) {
-                        runCatching {
-                            tk.glucodata.SensorOwnershipRuntime.readsAlongside(currentSensor)
-                        }.getOrDefault(false)
-                    }
-                    WearNavigationRow(
-                        stringResource(stopDirectLabel(alongside)),
-                        onClick = {
-                            // Publishes the claim state and netinfo, and tells
-                            // the phone, whose "Direct sensor on watch" follows.
-                            tk.glucodata.WearSensorClaim.stopOnWatch()
+                    // "Direct sensor on watch", switched here. Off stops this watch
+                    // reading the sensor and keeps its pairing; on reads it again.
+                    // Either way the claim state and netinfo go out, and the
+                    // phone's switch follows (WearSensorClaim.startOnWatch,
+                    // stopOnWatch).
+                    val readsHere = remember(revision) { tk.glucodata.WearSensorClaim.isDirectRequested() }
+                    SwitchButton(
+                        checked = readsHere,
+                        onCheckedChange = { on ->
+                            if (on) tk.glucodata.WearSensorClaim.startOnWatch()
+                            else tk.glucodata.WearSensorClaim.stopOnWatch()
                         },
+                        label = { Text(stringResource(R.string.wear_read_on_watch)) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
     }
 }
-
-/**
- * The words on the button that turns "Direct sensor on watch" off; it does the
- * same either way. A sensor both devices read at once (a G7) never stopped
- * reading on the phone, so nothing goes back to it: the watch stops reading.
- */
-internal fun stopDirectLabel(readsAlongside: Boolean): Int =
-    if (readsAlongside) R.string.wear_stop_reading_on_watch else R.string.wear_return_sensor_to_phone
 
 /** A "Phone: …" / "Watch: …" line under a sensor; [alert] when the watch should be reading it and is not. */
 @Composable
