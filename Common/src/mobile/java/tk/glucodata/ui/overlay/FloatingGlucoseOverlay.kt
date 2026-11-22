@@ -183,7 +183,6 @@ fun FloatingGlucoseOverlay(
     val islandNudge by repository.islandNudge.collectAsState(initial = FloatingSettingsRepository.DEFAULT_ISLAND_NUDGE)
     val manualGap by repository.islandGap.collectAsState(initial = 0f)
     val useSubtleOutline by repository.useSubtleOutline.collectAsState(initial = false)
-    val isMirrored by repository.isMirrored.collectAsState(initial = false)
     val showNextReading by repository.showNextReading.collectAsState(initial = true)
     val layoutOrder by repository.layoutOrder.collectAsState(initial = FloatingLayoutOrder.DEFAULT)
 
@@ -454,8 +453,6 @@ fun FloatingGlucoseOverlay(
         FloatingOverlayContent(primary = "---", secondary = null, delta = null, trend = null)
     }
 
-    val effectiveOrder = if (isMirrored) layoutOrder.reversed() else layoutOrder
-
     if (isDynamicIsland) {
         // Clip and click the pill itself, never a wrapper around it: the island's offset
         // wrapper is taller by the offset spacer, so its corner radius clamps differently
@@ -477,7 +474,7 @@ fun FloatingGlucoseOverlay(
                 .then(dragModifier)
         ) {
             FloatingOverlayBody(
-                order = effectiveOrder,
+                order = layoutOrder,
                 mode = if (isVerticalIsland) FloatingOverlayMode.ISLAND_COLUMN else FloatingOverlayMode.ISLAND_ROW,
                 gap = finalGap,
                 style = pillStyle,
@@ -491,7 +488,7 @@ fun FloatingGlucoseOverlay(
         }
     } else {
         FloatingOverlayBody(
-            order = effectiveOrder,
+            order = layoutOrder,
             mode = FloatingOverlayMode.PILL,
             gap = 0.dp,
             style = pillStyle,

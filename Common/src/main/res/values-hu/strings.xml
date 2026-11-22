@@ -3512,8 +3512,6 @@ Az OK megnyomása létrehoz egy kapcsolatot ezen a telefonon, és megjelenít eg
     <string name="floating_accessibility_service_off">Kapcsolja be a(z) „%1$s” szolgáltatást a Kisegítő lehetőségek beállításaiban</string>
     <string name="floating_accessibility_service_label">JugglucoNG lebegő glükózérték</string>
     <string name="floating_accessibility_service_desc">Lehetővé teszi, hogy a lebegő glükózérték az állapotsor felett is koppintható legyen. Nem olvassa a képernyőt.</string>
-    <string name="floating_mirrored">Tükrözött elrendezés</string>
-    <string name="floating_mirrored_desc">Előbb a nyíl, aztán az érték</string>
     <string name="floating_restricted_settings_hint">Ha az Android „Korlátozott beállítás” üzenetet jelez: az Alkalmazásinformációban koppintson a ⋮ → Korlátozott beállítások engedélyezése lehetőségre, majd kapcsolja be a szolgáltatást.</string>
     <string name="floating_open_app_info">Alkalmazásinformáció</string>
     <string name="status_bar_icon_colored_title">Színes állapotsor-ikon</string>
