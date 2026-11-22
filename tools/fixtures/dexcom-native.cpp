@@ -2,6 +2,7 @@
 #include "dexcom/ScanIdentity.hpp"
 #include <cassert>
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cmath>
 #include <cstring>

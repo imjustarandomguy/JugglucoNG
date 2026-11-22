@@ -795,7 +795,10 @@ object CurrentDisplaySource {
         if (points.isEmpty()) {
             return listOf(candidate)
         }
-        if (ownRow != null && ownRow.timestamp != current.timeMillis) {
+        if (ownRow != null &&
+            ownRow.timestamp != current.timeMillis &&
+            (!preferIncomingSample || ownRow.timestamp / 60_000L == current.timeMillis / 60_000L)
+        ) {
             // The reading's own row under another time: one point at the live time, not
             // two. Nearest to the live time, the row moves there without passing another.
             return points.toMutableList().also {

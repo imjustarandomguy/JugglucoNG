@@ -3662,4 +3662,8 @@ Al pulsar OK se generará una conexión en este teléfono y se mostrará un cód
     <string name="floating_layout_camera_desc">Los elementos de arriba van antes de la cámara; el resto, después</string>
     <string name="floating_layout_hidden">Oculto</string>
     <string name="floating_layout_order_desc">Arrastra un asa para mover un elemento</string>
+    <string name="nightscout_wifi_only">Subir solo por Wi-Fi</string>
+    <string name="nightscout_wifi_only_desc">Retener las subidas con datos móviles</string>
+    <string name="nightscout_status_wifi_waiting">Esperando Wi-Fi</string>
+    <string name="status_waiting_for_first_reading">Esperando primera lectura</string>
 </resources>
