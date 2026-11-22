@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import tk.glucodata.ui.symbols.Symbols
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ButtonDefaults
@@ -97,7 +95,7 @@ internal fun JournalPresetDosingSection(
                     label = { Text(text = label, style = MaterialTheme.typography.labelLargeEmphasized) },
                     trailingIcon = {
                         Icon(
-                            imageVector = Icons.Default.Close,
+                            imageVector = Symbols.CloseFilled,
                             contentDescription = removeDescription,
                             modifier = Modifier.size(18.dp)
                         )
@@ -110,7 +108,7 @@ internal fun JournalPresetDosingSection(
                 label = { Text(stringResource(R.string.journal_reminder_add)) },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Add,
+                        imageVector = Symbols.AddFilled,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )

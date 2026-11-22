@@ -29,36 +29,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Autorenew
-import androidx.compose.material.icons.filled.AccessTime
-import androidx.compose.material.icons.filled.BluetoothSearching
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Devices
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SettingsEthernet
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Watch
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.TextButton
@@ -136,6 +106,7 @@ import tk.glucodata.ui.components.SettingsSwitchItem
 import tk.glucodata.ui.components.StyledSwitch
 import tk.glucodata.ui.components.cardShape
 import androidx.compose.foundation.text.KeyboardActions
+import tk.glucodata.ui.symbols.Symbols
 
 @Composable
 fun WatchSettingsScreen(navController: NavController) {
@@ -171,7 +142,7 @@ fun WatchSettingsScreen(navController: NavController) {
                 actions = {
                     IconButtonTooltip(stringResource(R.string.helpname)) {
                         IconButton(onClick = { showHelp = true }, shapes = IconButtonDefaults.shapes()) {
-                            Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.helpname))
+                            Icon(Symbols.InfoFilled, contentDescription = stringResource(R.string.helpname))
                         }
                     }
                 },
@@ -200,7 +171,7 @@ fun WatchSettingsScreen(navController: NavController) {
                     SettingsSwitchItem(
                         title = "Watchdrip",
                         checked = watchdripEnabled,
-                        icon = Icons.Filled.Watch,
+                        icon = Symbols.WatchFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.TOP,
                         onCheckedChange = {
@@ -213,7 +184,7 @@ fun WatchSettingsScreen(navController: NavController) {
                     SettingsSwitchItem(
                         title = "GadgetBridge",
                         checked = gadgetBridgeEnabled,
-                        icon = Icons.Filled.Hub,
+                        icon = Symbols.HubFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.BOTTOM,
                         onCheckedChange = {
@@ -235,7 +206,7 @@ fun WatchSettingsScreen(navController: NavController) {
                         title = "WearOS",
                         subtitle = if (gmsAvailable) stringResource(R.string.watch_wearos_enable_desc) else stringResource(R.string.watch_gms_unavailable),
                         checked = wearOsEnabled,
-                        icon = Icons.Filled.Watch,
+                        icon = Symbols.WatchFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         position = CardPosition.TOP,
                         onCheckedChange = { enabled ->
@@ -261,7 +232,7 @@ fun WatchSettingsScreen(navController: NavController) {
                         } else {
                             stringResource(R.string.watch_wearos_config_disabled)
                         },
-                        icon = Icons.Filled.Settings,
+                        icon = Symbols.SettingsFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         position = CardPosition.BOTTOM,
                         modifier = Modifier.alpha(if (wearConfigEnabled) 1f else 0.55f),
@@ -281,7 +252,7 @@ fun WatchSettingsScreen(navController: NavController) {
                         title = "Garmin Connect IQ",
                         subtitle = stringResource(R.string.watch_kerfstok_bridge),
                         checked = kerfstokEnabled,
-                        icon = Icons.Filled.CheckCircle,
+                        icon = Symbols.CheckCircleFilled,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         position = CardPosition.TOP,
                         onCheckedChange = { enabled ->
@@ -299,7 +270,7 @@ fun WatchSettingsScreen(navController: NavController) {
                         } else {
                             stringResource(R.string.watch_garmin_enable_hint)
                         },
-                        icon = Icons.Filled.Link,
+                        icon = Symbols.LinkFilled,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         position = CardPosition.BOTTOM,
                         modifier = Modifier.alpha(if (garminStatusEnabled) 1f else 0.55f),
@@ -322,7 +293,7 @@ fun WatchSettingsScreen(navController: NavController) {
                         title = stringResource(R.string.watch_forwarding_title),
                         searchAnchor = SettingsSearchAnchors.forRow(R.string.watch_forwarding_title),
                         subtitle = watchForwardingChoiceLabel(forwardingChoice),
-                        icon = Icons.AutoMirrored.Filled.Send,
+                        icon = Symbols.SendFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = if (intervalChosen) CardPosition.TOP else CardPosition.SINGLE,
                         animatePosition = true,
@@ -333,7 +304,7 @@ fun WatchSettingsScreen(navController: NavController) {
                             title = stringResource(R.string.watch_forwarding_interval_title),
                             searchAnchor = SettingsSearchAnchors.forRow(R.string.watch_forwarding_interval_title),
                             subtitle = pluralStringResource(R.plurals.watch_forwarding_minutes, forwardingMode, forwardingMode),
-                            icon = Icons.Default.Timer,
+                            icon = Symbols.TimerFilled,
                             iconTint = MaterialTheme.colorScheme.tertiary,
                             position = CardPosition.BOTTOM,
                             animatePosition = true,
@@ -657,7 +628,7 @@ fun WearOsConfigScreen(navController: NavController) {
                 actions = {
                     IconButtonTooltip(stringResource(R.string.refresh)) {
                         IconButton(onClick = { refreshNodes() }, enabled = !refreshingNodes, shapes = IconButtonDefaults.shapes()) {
-                            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh))
+                            Icon(Symbols.RefreshFilled, contentDescription = stringResource(R.string.refresh))
                         }
                     }
                 },
@@ -687,7 +658,7 @@ fun WearOsConfigScreen(navController: NavController) {
                     SettingsItem(
                         title = stringResource(R.string.watch_none_found),
                         subtitle = stringResource(R.string.watch_none_found_hint),
-                        icon = Icons.Filled.BluetoothSearching,
+                        icon = Symbols.BluetoothSearchingFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary
                     )
                 } else {
@@ -719,7 +690,7 @@ fun WearOsConfigScreen(navController: NavController) {
                             SettingsItem(
                                 title = node.displayName,
                                 subtitle = appSubtitle,
-                                icon = if (node.isGalaxy) Icons.Filled.Watch else Icons.Filled.Devices,
+                                icon = if (node.isGalaxy) Symbols.WatchFilled else Symbols.DevicesFilled,
                                 iconTint = when {
                                     !node.appInstalled -> MaterialTheme.colorScheme.error
                                     isSelected -> MaterialTheme.colorScheme.primary
@@ -735,7 +706,7 @@ fun WearOsConfigScreen(navController: NavController) {
                                 trailingContent = {
                                     if (isSelected) {
                                         Icon(
-                                            Icons.Filled.CheckCircle,
+                                            Symbols.CheckCircleFilled,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary
                                         )
@@ -771,7 +742,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         } else {
                             stringResource(R.string.wear_auto_sensor_switch_off_desc)
                         },
-                        icon = Icons.Filled.SwapHoriz,
+                        icon = Symbols.SwapHorizFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.TOP,
                         onClick = if (canChangeAutoSwitch) {
@@ -799,7 +770,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         } else {
                             stringResource(R.string.wear_direct_sensor_phone_desc)
                         }) + "\n" + handoffPhase,
-                        icon = if (directOnWatch) Icons.Filled.Watch else Icons.Filled.PhoneAndroid,
+                        icon = if (directOnWatch) Symbols.WatchFilled else Symbols.PhoneAndroidFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         position = CardPosition.MIDDLE,
                         onClick = if (selected != null && canSetDirect) {
@@ -827,7 +798,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         } else {
                             stringResource(R.string.watch_enter_amounts_off)
                         },
-                        icon = Icons.Filled.Edit,
+                        icon = Symbols.EditFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         position = CardPosition.BOTTOM,
                         onClick = if (selected != null && canSetNums) {
@@ -877,7 +848,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding,
                     ) {
-                        Icon(Icons.Filled.Sync, contentDescription = null)
+                        Icon(Symbols.SyncFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.watch_sync_now))
                     }
@@ -903,7 +874,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding,
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Icon(Symbols.RefreshFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.watch_restart_app))
                     }
@@ -929,7 +900,7 @@ fun WearOsConfigScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding,
                     ) {
-                        Icon(Icons.Filled.Settings, contentDescription = null)
+                        Icon(Symbols.SettingsFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.watch_send_defaults))
                     }
@@ -968,7 +939,7 @@ fun GarminStatusScreen(navController: NavController) {
                 actions = {
                     IconButtonTooltip(stringResource(R.string.refresh)) {
                         IconButton(onClick = { refreshSnapshot() }, shapes = IconButtonDefaults.shapes()) {
-                            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh))
+                            Icon(Symbols.RefreshFilled, contentDescription = stringResource(R.string.refresh))
                         }
                     }
                 },
@@ -996,35 +967,35 @@ fun GarminStatusScreen(navController: NavController) {
                     SettingsItem(
                         title = stringResource(R.string.garmin_sdk_ready),
                         subtitle = if (snapshot.sdkReady) stringResource(R.string.answer_yes) else stringResource(R.string.answer_no),
-                        icon = Icons.Filled.CheckCircle,
+                        icon = Symbols.CheckCircleFilled,
                         iconTint = if (snapshot.sdkReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         position = CardPosition.TOP
                     )
                     SettingsItem(
                         title = stringResource(R.string.garmin_registered),
                         subtitle = if (snapshot.registered) stringResource(R.string.answer_yes) else stringResource(R.string.answer_no),
-                        icon = Icons.Filled.Link,
+                        icon = Symbols.LinkFilled,
                         iconTint = if (snapshot.registered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                         position = CardPosition.MIDDLE
                     )
                     SettingsItem(
                         title = stringResource(R.string.garmin_last_send),
                         subtitle = "${formatEpoch(snapshot.sendTimeMs, stringResource(R.string.never))} · ${snapshot.sendStatus}",
-                        icon = Icons.Filled.Sync,
+                        icon = Symbols.SyncFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.MIDDLE
                     )
                     SettingsItem(
                         title = stringResource(R.string.garmin_last_received),
                         subtitle = formatEpoch(snapshot.receivedTimeMs, stringResource(R.string.never)),
-                        icon = Icons.Filled.CheckCircle,
+                        icon = Symbols.CheckCircleFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.MIDDLE
                     )
                     SettingsItem(
                         title = stringResource(R.string.garmin_queued_messages),
                         subtitle = if (snapshot.waitingQueue) stringResource(R.string.garmin_queue_waiting) else stringResource(R.string.garmin_queue_empty),
-                        icon = Icons.Filled.Hub,
+                        icon = Symbols.HubFilled,
                         iconTint = MaterialTheme.colorScheme.tertiary,
                         position = CardPosition.BOTTOM
                     )
@@ -1048,7 +1019,7 @@ fun GarminStatusScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Icon(Symbols.RefreshFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.reinit))
                     }
@@ -1066,7 +1037,7 @@ fun GarminStatusScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Sync, contentDescription = null)
+                        Icon(Symbols.SyncFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.sync))
                     }
@@ -1084,7 +1055,7 @@ fun GarminStatusScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Icon(Symbols.PlayArrowFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.sendqueue))
                     }
@@ -1093,7 +1064,7 @@ fun GarminStatusScreen(navController: NavController) {
                         searchAnchor = SettingsSearchAnchors.forRow(R.string.darkmode),
                         subtitle = stringResource(R.string.kerfstok_watch_ui),
                         checked = kerfstokDark,
-                        icon = Icons.Filled.Shield,
+                        icon = Symbols.ShieldFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         onCheckedChange = {
                             kerfstokDark = it
@@ -1111,7 +1082,7 @@ fun GarminStatusScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.OpenInNew, contentDescription = null)
+                        Icon(Symbols.OpenInNewFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.getkerfstok))
                     }
@@ -1121,7 +1092,7 @@ fun GarminStatusScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Info, contentDescription = null)
+                        Icon(Symbols.InfoFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.helpname))
                     }
@@ -1402,7 +1373,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                 actions = {
                     IconButtonTooltip(stringResource(R.string.helpname)) {
                         IconButton(onClick = { showHelp = true }, shapes = IconButtonDefaults.shapes()) {
-                            Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.helpname))
+                            Icon(Symbols.InfoFilled, contentDescription = stringResource(R.string.helpname))
                         }
                     }
                 },
@@ -1435,7 +1406,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         active = it
                         Natives.setusexdripwebserver(it)
                     },
-                    icon = Icons.Filled.Language
+                    icon = Symbols.LanguageFilled
                 )
             }
 
@@ -1466,7 +1437,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         IconButtonTooltip(if (showSecret) stringResource(R.string.hide_password) else stringResource(R.string.show_password)) {
                             IconButton(enabled = childEnabled, onClick = { showSecret = !showSecret }, shapes = IconButtonDefaults.shapes()) {
                                 Icon(
-                                    imageVector = if (showSecret) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                                    imageVector = if (showSecret) Symbols.VisibilityFilled else Symbols.VisibilityOffFilled,
                                     contentDescription = if (showSecret) stringResource(R.string.hide_password) else stringResource(R.string.show_password)
                                 )
                             }
@@ -1487,7 +1458,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         searchAnchor = SettingsSearchAnchors.forRow(R.string.localonly),
                         subtitle = stringResource(R.string.webserver_local_only_desc),
                         checked = localOnly,
-                        icon = Icons.Filled.Devices,
+                        icon = Symbols.DevicesFilled,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         position = CardPosition.TOP,
                         enabled = childEnabled,
@@ -1500,7 +1471,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                     SettingsItem(
                         title = stringResource(R.string.port),
                         searchAnchor = SettingsSearchAnchors.forRow(R.string.port),
-                        icon = Icons.Filled.SettingsEthernet,
+                        icon = Symbols.SettingsEthernetFilled,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         position = CardPosition.MIDDLE,
                         trailingContent = {
@@ -1528,14 +1499,14 @@ fun WebServerSettingsScreen(navController: NavController) {
                         title = stringResource(R.string.usessl),
                         searchAnchor = SettingsSearchAnchors.forRow(R.string.usessl),
                         subtitle = stringResource(R.string.webserver_https_subtitle),
-                        icon = Icons.Filled.Lock,
+                        icon = Symbols.LockFilled,
                         iconTint = MaterialTheme.colorScheme.primary,
                         position = CardPosition.MIDDLE,
                         onClick = if (childEnabled) ({ sslExpanded = !sslExpanded }) else null,
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
-                                    imageVector = if (sslExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                    imageVector = if (sslExpanded) Symbols.ExpandLessFilled else Symbols.ExpandMoreFilled,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1742,7 +1713,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Filled.AccessTime,
+                                        Symbols.AccessTimeFilled,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.secondary
                                     )
@@ -1818,7 +1789,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                                     onClick = { shareUrl(rootUrl) },
                                     shapes = IconButtonDefaults.shapes()
                                 ) {
-                                    Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.sendto))
+                                    Icon(Symbols.ShareFilled, contentDescription = stringResource(R.string.sendto))
                                 }
                             }
                         }
@@ -1864,7 +1835,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Shield, contentDescription = null)
+                        Icon(Symbols.ShieldFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.webserver_cert_export_certificate))
                     }
@@ -1875,7 +1846,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Key, contentDescription = null)
+                        Icon(Symbols.KeyFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.webserver_cert_export_with_key))
                     }
@@ -1909,7 +1880,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Key, contentDescription = null)
+                        Icon(Symbols.KeyFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.privatekey))
                     }
@@ -1919,7 +1890,7 @@ fun WebServerSettingsScreen(navController: NavController) {
                         shapes = ButtonDefaults.shapes(),
                         contentPadding = ButtonDefaults.ContentPadding
                     ) {
-                        Icon(Icons.Filled.Shield, contentDescription = null)
+                        Icon(Symbols.ShieldFilled, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.fullchain))
                     }

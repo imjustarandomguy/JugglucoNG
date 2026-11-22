@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Snooze
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -50,6 +47,7 @@ import tk.glucodata.glucosecomplication.trendArrowText
 import tk.glucodata.receivers.AlarmActionReceiver
 import tk.glucodata.ui.screens.glucoseColor
 import tk.glucodata.ui.theme.WearJugglucoTheme
+import tk.glucodata.ui.symbols.Symbols
 
 class AlarmActivity : ComponentActivity() {
     /** The phone snoozed or dismissed the alarm this screen shows (AlarmSilenceSync). */
@@ -320,7 +318,7 @@ private fun AlarmContent(
                 contentPadding = PaddingValues(horizontal = 4.dp),
                 label = {
                     AlarmActionLabel(
-                        icon = Icons.Rounded.Snooze,
+                        icon = Symbols.SnoozeFilled,
                         text = stringResource(R.string.snooze),
                     )
                 },
@@ -334,7 +332,7 @@ private fun AlarmContent(
                 contentPadding = PaddingValues(horizontal = 4.dp),
                 label = {
                     AlarmActionLabel(
-                        icon = Icons.Rounded.Close,
+                        icon = Symbols.CloseFilled,
                         text = stringResource(R.string.notification_dismiss_action_dismiss),
                     )
                 },

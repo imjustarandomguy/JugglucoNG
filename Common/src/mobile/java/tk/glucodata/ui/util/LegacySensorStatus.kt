@@ -5,18 +5,18 @@ import tk.glucodata.Natives
 import tk.glucodata.R
 import tk.glucodata.SensorBluetooth
 import tk.glucodata.SuperGattCallback
+import tk.glucodata.ui.DEXCOM_DEFAULT_WARMUP_MINUTES
+import tk.glucodata.ui.DEXCOM_SENSOR_KIND
 import tk.glucodata.ui.DexcomWarmupStatus
 import tk.glucodata.ui.dexcomWarmupStatus
 import tk.glucodata.ui.libre3WarmupMinutes
-
-private const val DEXCOM_SENSOR_KIND = 0x40
-
 fun getLegacyWarmupStatus(
     context: Context,
     sensorKind: Int,
     startMs: Long,
     nativeStatus: String,
     warmupMinutes: Int = 60,
+    dexcomWarmupMinutes: Int = DEXCOM_DEFAULT_WARMUP_MINUTES,
     gatt: SuperGattCallback? = null,
 ): String? {
     val nowMs = System.currentTimeMillis()
@@ -26,10 +26,13 @@ fun getLegacyWarmupStatus(
     if (sensorKind != DEXCOM_SENSOR_KIND) {
         return null
     }
+    if (nativeStatus.isNotBlank() && nativeStatus != "Warming Up") {
+        return null
+    }
     // While it lasts, the warmup frame's native status is contact too, also for a
     // sensor this process holds no callback for.
     val heard = nativeStatus.isNotBlank() || SensorBluetooth.heardFromSensor(gatt)
-    return when (val status = dexcomWarmupStatus(startMs, nowMs, heard, SensorBluetooth.lastReadingAt(gatt))) {
+    return when (val status = dexcomWarmupStatus(startMs, nowMs, heard, SensorBluetooth.lastReadingAt(gatt), dexcomWarmupMinutes)) {
         null -> null
         DexcomWarmupStatus.WaitingForConnection -> context.getString(R.string.status_waiting_for_connection)
         DexcomWarmupStatus.WaitingForFirstReading -> context.getString(R.string.status_waiting_for_first_reading)
@@ -45,5 +48,5 @@ fun getLegacyWarmupStatus(context: Context, gatt: SuperGattCallback, nativeStatu
     val sensorKind = runCatching { Natives.getLibreVersion(dataptr) }.getOrDefault(-1)
     val startMs = runCatching { Natives.getSensorStartmsec(dataptr) }.getOrDefault(0L)
     val warmupMinutes = runCatching { Natives.getSensorWarmupMinutes(dataptr) }.getOrDefault(0)
-    return getLegacyWarmupStatus(context, sensorKind, startMs, nativeStatus, warmupMinutes, gatt)
+    return getLegacyWarmupStatus(context, sensorKind, startMs, nativeStatus, warmupMinutes, warmupMinutes, gatt)
 }

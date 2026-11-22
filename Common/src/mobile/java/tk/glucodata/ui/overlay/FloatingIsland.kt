@@ -25,10 +25,10 @@ internal object FloatingIsland {
      * how far the cutout reaches in from that edge (where it ends), [across] its extent
      * across the edge (its height on the top or bottom, its width on the left or right), so
      * the middle is half of that back from where it ends. 0 when either is not known (no
-     * cutout).
+     * cutout) or inconsistent.
      */
     fun cutoutCentre(safeInset: Int, across: Int): Float =
-        if (safeInset <= 0 || across <= 0) 0f else safeInset - across / 2f
+        if (safeInset <= 0 || across <= 0) 0f else max(0f, safeInset - across / 2f)
 
     /** The cutout's extent along the docked [edge]: its width on the top or bottom, its height on the left or right. */
     fun alongEdge(edge: CutoutEdge, width: Int, height: Int): Int = if (isSide(edge)) height else width

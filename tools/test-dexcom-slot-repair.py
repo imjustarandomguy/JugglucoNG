@@ -115,6 +115,7 @@ struct SensorGlucoseData {
     vector<uint16_t> temppolls = vector<uint16_t>(4000);
     int getDexMaxSecs() const { return 10 * 86400; }
     int getmaxdexcount() const { return 2880; }
+    void healthConnectSlotFilled(int, int) {}
     Info *getinfo() { return &metadata; }
     const Info *getinfo() const { return &metadata; }
     uint32_t getstarttime() const { return metadata.starttime; }

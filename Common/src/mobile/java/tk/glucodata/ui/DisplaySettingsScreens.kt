@@ -30,13 +30,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CropSquare
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.ScatterPlot
-import androidx.compose.material.icons.filled.SettingsAccessibility
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,6 +60,8 @@ import androidx.navigation.NavController
 import tk.glucodata.R
 import tk.glucodata.accessibility.AODOverlayService
 import tk.glucodata.data.settings.FloatingSettingsRepository
+import tk.glucodata.ui.overlay.FloatingLayoutOrder
+import tk.glucodata.ui.overlay.rememberFloatingOverlayStyle
 import tk.glucodata.ui.components.AppTopBar
 import tk.glucodata.ui.components.CardPosition
 import tk.glucodata.ui.components.MasterSwitchCard
@@ -78,6 +73,7 @@ import tk.glucodata.ui.components.SettingsControlsCard
 import tk.glucodata.ui.components.SettingsSlider
 import tk.glucodata.ui.viewmodel.DashboardViewModel
 import kotlin.math.roundToInt
+import tk.glucodata.ui.symbols.Symbols
 
 private val screenHorizontalPadding = 16.dp
 private val aodPositionOptions = listOf(
@@ -115,6 +111,7 @@ fun NotificationSettingsScreen(
     var showIob by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_show_iob", false)) }
     var showCob by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_show_cob", false)) }
     var showDelta by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_show_delta", false)) }
+    var widgetShowDelta by rememberSaveable { mutableStateOf(prefs.getBoolean(tk.glucodata.DisplayDeltaSource.WIDGET_ENABLED, false)) }
     var iobCobRiskColored by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_iob_cob_risk_colored", false)) }
     var iobRiskWithoutCob by rememberSaveable { mutableStateOf(prefs.getBoolean("notification_iob_risk_without_cob", false)) }
     var statusIconScale by rememberSaveable { mutableFloatStateOf(prefs.getFloat("notification_status_icon_scale", 1.0f)) }
@@ -134,6 +131,7 @@ fun NotificationSettingsScreen(
             .putBoolean("notification_show_iob", showIob)
             .putBoolean("notification_show_cob", showCob)
             .putBoolean("notification_show_delta", showDelta)
+            .putBoolean(tk.glucodata.DisplayDeltaSource.WIDGET_ENABLED, widgetShowDelta)
             .putBoolean("notification_iob_cob_risk_colored", iobCobRiskColored)
             .putBoolean("notification_iob_risk_without_cob", iobRiskWithoutCob)
             .putFloat("notification_status_icon_scale", statusIconScale)
@@ -315,6 +313,17 @@ fun NotificationSettingsScreen(
                 searchAnchor = SettingsSearchAnchors.NOTIFICATION_DELTA
             )
             SettingsSwitchItem(
+                title = stringResource(R.string.widget_show_delta_title),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.widget_show_delta_title),
+                checked = widgetShowDelta,
+                onCheckedChange = {
+                    widgetShowDelta = it
+                    save()
+                    tk.glucodata.GlucoseUpdateBroadcaster.sendNow(context)
+                },
+                position = CardPosition.MIDDLE
+            )
+            SettingsSwitchItem(
                 title = stringResource(R.string.notification_show_iob_title),
                 subtitle = stringResource(R.string.notification_show_iob_desc),
                 checked = showIob,
@@ -468,7 +477,7 @@ fun DisplayAndColorSettingsScreen(
             SettingsItem(
                 title = stringResource(R.string.preview_window_title),
                 subtitle = previewWindowLabel,
-                icon = Icons.Default.CropSquare,
+                icon = Symbols.CropSquareFilled,
                 iconTint = MaterialTheme.colorScheme.primary,
                 position = CardPosition.TOP,
                 searchAnchor = SettingsSearchAnchors.PREVIEW_WINDOW,
@@ -478,7 +487,7 @@ fun DisplayAndColorSettingsScreen(
                 title = stringResource(R.string.chart_readings_style_title),
                 searchAnchor = SettingsSearchAnchors.forRow(R.string.chart_readings_style_title),
                 subtitle = chartReadingsStyleLabel,
-                icon = Icons.Default.ScatterPlot,
+                icon = Symbols.ShowChartFilled,
                 iconTint = MaterialTheme.colorScheme.primary,
                 position = CardPosition.MIDDLE,
                 onClick = { showChartReadingsStyleDialog = true }
@@ -548,6 +557,7 @@ fun FloatingGlucoseSettingsScreen(
     val fontSource by repository.fontSource.collectAsStateWithLifecycle(initialValue = "APP")
     val fontSize by repository.fontSize.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_FONT_SIZE)
     val fontWeight by repository.fontWeight.collectAsStateWithLifecycle(initialValue = "REGULAR")
+    val showDelta by repository.showDelta.collectAsStateWithLifecycle(initialValue = false)
     val showArrow by repository.showArrow.collectAsStateWithLifecycle(initialValue = true)
     val tapShowsDetails by repository.tapShowsDetails.collectAsStateWithLifecycle(initialValue = true)
     val detailsOpacity by repository.detailsOpacity.collectAsStateWithLifecycle(initialValue = FloatingSettingsRepository.DEFAULT_DETAILS_OPACITY)
@@ -561,6 +571,8 @@ fun FloatingGlucoseSettingsScreen(
     val useSubtleOutline by repository.useSubtleOutline.collectAsStateWithLifecycle(initialValue = false)
     val isMirrored by repository.isMirrored.collectAsStateWithLifecycle(initialValue = false)
     val showNextReading by repository.showNextReading.collectAsStateWithLifecycle(initialValue = true)
+    val layoutOrder by repository.layoutOrder.collectAsStateWithLifecycle(initialValue = FloatingLayoutOrder.DEFAULT)
+    val unit by viewModel.unit.collectAsStateWithLifecycle()
     var hasPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
@@ -588,7 +600,7 @@ fun FloatingGlucoseSettingsScreen(
                     viewModel.toggleFloatingGlucose(enabled)
                 }
             },
-            icon = Icons.Default.Layers,
+            icon = Symbols.LayersFilled,
             modifier = Modifier.padding(horizontal = screenHorizontalPadding)
         )
 
@@ -667,9 +679,9 @@ fun FloatingGlucoseSettingsScreen(
                 SettingsControlsCard(position = CardPosition.BOTTOM) {
                     SettingsSlider(
                         title = stringResource(R.string.offset),
-                        valueText = stringResource(R.string.dp_value, islandNudge.toInt()),
+                        valueText = stringResource(R.string.dp_value, islandNudge.roundToInt()),
                         value = islandNudge,
-                        onValueChange = { repository.setIslandNudge(it) },
+                        onValueChange = { repository.setIslandNudge(it.roundToInt().toFloat()) },
                         range = -20f..20f,
                         steps = 39
                     )
@@ -704,6 +716,28 @@ fun FloatingGlucoseSettingsScreen(
                 )
             }
         }
+
+        FloatingLayoutEditor(
+            order = layoutOrder,
+            island = isDynamicIsland,
+            gap = manualGap,
+            showSecondary = showSecondary,
+            showArrow = showArrow,
+            showDelta = showDelta,
+            style = rememberFloatingOverlayStyle(
+                isTransparent = isTransparent,
+                darkBackdrop = isAppInDarkTheme(),
+                fontSource = fontSource,
+                fontSize = fontSize,
+                fontWeightSetting = fontWeight,
+                cornerRadius = cornerRadius,
+                opacity = opacity,
+                useSubtleOutline = useSubtleOutline,
+            ),
+            mmol = unit == "mmol/L",
+            onOrderChange = repository::setLayoutOrder,
+            modifier = Modifier.padding(start = screenHorizontalPadding, end = screenHorizontalPadding, top = 16.dp)
+        )
 
         // The two go as a pair, with the details card's opacity between them while the card is on.
         Column(
@@ -836,6 +870,13 @@ fun FloatingGlucoseSettingsScreen(
                 subtitle = stringResource(R.string.floating_next_reading_desc),
                 checked = showNextReading,
                 onCheckedChange = { repository.setShowNextReading(it) },
+                position = CardPosition.MIDDLE
+            )
+            SettingsSwitchItem(
+                title = stringResource(R.string.display_show_delta_title),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.display_show_delta_title),
+                checked = showDelta,
+                onCheckedChange = { repository.setShowDelta(it) },
                 position = CardPosition.BOTTOM
             )
         }
@@ -891,6 +932,7 @@ fun AodSettingsScreen(navController: NavController) {
     var showChart by rememberSaveable { mutableStateOf(prefs.getBoolean("aod_show_chart", true)) }
     var showArrow by rememberSaveable { mutableStateOf(prefs.getBoolean("aod_show_arrow", true)) }
     var showSecondary by rememberSaveable { mutableStateOf(prefs.getBoolean("aod_show_secondary", false)) }
+    var showDelta by rememberSaveable { mutableStateOf(prefs.getBoolean(tk.glucodata.DisplayDeltaSource.AOD_ENABLED, false)) }
     var arrowScale by rememberSaveable { mutableFloatStateOf(prefs.getFloat("aod_arrow_scale", 1.0f)) }
     var positions by rememberSaveable { mutableStateOf(prefs.getStringSet("aod_positions", setOf("TOP")) ?: setOf("TOP")) }
     var alignment by rememberSaveable { mutableStateOf(prefs.getString("aod_alignment", "CENTER") ?: "CENTER") }
@@ -913,6 +955,7 @@ fun AodSettingsScreen(navController: NavController) {
             .putBoolean("aod_show_chart", showChart)
             .putBoolean("aod_show_arrow", showArrow)
             .putBoolean("aod_show_secondary", showSecondary)
+            .putBoolean(tk.glucodata.DisplayDeltaSource.AOD_ENABLED, showDelta)
             .putFloat("aod_arrow_scale", arrowScale)
             .putStringSet("aod_positions", positions)
             .putString("aod_alignment", alignment)
@@ -941,7 +984,7 @@ fun AodSettingsScreen(navController: NavController) {
             onCheckedChange = {
                 context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             },
-            icon = Icons.Default.SettingsAccessibility,
+            icon = Symbols.SettingsAccessibilityFilled,
             modifier = Modifier.padding(horizontal = screenHorizontalPadding)
         )
 
@@ -958,7 +1001,7 @@ fun AodSettingsScreen(navController: NavController) {
                 )
             },
             searchAnchor = SettingsSearchAnchors.AOD_LOCK_SCREEN,
-            icon = Icons.Default.Lock,
+            icon = Symbols.LockFilled,
             position = CardPosition.SINGLE,
             modifier = Modifier.padding(horizontal = screenHorizontalPadding)
         )
@@ -1054,6 +1097,17 @@ fun AodSettingsScreen(navController: NavController) {
                 onCheckedChange = { showSecondary = it; save() },
                 position = CardPosition.MIDDLE
             )
+            SettingsSwitchItem(
+                title = stringResource(R.string.display_show_delta_title),
+                searchAnchor = SettingsSearchAnchors.forRow(R.string.display_show_delta_title),
+                checked = showDelta,
+                onCheckedChange = {
+                    showDelta = it
+                    save()
+                    context.sendBroadcast(Intent(AODOverlayService.ACTION_IMMEDIATE_REFRESH).setPackage(context.packageName))
+                },
+                position = CardPosition.MIDDLE
+            )
             SettingsControlsCard(position = CardPosition.BOTTOM) {
                 SettingsSlider(
                     title = stringResource(R.string.opacity_label),
@@ -1132,7 +1186,7 @@ private fun WarningPanel(text: String, modifier: Modifier = Modifier) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+            Icon(Symbols.WarningFilled, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
             Spacer(modifier = Modifier.width(12.dp))
             Text(text, color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodyMedium)
         }

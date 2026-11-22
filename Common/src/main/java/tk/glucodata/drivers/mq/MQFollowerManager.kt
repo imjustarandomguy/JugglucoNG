@@ -155,6 +155,8 @@ class MQFollowerManager(
 
     override val batteryPercent: Int = -1
 
+    override fun usesBluetoothDiscovery(): Boolean = false
+
     override fun connectDevice(delayMillis: Long): Boolean {
         stop = false
         scheduleRefresh(delayMillis.coerceAtLeast(0L))

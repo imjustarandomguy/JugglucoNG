@@ -27,10 +27,12 @@ class FloatingIslandTests {
     }
 
     @Test
-    fun anUnknownCutoutHasNoMiddle() {
+    fun anUnknownOrInconsistentCutoutHasNoMiddle() {
         assertEquals(0f, FloatingIsland.cutoutCentre(0, 0), 0f)
         assertEquals(0f, FloatingIsland.cutoutCentre(0, 64), 0f)
         assertEquals(0f, FloatingIsland.cutoutCentre(111, 0), 0f)
+        // A clipped or malformed inset shallower than half the rect's extent never goes negative.
+        assertEquals(0f, FloatingIsland.cutoutCentre(20, 64), 0f)
     }
 
     @Test

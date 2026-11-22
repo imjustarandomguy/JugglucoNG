@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
+import tk.glucodata.ui.overlay.FloatingLayoutItem
+import tk.glucodata.ui.overlay.FloatingLayoutOrder
 import tk.glucodata.ui.overlay.OverlayPosition
 
 // Using SharedPreferences for simplicity as I don't want to introduce DataStore dependency if not already prevalent/configured for this specific prefs file
@@ -40,6 +42,7 @@ class FloatingSettingsRepository(context: Context) {
         const val KEY_SUBTLE_OUTLINE = "floating_subtle_outline"
         const val KEY_MIRRORED = "floating_mirrored" // true = arrow first, value second
         const val KEY_NEXT_READING = "floating_next_reading" // ring around the trend arrow, filling to the next reading
+        const val KEY_LAYOUT_ORDER = "floating_layout_order" // see FloatingLayoutOrder
 
         const val DEFAULT_FONT_SIZE = 14f
         const val DEFAULT_BACKGROUND_OPACITY = 1.0f
@@ -65,6 +68,8 @@ class FloatingSettingsRepository(context: Context) {
     val fontSource: Flow<String> = prefFlow(KEY_FONT_SOURCE, "APP")
     val fontSize: Flow<Float> = prefFlow(KEY_FONT_SIZE, DEFAULT_FONT_SIZE)
     val fontWeight: Flow<String> = prefFlow(KEY_FONT_WEIGHT, "REGULAR")
+    val showDelta: Flow<Boolean> = prefFlow(tk.glucodata.DisplayDeltaSource.FLOATING_ENABLED, false)
+    val deltaIntervalMinutes: Flow<Int> = prefFlow(tk.glucodata.DisplayDeltaSource.INTERVAL, tk.glucodata.GlucoseDelta.DEFAULT_INTERVAL_MINUTES)
     val showArrow: Flow<Boolean> = prefFlow(KEY_SHOW_ARROW, true)
     val cornerRadius: Flow<Float> = prefFlow(KEY_CORNER_RADIUS, 28f)
     val backgroundOpacity: Flow<Float> = prefFlow(KEY_OPACITY, DEFAULT_BACKGROUND_OPACITY)
@@ -78,6 +83,8 @@ class FloatingSettingsRepository(context: Context) {
     val showNextReading: Flow<Boolean> = prefFlow(KEY_NEXT_READING, true)
     /** The app-wide "colour value by range" setting. */
     val valueRangeColors: Flow<Boolean> = prefFlow(tk.glucodata.GlucoseValueTone.PREF_VALUE_RANGE_COLORS, false)
+    val layoutOrder: Flow<List<FloatingLayoutItem>> =
+        prefFlow(KEY_LAYOUT_ORDER, FloatingLayoutOrder.serialize(FloatingLayoutOrder.DEFAULT)).map(FloatingLayoutOrder::parse)
 
 
 
@@ -97,9 +104,12 @@ class FloatingSettingsRepository(context: Context) {
     fun setFontSource(source: String) = prefs.edit().putString(KEY_FONT_SOURCE, source).apply()
     fun setFontSize(size: Float) = prefs.edit().putFloat(KEY_FONT_SIZE, size).apply()
     fun setFontWeight(weight: String) = prefs.edit().putString(KEY_FONT_WEIGHT, weight).apply()
+    fun setShowDelta(show: Boolean) = prefs.edit().putBoolean(tk.glucodata.DisplayDeltaSource.FLOATING_ENABLED, show).apply()
     fun setShowArrow(show: Boolean) = prefs.edit().putBoolean(KEY_SHOW_ARROW, show).apply()
     fun setCornerRadius(radius: Float) = prefs.edit().putFloat(KEY_CORNER_RADIUS, radius).apply()
     fun setBackgroundOpacity(opacity: Float) = prefs.edit().putFloat(KEY_OPACITY, opacity).apply()
+    fun setLayoutOrder(order: List<FloatingLayoutItem>) =
+        prefs.edit().putString(KEY_LAYOUT_ORDER, FloatingLayoutOrder.serialize(order)).apply()
     
     fun savePosition(position: OverlayPosition) {
         prefs.edit()

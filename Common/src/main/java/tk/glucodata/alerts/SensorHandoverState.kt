@@ -3,15 +3,17 @@ package tk.glucodata.alerts
 /**
  * One sensor as the handover evaluation sees it. [endMs] is the official end
  * (start + wear duration; the expiry alarm may count down to a later expected
- * end, see [sensorExpiryAlarmEndMs]); 0 means
- * unknown. [hasRecentReading] is evaluated lazily because it needs a history
- * lookup - the decision only asks for it on the chosen successor and, while
- * that one has none, on the expired primary.
+ * end, see [sensorExpiryAlarmEndMs]); 0 means unknown. [graceEndMs] is the end
+ * of the grace period the sensor keeps reading through after [endMs] (Dexcom,
+ * Libre 2: 12 h), 0 when it has none. [hasRecentReading] is evaluated lazily
+ * because it needs a history lookup - the decision only asks for it when the
+ * answer matters.
  */
 internal data class HandoverSensor(
     val serial: String,
     val startMs: Long,
     val endMs: Long,
+    val graceEndMs: Long = 0L,
     val hasRecentReading: () -> Boolean = { false }
 )
 
@@ -65,8 +67,10 @@ internal interface SensorHandoverStore {
  * native dependencies so it is unit-testable.
  *
  * Trigger: the primary sensor's official end time has passed and a successor
- * exists. While the old sensor still delivers readings, the switch waits for
- * the successor's first reading. Once the old sensor is silent, a successor
+ * exists. A sensor with a grace period stays the source while it still
+ * delivers readings in it; while the old sensor still delivers readings, the
+ * switch waits for the successor's first reading (or until the grace period
+ * ends and the old sensor goes silent). Once the old sensor is silent, a successor
  * that is still warming up is switched to regardless (it is the only source);
  * the caller shows an informational notification for that case.
  *
@@ -92,6 +96,8 @@ internal class SensorHandoverState(
         // Unknown end (0) never triggers; the expiry has to be positively known.
         if (primary.endMs <= 0L || primary.endMs > nowMs) return HandoverDecision.None
         if (store.isHandled(primary.serial, primary.endMs)) return HandoverDecision.None
+        // Still reading in its grace period: nothing has ended yet.
+        if (primary.graceEndMs > nowMs && primary.hasRecentReading()) return HandoverDecision.None
 
         // A successor must not itself be expired; sensors with unknown ends stay
         // candidates (they are in the active list, so they are running).
@@ -167,5 +173,26 @@ internal class SensorHandoverState(
          */
         const val WARMUP_DURATION_MS = 60L * 60_000L
         const val MISSED_READING_GRACE_MS = WARMUP_DURATION_MS
+
+        /**
+         * The longest stretch past the official end taken as a grace period:
+         * Dexcom's documented 12 h, which Libre 2 has too. Longer native
+         * estimates (Sibionics) are wear extensions, not a grace period, and
+         * keep the switch at the official end.
+         */
+        const val MAX_GRACE_MS = 12L * 60 * 60_000L
+
+        /**
+         * The grace period's end for [HandoverSensor.graceEndMs], 0 when there
+         * is none. [hasGracePeriod] is the sensor kind's own answer: native's
+         * expected end adds 12 h to every kind it does not special-case
+         * (AiDEX and other managed shells too), so the time gap alone does not
+         * say the sensor keeps reading past its official end.
+         */
+        fun graceEnd(hasGracePeriod: Boolean, officialEndMs: Long, expectedEndMs: Long): Long {
+            if (!hasGracePeriod) return 0L
+            if (officialEndMs <= 0L || expectedEndMs <= officialEndMs) return 0L
+            return if (expectedEndMs - officialEndMs <= MAX_GRACE_MS) expectedEndMs else 0L
+        }
     }
 }

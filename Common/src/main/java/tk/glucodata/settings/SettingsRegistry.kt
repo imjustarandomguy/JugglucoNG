@@ -231,7 +231,13 @@ object SettingsRegistry {
         SettingScope.MIRRORED, SettingBackup.INCLUDED, minValue = 0f, maxValue = 2f,
     )
 
+    val DELTA_INTERVAL_MINUTES = SettingDefinition(
+        tk.glucodata.DisplayDeltaSource.INTERVAL, SettingType.INT, tk.glucodata.GlucoseDelta.DEFAULT_INTERVAL_MINUTES,
+        SettingScope.MIRRORED, SettingBackup.INCLUDED, minValue = 1f, maxValue = 5f,
+    )
+
     val definitions: List<SettingDefinition> = listOf(
+        DELTA_INTERVAL_MINUTES,
         SMOOTHING_MINUTES,
         SMOOTHING_GRAPH_ONLY,
         SMOOTHING_COLLAPSE_CHUNKS,
