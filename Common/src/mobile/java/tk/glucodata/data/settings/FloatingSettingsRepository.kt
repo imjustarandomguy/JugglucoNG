@@ -34,8 +34,9 @@ class FloatingSettingsRepository(context: Context) {
         const val KEY_OPACITY = "floating_opacity" // Float 0..1
         const val KEY_DYNAMIC_ISLAND = "floating_dynamic_island"
         const val KEY_ABOVE_STATUS_BAR = "floating_above_status_bar" // drawn as an accessibility overlay
-        // dp, -20..20, 0 centres the pill on the cutout. Replaces the old "floating_island_vertical_offset"
-        // (the pill's distance from the edge), whose value meant something else and is ignored.
+        // Absolute distance from the edge when display cutout geometry is unavailable.
+        const val KEY_ISLAND_MANUAL_OFFSET = "floating_island_vertical_offset"
+        // Signed adjustment from automatic cutout centring.
         const val KEY_ISLAND_NUDGE = "floating_island_nudge"
         const val KEY_ISLAND_GAP = "floating_island_gap"
         const val KEY_NOTIFICATION_DOT = "floating_notification_dot"
@@ -48,6 +49,7 @@ class FloatingSettingsRepository(context: Context) {
         // The details card's background from before it could be set (alpha 0xF2).
         const val DEFAULT_DETAILS_OPACITY = 0.95f
         const val DEFAULT_ISLAND_NUDGE = 0f
+        const val DEFAULT_ISLAND_MANUAL_OFFSET = 8f
     }
 
     // Modern Flow wrappers for SharedPreferences using a helper or manual callbackChannel would be best,
@@ -75,6 +77,7 @@ class FloatingSettingsRepository(context: Context) {
     val isDynamicIslandEnabled: Flow<Boolean> = prefFlow(KEY_DYNAMIC_ISLAND, false)
     val isAboveStatusBar: Flow<Boolean> = prefFlow(KEY_ABOVE_STATUS_BAR, false)
     val islandNudge: Flow<Float> = prefFlow(KEY_ISLAND_NUDGE, DEFAULT_ISLAND_NUDGE)
+    val islandManualOffset: Flow<Float> = prefFlow(KEY_ISLAND_MANUAL_OFFSET, DEFAULT_ISLAND_MANUAL_OFFSET)
     val islandGap: Flow<Float> = prefFlow(KEY_ISLAND_GAP, 0f) // 0 implies auto/default
     val showNotificationDot: Flow<Boolean> = prefFlow(KEY_NOTIFICATION_DOT, true)
     val useSubtleOutline: Flow<Boolean> = prefFlow(KEY_SUBTLE_OUTLINE, false)
@@ -93,6 +96,7 @@ class FloatingSettingsRepository(context: Context) {
     fun setDynamicIslandEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_DYNAMIC_ISLAND, enabled).apply()
     fun setAboveStatusBar(above: Boolean) = prefs.edit().putBoolean(KEY_ABOVE_STATUS_BAR, above).apply()
     fun setIslandNudge(nudge: Float) = prefs.edit().putFloat(KEY_ISLAND_NUDGE, nudge).apply()
+    fun setIslandManualOffset(offset: Float) = prefs.edit().putFloat(KEY_ISLAND_MANUAL_OFFSET, offset).apply()
     fun setIslandGap(gap: Float) = prefs.edit().putFloat(KEY_ISLAND_GAP, gap).apply()
     fun setShowNotificationDot(show: Boolean) = prefs.edit().putBoolean(KEY_NOTIFICATION_DOT, show).apply()
     fun setUseSubtleOutline(use: Boolean) = prefs.edit().putBoolean(KEY_SUBTLE_OUTLINE, use).apply()
