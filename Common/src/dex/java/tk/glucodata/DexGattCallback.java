@@ -96,6 +96,7 @@ private long publishedSampleMs;
 private static final String DEX_CONNECT_PREFS = "dex_connect";
 private static final String DIRECT_CONNECT_UNREACHABLE_PREFIX = "direct_unreachable_";
 private volatile boolean directConnectUnreachable;
+private volatile String persistedDeviceName;
 private BluetoothGatt connectedAttempt;
 // When connectedAttempt came up. A session takes seconds, a first pairing about
 // half a minute; this is the minute the base class gives a connect just issued.
@@ -124,7 +125,7 @@ private int authSlot;
             mActiveDeviceAddress = Natives.getDeviceAddress(dataptr, false);
         directConnectUnreachable = Applic.app.getSharedPreferences(DEX_CONNECT_PREFS, Context.MODE_PRIVATE)
                 .getBoolean(DIRECT_CONNECT_UNREACHABLE_PREFIX + SerialNumber, false);
-//        ownDeviceName=Natives.dexGetDeviceName(dataptr);
+        persistedDeviceName = dataptr != 0L ? Natives.dexGetDeviceName(dataptr) : null;
         {if(doLog) {Log.d(LOG_ID, SerialNumber + " DexGattCallback(..)");};};
         showtime=6*60*1000L;
     }
@@ -141,15 +142,17 @@ private int authSlot;
             return mDeviceName;
         final var device = mActiveBluetoothDevice;
         if (device != null) {
-            var name = device.getName();
-            if (name != null)
-                return name;
+            try {
+                var name = device.getName();
+                if (name != null)
+                    return name;
+            } catch (SecurityException ignored) {
+                // Fall through to the persisted name when BLUETOOTH_CONNECT is missing.
+            }
         }
-        if (dataptr != 0L) {
-            var saved = Natives.dexGetDeviceName(dataptr);
-            if (saved != null && !saved.isEmpty())
-                return saved;
-        }
+        final var saved = persistedDeviceName;
+        if (saved != null && !saved.isEmpty())
+            return saved;
         return super.mygetDeviceName();
     }
 
@@ -813,6 +816,7 @@ private void saveDeviceName() {
          {if(doLog) {Log.i(LOG_ID,"deviceName ="+aname);};};
          if(aname!=null) {
              Natives.dexSaveDeviceName(dataptr,aname);
+             persistedDeviceName = aname;
              this.known=true;
              SensorDisplayName.pushIfChanged();
              }
