@@ -27,3 +27,4 @@ fix/dexcom-warmup-signal-loss
 fix/sensor-handover-first-reading
 feat/quick-treatment-entry
 fix/dexcom-fresh-pairing-keys
+fix/wear-sensor-display-names
