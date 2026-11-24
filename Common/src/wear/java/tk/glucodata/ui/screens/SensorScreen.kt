@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
@@ -179,9 +180,6 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                 val details = remember(row, revision, now / SENSOR_TICK_MS) {
                     loadWearSensorPresentation(row.serial, now)
                 }
-                val label = remember(row, revision, details.serial) {
-                    loadSensorListLabel(row.serial, details.serial)
-                }
                 val displayed = displayedSensor != null &&
                     tk.glucodata.SensorIdentity.matches(displayedSensor, row.serial)
                 // The check is the phone's sensor-card control: it shows or
@@ -232,11 +230,12 @@ fun SensorScreen(onCalibrate: () -> Unit, onOpenSettings: (() -> Unit)? = null) 
                             )
                         }
                         Text(
-                            text = label,
+                            text = details.displayName,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (selectable && !row.isShown) identityColor.copy(alpha = 0.6f) else identityColor,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                     if (forgetTarget == row.serial) {
