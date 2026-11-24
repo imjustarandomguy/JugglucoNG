@@ -113,6 +113,7 @@ object WearSync2 {
                 buf.put(serialBytes.size.toByte())
                 buf.put(serialBytes)
                 MessageSender.sendSyncMessage(WearMessagePath.SYNC2_REMOVE, buf.array())
+                SensorDisplayName.pushIfChanged()
                 if (doLog) Log.i(LOG_ID, "pushed removal of $serial")
             }.onFailure { Log.stack(LOG_ID, "pushRemoval", it) }
         }
@@ -387,6 +388,7 @@ object WearSync2 {
             if (Applic.isWearable && !SensorOwnershipRuntime.readsLocally(serial)) return@forEach
             serveSensorSince(serial, fromSec, unlessWatchReadIt = bothRead)
         }
+        if (!Applic.isWearable) SensorDisplayName.pushIfChanged()
     }
 
     /**

@@ -53,7 +53,7 @@ methods = '\n'.join(method(s) for s in [
     'private    void getdata(', 'private long warmupMsec(', 'private boolean isWarmupReading(', 'private static String hexBytes(',
     'private void askGlucoseAgain(',
     'private void docmd0(', 'private void requestAuth(', 'public int getAuthSlot(',
-    'public synchronized boolean changeAuthSlot(',
+    'public synchronized boolean changeAuthSlot(', 'public String mygetDeviceName(',
 ])
 fields = source[source.index('private static final long DEXCOM_WARMUP_MSEC'):source.index('    public DexGattCallback(')]
 phase_start = source.index('private int phase =')
@@ -89,6 +89,7 @@ class SuperGattCallback {
     static final int GATT_SUCCESS=0;
     BluetoothGattCharacteristic[] charact={new BluetoothGattCharacteristic(),new BluetoothGattCharacteristic(),new BluetoothGattCharacteristic(),new BluetoothGattCharacteristic()};
     String SerialNumber, mActiveDeviceAddress, handshake;
+    volatile String mDeviceName;
     long[] constatchange={0,0}, wrotepass={0,0};
     BluetoothGatt mBluetoothGatt;BluetoothDevice mActiveBluetoothDevice=new BluetoothDevice();
     int directCalls, closes, rescans, disconnects, dataCommands, scans;
@@ -143,7 +144,7 @@ class SuperGattCallback {
     static PendingIntent getBroadcast(Context c,int id,Intent i,int flags){return new PendingIntent(i.action);}
 }
 class BluetoothProfile {static final int STATE_CONNECTED=2,STATE_DISCONNECTED=0;}
-class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;String address=Natives.stored;int getBondState(){return bondState;}String getAddress(){return address;}boolean createBond(){return true;}}
+class BluetoothDevice {static final int BOND_BONDING=11;static int bondState=12;String address=Natives.stored;String name;boolean denyConnect;int getBondState(){return bondState;}String getAddress(){return address;}boolean createBond(){return true;}String getName(){if(denyConnect)throw new SecurityException("no BLUETOOTH_CONNECT");return name;}}
 class BluetoothGatt {static final int GATT_CONNECTION_TIMEOUT=147,GATT_SUCCESS=0;BluetoothDevice getDevice(){return new BluetoothDevice();}int discoveries;boolean discoveryResult=true;boolean discoverServices(){if(!Thread.holdsLock(PowerManager.owner))throw new AssertionError("discovery outside callback monitor");discoveries++;return discoveryResult;}}
 class BluetoothGattCharacteristic {static final int WRITE_TYPE_DEFAULT=2;void setWriteType(int t){}UUID getUuid(){return UUID.randomUUID();}}
 class BluetoothGattDescriptor {BluetoothGattCharacteristic characteristic;BluetoothGattDescriptor(BluetoothGattCharacteristic c){characteristic=c;}BluetoothGattCharacteristic getCharacteristic(){return characteristic;}byte[] getValue(){return new byte[]{0};}UUID getUuid(){return UUID.randomUUID();}}
@@ -164,8 +165,9 @@ class Natives {
     static int warmupMinutes=30;
     static int getSensorWarmupMinutes(long ptr){return warmupMinutes;}
     static void dexEndBackfill(long ptr){}
+    static String savedDeviceName;
     static String getDeviceAddress(long p,boolean fresh){return fresh?null:stored;}
-    static String dexGetDeviceName(long p){return null;}
+    static String dexGetDeviceName(long p){return savedDeviceName;}
     static long lastglucosetime(){return lastGlucose<0?System.currentTimeMillis():lastGlucose;}
     static boolean authenticated=true;
     static boolean isAuthenticated(long p){return authenticated;}static boolean dexbackfill(long p,byte[] v){return false;}
@@ -808,6 +810,21 @@ public class DexGattCallback extends SuperGattCallback {
         challengeReplies();
         unbondedG7ConnectsLikeAFirstPairing();duplicateCallbackKeepsTheBond();
         unbondedG7DialledOnlyWithTheScannedDevice();bondBackAfterItsRemoval();lossAlarmSparesASessionUnderWay();
+        // mygetDeviceName: persisted name after restart, blank mDeviceName ignored, SecurityException never leaks.
+        Natives.savedDeviceName="DXCMAA";
+        DexGattCallback named=new DexGattCallback("sensor-N",9);
+        named.mActiveBluetoothDevice=null;
+        check("DXCMAA".equals(named.mygetDeviceName()),"persisted name not used before first connect");
+        named.mDeviceName="   ";
+        check("DXCMAA".equals(named.mygetDeviceName()),"blank mDeviceName hid persisted name");
+        named.mActiveBluetoothDevice=new BluetoothDevice();named.mActiveBluetoothDevice.denyConnect=true;
+        check("DXCMAA".equals(named.mygetDeviceName()),"SecurityException broke persisted name fallback");
+        Natives.savedDeviceName=null;
+        DexGattCallback unnamed=new DexGattCallback("sensor-U",10);
+        unnamed.mActiveBluetoothDevice=new BluetoothDevice();unnamed.mActiveBluetoothDevice.denyConnect=true;
+        check(Natives.stored.equals(unnamed.mygetDeviceName()),"SecurityException leaked when persisted name absent");
+        unnamed.mActiveDeviceAddress=null;
+        check("?".equals(unnamed.mygetDeviceName()),"missing address did not fall back to ?");
         System.out.println("PASS: Dexcom recovery, quiet/slot timing, short waits without alarm clocks, background reconnect without a slot alarm, the reading before asked again, auth slots, bond/challenge guards, an unbonded G7 scanned for and dialled directly, a G7's bond kept while another callback reads it, an unbonded G7 dialled only with the device a scan found, a bond back after its removal, a session under way spared by the loss alarm, callback lifecycle, concurrent publication/teardown and nonblocking roster snapshots");
     }
 }
