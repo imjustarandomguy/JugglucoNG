@@ -463,6 +463,9 @@ class FloatingGlucoseService : Service(), LifecycleOwner, ViewModelStoreOwner, S
         }
         root.optOutOfForceDark()
         val card = ComposeView(this).apply {
+            // Reuse the pill's recomposer and FloatingPillFrameClock: avoids creating a
+            // fresh WindowRecomposer on tap and keeps async card updates working on One UI.
+            setParentCompositionContext(pillRecomposer)
             setContent {
                 val opacity by detailsOpacity.collectAsState()
                 FloatingDetailsCard(
