@@ -24,7 +24,6 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ripple
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -279,14 +278,15 @@ fun FloatingGlucoseOverlay(
         useSubtleOutline = useSubtleOutline,
     )
     val overlayInteractionSource = remember { MutableInteractionSource() }
-    val overlayIndication = ripple(
-        bounded = true,
-        color = if (isTransparent) {
-            Color.White.copy(alpha = 0.24f)
-        } else {
-            Color.White.copy(alpha = 0.16f)
-        }
-    )
+    val overlayIndication = remember(isTransparent) {
+        FloatingPillPressIndication(
+            color = if (isTransparent) {
+                Color.White.copy(alpha = 0.24f)
+            } else {
+                Color.White.copy(alpha = 0.16f)
+            }
+        )
+    }
     var pendingDragX by remember { mutableFloatStateOf(0f) }
     var pendingDragY by remember { mutableFloatStateOf(0f) }
     var dragging by remember { mutableStateOf(false) }
